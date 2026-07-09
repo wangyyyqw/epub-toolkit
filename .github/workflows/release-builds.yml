@@ -1,0 +1,183 @@
+name: Release Builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      artifact_suffix: ${{ steps.version.outputs.artifact_suffix }}
+    steps:
+      - name: Compute semantic version
+        id: version
+        shell: bash
+        run: |
+          patch=$((GITHUB_RUN_NUMBER - 1))
+          app_version="1.0.${patch}"
+          build_number="${GITHUB_RUN_NUMBER}"
+          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
+          echo "artifact_suffix=v${app_version}+${build_number}" >> "$GITHUB_OUTPUT"
+          echo "Building ${app_version}+${build_number}"
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: >
+          flutter build apk --release
+          --build-name "${{ needs.version.outputs.app_version }}"
+          --build-number "${{ needs.version.outputs.build_number }}"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: epub-toolkit-android-${{ needs.version.outputs.artifact_suffix }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  macos:
+    name: macOS App
+    runs-on: macos-latest
+    needs: version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: >
+          flutter build macos --release
+          --build-name "${{ needs.version.outputs.app_version }}"
+          --build-number "${{ needs.version.outputs.build_number }}"
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          test -n "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "epub-toolkit-macos-${{ needs.version.outputs.artifact_suffix }}.zip"
+
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: epub-toolkit-macos-${{ needs.version.outputs.artifact_suffix }}
+          path: epub-toolkit-macos-${{ needs.version.outputs.artifact_suffix }}.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows App
+    runs-on: windows-latest
+    needs: version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: >
+          flutter build windows --release
+          --build-name "${{ needs.version.outputs.app_version }}"
+          --build-number "${{ needs.version.outputs.build_number }}"
+
+      - name: Package Windows app
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path build\windows\x64\runner\Release\* `
+            -DestinationPath "epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}.zip"
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}
+          path: epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}.zip
+          if-no-files-found: error
+
+  ios:
+    name: iOS App
+    runs-on: macos-latest
+    needs: version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS without code signing
+        run: >
+          flutter build ios --release --no-codesign
+          --build-name "${{ needs.version.outputs.app_version }}"
+          --build-number "${{ needs.version.outputs.build_number }}"
+
+      - name: Package iOS app
+        shell: bash
+        run: |
+          app_path="$(find build/ios/iphoneos -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          test -n "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "epub-toolkit-ios-${{ needs.version.outputs.artifact_suffix }}-unsigned.zip"
+
+      - name: Upload unsigned iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: epub-toolkit-ios-${{ needs.version.outputs.artifact_suffix }}-unsigned
+          path: epub-toolkit-ios-${{ needs.version.outputs.artifact_suffix }}-unsigned.zip
+          if-no-files-found: error
