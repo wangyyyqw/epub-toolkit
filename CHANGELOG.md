@@ -15,8 +15,11 @@
 - 调整 Android 忽略规则，允许提交 CI 构建必需的 Gradle Wrapper 文件。
 - 保持签名文件和本地配置文件被忽略，避免上传 keystore、`local.properties` 等敏感或本机专用文件。
 - macOS 本机复制脚本在 GitHub Actions 环境中自动跳过，避免 CI 构建因访问本机路径失败。
+- 使用图标源文件更新 Android、iOS、macOS、Windows 和 Web 应用图标。
+- 根据 README 的功能分组重新设计仪表盘 UI。
 
 ### 清理
 
 - 新增根目录 `.gitignore`，忽略 Flutter/Dart 构建产物、本地缓存和发布包目录。
 - 清理本地编译产物、发布包、平台缓存和不可达 Git 大对象。
+- 删除已不再需要的 `icons/` 图标源文件夹。
