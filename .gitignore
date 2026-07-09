@@ -1,0 +1,24 @@
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Generated release artifacts
+dist-packages/
+
+# IDE and OS local files
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and local environment
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.env

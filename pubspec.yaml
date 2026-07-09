@@ -1,0 +1,84 @@
+name: epub_gadget
+description: "一站式 EPUB 电子书处理工具"
+publish_to: 'none'
+
+version: 0.9.1+11
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 路由管理
+  go_router: ^14.6.0
+
+  # 状态管理
+  provider: ^6.1.2
+
+  # 文件选择
+  file_picker: ^8.1.6
+
+  # 本地存储
+  shared_preferences: ^2.3.3
+
+  # EPUB 处理
+  epubx: ^4.0.0
+
+  # ZIP 解压/打包
+  archive: ^3.6.1
+
+  # XML 解析
+  xml: ^6.5.0
+
+  # 路径工具
+  path: ^1.9.0
+
+  # 图片处理（纯 Dart，全平台；epubx 也依赖此包）
+  image: ^3.3.0
+
+  # 图片压缩/格式转换（原生插件，移动端支持 WebP 编码）
+  flutter_image_compress: ^2.4.0
+
+  # HTTP 请求（下载网络图片）
+  http: ^1.2.2
+
+  # 拼音转换（汉字转拼音，纯 Dart，全平台）
+  pinyin: ^3.3.0
+
+  # 加密哈希（MD5，用于 EPUB 名称混淆加密）
+  crypto: ^3.0.6
+
+  # SMTP 邮件发送（Kindle 邮箱推送）
+  mailer: ^6.2.0
+
+  # 打开网页版 Send to Kindle
+  url_launcher: ^6.3.1
+
+  # 应用内网页浏览（网页推送）
+  webview_flutter: ^4.10.0
+
+  # 路径工具（获取应用文档目录等，解决 macOS 沙盒写入权限）
+  path_provider: ^2.1.4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+dependency_overrides:
+  # 锁定 file_picker 旧版本（10.x 之后需要 compileSdk 36，否则 build 失败）
+  file_picker: 8.1.6
+  # 锁定 flutter_plugin_android_lifecycle 旧版本（2.0.35 需要 compileSdk 36）
+  flutter_plugin_android_lifecycle: 2.0.30
+
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/opencc/
+    - assets/note.png
