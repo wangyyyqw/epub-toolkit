@@ -5,11 +5,9 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   FLUTTER_CHANNEL: stable
@@ -22,6 +20,7 @@ jobs:
       app_version: ${{ steps.version.outputs.app_version }}
       build_number: ${{ steps.version.outputs.build_number }}
       artifact_suffix: ${{ steps.version.outputs.artifact_suffix }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
     steps:
       - name: Compute semantic version
         id: version
@@ -30,8 +29,10 @@ jobs:
           patch=$((GITHUB_RUN_NUMBER - 1))
           app_version="1.0.${patch}"
           build_number="${GITHUB_RUN_NUMBER}"
+          release_tag="v${app_version}"
           echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
           echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "artifact_suffix=v${app_version}+${build_number}" >> "$GITHUB_OUTPUT"
           echo "Building ${app_version}+${build_number}"
 
@@ -64,11 +65,17 @@ jobs:
           --build-name "${{ needs.version.outputs.app_version }}"
           --build-number "${{ needs.version.outputs.build_number }}"
 
+      - name: Package APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/epub-toolkit-android-${{ needs.version.outputs.artifact_suffix }}.apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: epub-toolkit-android-${{ needs.version.outputs.artifact_suffix }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: dist/epub-toolkit-android-${{ needs.version.outputs.artifact_suffix }}.apk
           if-no-files-found: error
 
   macos:
@@ -181,3 +188,43 @@ jobs:
           name: epub-toolkit-ios-${{ needs.version.outputs.artifact_suffix }}-unsigned
           path: epub-toolkit-ios-${{ needs.version.outputs.artifact_suffix }}-unsigned.zip
           if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - android
+      - macos
+      - windows
+      - ios
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: epub-toolkit-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: find release-assets -type f -maxdepth 1 -print
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.release_tag }}
+          name: EPUB 工具箱 ${{ needs.version.outputs.app_version }}
+          body: |
+            自动构建版本：${{ needs.version.outputs.app_version }}+${{ needs.version.outputs.build_number }}
+
+            包含产物：
+            - Android APK
+            - macOS 应用压缩包
+            - Windows 应用压缩包
+            - iOS 无签名应用压缩包
+
+            iOS 产物未签名，不能直接上架或安装到普通设备；如需 TestFlight 或 App Store 发布，需要配置 Apple 证书和 provisioning profile。
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          make_latest: true

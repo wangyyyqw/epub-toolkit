@@ -439,7 +439,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "TARGET_DIR=\"/Users/aaa/Documents/books\"\nmkdir -p \"$TARGET_DIR\"\ncp -Rf \"$CONFIGURATION_BUILD_DIR/$PRODUCT_NAME.app\" \"$TARGET_DIR/\"\n";
+			shellScript = "TARGET_DIR=\"/Users/aaa/Documents/books\"\nif [ \"$CI\" = \"true\" ]; then\n  echo \"Skipping local app copy on CI.\"\n  exit 0\nfi\nmkdir -p \"$TARGET_DIR\" || exit 0\ncp -Rf \"$CONFIGURATION_BUILD_DIR/$PRODUCT_NAME.app\" \"$TARGET_DIR/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
