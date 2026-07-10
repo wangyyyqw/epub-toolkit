@@ -13,6 +13,8 @@ env:
   FLUTTER_CHANNEL: stable
   LIBWEBP_VERSION: 1.6.0
   LIBWEBP_WINDOWS_X64_SHA256: 48886f506b21f62e4661f0f4cbfca19800897c385128e8902542d29a950c93f1
+  INNO_SETUP_SOURCE_COMMIT: c25dc6479cdc3be28e682a025fcf60765bba3de0
+  INNO_CHINESE_SIMPLIFIED_SHA256: 6753be2c5e2740d859900fd902824db2ec568da5c5b52486524c9762d778b0b0
 
 jobs:
   version:
@@ -185,6 +187,32 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress --yes
+
+      - name: Install Inno Setup Chinese language
+        shell: pwsh
+        run: |
+          $isccDir = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6'
+          $languageDir = Join-Path $isccDir 'Languages'
+          $languageFile = Join-Path $languageDir 'ChineseSimplified.isl'
+          $downloadFile = Join-Path $env:RUNNER_TEMP 'ChineseSimplified.isl'
+          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/$env:INNO_SETUP_SOURCE_COMMIT/Files/Languages/ChineseSimplified.isl"
+
+          curl.exe --fail --location --retry 5 --retry-all-errors `
+            --output $downloadFile $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to download Inno Setup Chinese language file"
+          }
+
+          $actualHash = (Get-FileHash -Algorithm SHA256 $downloadFile).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:INNO_CHINESE_SIMPLIFIED_SHA256) {
+            throw "Inno language checksum mismatch: expected $env:INNO_CHINESE_SIMPLIFIED_SHA256, got $actualHash"
+          }
+
+          New-Item -ItemType Directory -Force -Path $languageDir | Out-Null
+          Copy-Item -Force $downloadFile $languageFile
+          if (-not (Test-Path $languageFile)) {
+            throw "Inno Setup Chinese language file was not installed: $languageFile"
+          }
 
       - name: Package Windows installer
         shell: pwsh

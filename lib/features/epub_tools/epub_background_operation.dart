@@ -24,6 +24,7 @@ import '../view_opf/view_opf.dart';
 import '../webp_to_img/webp_to_img.dart';
 import '../yuewei/yuewei.dart';
 import '../zhangyue/zhangyue.dart';
+import '../zip_password/zip_password.dart';
 
 enum EpubBackgroundOperation {
   viewOpf,
@@ -40,6 +41,8 @@ enum EpubBackgroundOperation {
   encrypt,
   decrypt,
   encryptFont,
+  addZipPassword,
+  removeZipPassword,
   scanFontTargets,
   listFontTargets,
   merge,
@@ -147,6 +150,18 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
         targetFontFamilies: (args['targetFontFamilies'] as List?)
             ?.cast<String>(),
         targetXhtmlFiles: (args['targetXhtmlFiles'] as List?)?.cast<String>(),
+      );
+    case 'addZipPassword':
+      return ZipPasswordOperation.addPassword(
+        epubPath: args['epubPath'] as String,
+        outputPath: args['outputPath'] as String,
+        password: args['password'] as String,
+      );
+    case 'removeZipPassword':
+      return ZipPasswordOperation.removePassword(
+        epubPath: args['epubPath'] as String,
+        outputPath: args['outputPath'] as String,
+        password: args['password'] as String,
       );
     case 'scanFontTargets':
       final targets = await ListFontTargetsOperation.scan(

@@ -32,6 +32,7 @@
 - macOS GitHub Actions 自动安装并内置 `cwebp` 及所需动态库，移除对 Homebrew 路径的运行时依赖。
 - macOS 应用内附带 libwebp 许可证，加入组件后重新签名并执行深度签名验证。
 - 发布说明中的 Windows 产物由 ZIP 更新为安装程序 EXE；未签名安装程序首次运行时可能显示 SmartScreen 提示。
+- 修复 GitHub Actions 中 Inno Setup 缺少简体中文语言文件导致 Windows 安装程序编译失败的问题；构建时从官方固定版本获取并校验文件哈希。
 
 ### 测试
 
