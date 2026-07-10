@@ -1,3 +1,14 @@
+/// 章节正文中只作为标题显示、但不单独分页的标题行。
+class ChapterInlineHeading {
+  const ChapterInlineHeading({required this.lineIndex, required this.level});
+
+  /// 在 [Chapter.content] 按换行拆分后的行号。
+  final int lineIndex;
+
+  /// XHTML 标题级别（1–6）。
+  final int level;
+}
+
 /// 章节数据模型
 ///
 /// 支持嵌套结构，用于层级章节分割。
@@ -15,6 +26,15 @@ class Chapter {
   /// 子章节（层级模式）
   final List<Chapter> children;
 
+  /// 匹配到但未勾选“分割”的标题行。
+  final List<ChapterInlineHeading> inlineHeadings;
+
+  /// 该章节标题在源 TXT 中的行号（从 0 开始）。
+  final int? sourceLineIndex;
+
+  /// 识别该标题的规则索引；自动生成的正文页为 null。
+  final int? matchedRuleIndex;
+
   /// 构造函数
   ///
   /// [title] 章节标题（必填）
@@ -26,6 +46,9 @@ class Chapter {
     this.content = '',
     this.level = 1,
     this.children = const [],
+    this.inlineHeadings = const [],
+    this.sourceLineIndex,
+    this.matchedRuleIndex,
   });
 
   /// 是否为叶子节点（无子章节）
@@ -42,5 +65,6 @@ class Chapter {
   @override
   String toString() =>
       'Chapter(title: $title, level: $level, children: ${children.length}, '
+      'rule: $matchedRuleIndex, inlineHeadings: ${inlineHeadings.length}, '
       'content: ${content.length} chars)';
 }

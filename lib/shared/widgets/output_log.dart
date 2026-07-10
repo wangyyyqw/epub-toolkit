@@ -36,7 +36,7 @@ class OutputLogController extends TextEditingController {
   }
 }
 
-/// 输出日志面板（可独立滚动、折叠、清空、复制、自动滚动到底）
+/// 输出日志入口。页面中仅显示按钮，点击后在弹窗中查看、滚动和复制日志。
 class OutputLog extends StatefulWidget {
   final TextEditingController controller;
   final String title;
@@ -58,9 +58,9 @@ class OutputLog extends StatefulWidget {
 }
 
 class _OutputLogState extends State<OutputLog> {
-  bool _expanded = true;
-  bool _autoScroll = true;
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+  bool _dialogOpen = false;
 
   @override
   void initState() {
@@ -72,15 +72,19 @@ class _OutputLogState extends State<OutputLog> {
   void dispose() {
     widget.controller.removeListener(_onLogChanged);
     _scrollController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   void _onLogChanged() {
-    if (mounted) setState(() {});
-    if (!_autoScroll) return;
+    if (!mounted || !_dialogOpen) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -97,9 +101,15 @@ class _OutputLogState extends State<OutputLog> {
     );
   }
 
-  void _clear() {
-    widget.controller.clear();
-    setState(() {});
+  void _clear() => widget.controller.clear();
+
+  void _selectAll() {
+    final length = widget.controller.text.length;
+    widget.controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: length,
+    );
+    _focusNode.requestFocus();
   }
 
   int get _lineCount {
@@ -108,150 +118,204 @@ class _OutputLogState extends State<OutputLog> {
     return '\n'.allMatches(text).length + 1;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final hasContent = widget.controller.text.trim().isNotEmpty;
-    final logBg = context.isDarkMode
-        ? context.themeBgPaper.withValues(alpha: 0.72)
-        : context.themeBgPaper.withValues(alpha: 0.64);
-    final logTextColor = context.isDarkMode
-        ? context.themeTextSecondary
-        : context.themeTextPrimary;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: context.themeCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-        boxShadow: _expanded ? context.themeCardShadowLight : const [],
-        border: Border.all(
-          color: context.themeDividerLight.withValues(
-            alpha: context.isDarkMode ? 0.85 : 0.7,
+  Future<void> _showLogDialog() async {
+    _dialogOpen = true;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        const compactButtonConstraints = BoxConstraints.tightFor(
+          width: 36,
+          height: 36,
+        );
+        return Dialog(
+          backgroundColor: dialogContext.themeCard,
+          surfaceTintColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 28,
           ),
-          width: 0.7,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(AppTheme.radiusM),
-              bottom: Radius.circular(_expanded ? 0 : AppTheme.radiusM),
-            ),
-            child: Container(
-              height: widget.collapsedHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: _expanded
-                      ? BorderSide(color: context.themeDividerLight, width: 0.5)
-                      : BorderSide.none,
-                ),
-              ),
-              child: Row(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusL),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820, maxHeight: 640),
+            child: SizedBox(
+              width: 820,
+              height: 640,
+              child: Column(
                 children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: context.themeAccentLight,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Icon(
-                      Icons.terminal_rounded,
-                      size: 14,
-                      color: context.themeAccent,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compactHeader = constraints.maxWidth < 420;
+                        return Row(
+                          children: [
+                            Icon(
+                              Icons.terminal_rounded,
+                              size: 20,
+                              color: dialogContext.themeAccent,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                widget.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: dialogContext.themeTextPrimary,
+                                ),
+                              ),
+                            ),
+                            ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: widget.controller,
+                              builder: (context, value, _) {
+                                final hasContent = value.text.trim().isNotEmpty;
+                                if (compactHeader) {
+                                  return PopupMenuButton<String>(
+                                    tooltip: '日志操作',
+                                    enabled: hasContent,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 132,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.more_horiz_rounded,
+                                      size: 20,
+                                    ),
+                                    onSelected: (action) {
+                                      switch (action) {
+                                        case 'select':
+                                          _selectAll();
+                                          break;
+                                        case 'copy':
+                                          _copyAll();
+                                          break;
+                                        case 'clear':
+                                          _clear();
+                                          break;
+                                      }
+                                    },
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(
+                                        value: 'select',
+                                        child: Text('全选'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'copy',
+                                        child: Text('复制全部'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'clear',
+                                        child: Text('清空日志'),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (hasContent)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 4,
+                                        ),
+                                        child: Text(
+                                          '$_lineCount 行',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color:
+                                                dialogContext.themeTextTertiary,
+                                          ),
+                                        ),
+                                      ),
+                                    IconButton(
+                                      tooltip: '全选',
+                                      onPressed: hasContent ? _selectAll : null,
+                                      constraints: compactButtonConstraints,
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(
+                                        Icons.select_all_rounded,
+                                        size: 19,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: '复制全部',
+                                      onPressed: hasContent ? _copyAll : null,
+                                      constraints: compactButtonConstraints,
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(
+                                        Icons.copy_rounded,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: '清空日志',
+                                      onPressed: hasContent ? _clear : null,
+                                      constraints: compactButtonConstraints,
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(
+                                        Icons.delete_sweep_outlined,
+                                        size: 19,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                            IconButton(
+                              tooltip: '关闭',
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              constraints: compactButtonConstraints,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    widget.title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: context.themeTextPrimary,
-                    ),
-                  ),
-                  if (hasContent) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.themeChipBg,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '$_lineCount 行',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: context.themeTextTertiary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  if (_expanded) ...[
-                    _IconAction(
-                      icon: _autoScroll
-                          ? Icons.vertical_align_bottom_rounded
-                          : Icons.vertical_align_center_rounded,
-                      tooltip: _autoScroll ? '已开启自动滚动' : '已关闭自动滚动',
-                      active: _autoScroll,
-                      onTap: () => setState(() => _autoScroll = !_autoScroll),
-                    ),
-                    _IconAction(
-                      icon: Icons.copy_rounded,
-                      tooltip: '复制全部',
-                      onTap: hasContent ? _copyAll : null,
-                    ),
-                    _IconAction(
-                      icon: Icons.cleaning_services_rounded,
-                      tooltip: '清空',
-                      onTap: hasContent ? _clear : null,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  AnimatedRotation(
-                    turns: _expanded ? 0 : -0.5,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      Icons.keyboard_arrow_up_rounded,
-                      size: 20,
-                      color: context.themeTextTertiary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            child: _expanded
-                ? Container(
-                    height: hasContent ? widget.expandedHeight : 108,
-                    decoration: BoxDecoration(
-                      color: logBg,
-                      borderRadius: BorderRadius.vertical(
-                        bottom: Radius.circular(AppTheme.radiusM),
-                      ),
-                    ),
-                    child: hasContent
-                        ? Scrollbar(
+                  Divider(height: 1, color: dialogContext.themeDividerLight),
+                  Expanded(
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: widget.controller,
+                      builder: (context, value, _) {
+                        if (value.text.trim().isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.inbox_outlined,
+                                  size: 32,
+                                  color: dialogContext.themeTextTertiary,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  widget.emptyHint,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: dialogContext.themeTextTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return Container(
+                          color: dialogContext.themeBgPaper.withValues(
+                            alpha: 0.72,
+                          ),
+                          child: Scrollbar(
                             controller: _scrollController,
                             thumbVisibility: true,
-                            radius: const Radius.circular(3),
                             child: TextField(
                               controller: widget.controller,
+                              focusNode: _focusNode,
                               scrollController: _scrollController,
                               readOnly: true,
-                              showCursor: false,
                               expands: true,
                               minLines: null,
                               maxLines: null,
@@ -259,94 +323,79 @@ class _OutputLogState extends State<OutputLog> {
                               keyboardType: TextInputType.multiline,
                               scrollPhysics: const ClampingScrollPhysics(),
                               decoration: const InputDecoration(
-                                isCollapsed: true,
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.fromLTRB(
-                                  14,
-                                  12,
-                                  14,
-                                  12,
-                                ),
+                                contentPadding: EdgeInsets.all(16),
                               ),
                               style: TextStyle(
-                                fontFamily: 'monospace',
-                                fontFamilyFallback: [
-                                  'Menlo',
-                                  'Consolas',
-                                  'monospace',
-                                ],
                                 fontSize: 12.5,
                                 height: 1.55,
-                                color: logTextColor,
-                              ),
-                            ),
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 24),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.inbox_outlined,
-                                    size: 26,
-                                    color: context.themeTextTertiary.withValues(
-                                      alpha: 0.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    widget.emptyHint,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: context.themeTextTertiary,
-                                    ),
-                                  ),
-                                ],
+                                color: dialogContext.themeTextSecondary,
                               ),
                             ),
                           ),
-                  )
-                : const SizedBox.shrink(),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
+    _dialogOpen = false;
   }
-}
-
-class _IconAction extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-  final bool active;
-
-  const _IconAction({
-    required this.icon,
-    required this.tooltip,
-    this.onTap,
-    this.active = false,
-  });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = onTap == null;
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Icon(
-            icon,
-            size: 16,
-            color: disabled
-                ? context.themeTextTertiary.withValues(alpha: 0.3)
-                : (active ? context.themeAccent : context.themeTextSecondary),
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: widget.controller,
+      builder: (context, value, _) {
+        final hasContent = value.text.trim().isNotEmpty;
+        final hasError = value.text.contains('ERROR:');
+        return SizedBox(
+          height: 42,
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _showLogDialog,
+            icon: Icon(
+              hasError
+                  ? Icons.error_outline_rounded
+                  : Icons.receipt_long_outlined,
+              size: 17,
+              color: hasError ? context.themeError : context.themeAccent,
+            ),
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(hasContent ? '查看处理日志' : '查看日志'),
+                if (hasContent) ...[
+                  const SizedBox(width: 7),
+                  Text(
+                    '($_lineCount 行)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.themeTextTertiary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: context.themeTextSecondary,
+              side: BorderSide(
+                color: hasError
+                    ? context.themeError.withValues(alpha: 0.55)
+                    : context.themeDividerLight,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

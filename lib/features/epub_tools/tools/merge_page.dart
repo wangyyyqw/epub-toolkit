@@ -380,25 +380,7 @@ class _MergePageState extends State<MergePage> {
                   isComplete: _outputPath.isNotEmpty,
                 ),
                 const SizedBox(height: 8),
-                ExpansionTile(
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 0),
-                  dense: true,
-                  title: Text(
-                    '输出日志',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                  leading: Icon(
-                    Icons.terminal,
-                    size: 18,
-                    color: cs.onSurfaceVariant,
-                  ),
-                  children: [
-                    SizedBox(
-                      height: 150,
-                      child: OutputLog(controller: _logController),
-                    ),
-                  ],
-                ),
+                OutputLog(controller: _logController),
               ],
             ),
           ),

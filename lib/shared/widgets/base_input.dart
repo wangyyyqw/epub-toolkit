@@ -61,15 +61,15 @@ class _BaseInputState extends State<BaseInput> {
   @override
   Widget build(BuildContext context) {
     final OutlineInputBorder border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: context.themeDivider, width: 1),
     );
     final OutlineInputBorder focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: context.themeDivider, width: 1.5),
     );
     final OutlineInputBorder disabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(
         color: context.themeDividerLight.withValues(alpha: 0.5),
       ),
@@ -83,7 +83,7 @@ class _BaseInputState extends State<BaseInput> {
           Text(
             widget.label!,
             style: TextStyle(
-              fontSize: 13.5,
+              fontSize: 12.5,
               color: context.themeTextSecondary,
               fontWeight: FontWeight.w600,
             ),
@@ -98,11 +98,11 @@ class _BaseInputState extends State<BaseInput> {
           obscureText: widget.obscureText,
           keyboardType: widget.keyboardType,
           onChanged: widget.onChanged,
-          style: TextStyle(fontSize: 15, color: context.themeTextPrimary),
+          style: TextStyle(fontSize: 14, color: context.themeTextPrimary),
           decoration: InputDecoration(
             hintText: widget.hint,
             hintStyle: TextStyle(
-              fontSize: 14.5,
+              fontSize: 13.5,
               color: context.themeTextTertiary,
             ),
             prefixIcon: widget.prefixIcon != null
@@ -126,8 +126,8 @@ class _BaseInputState extends State<BaseInput> {
             fillColor: context.themeCard,
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+              horizontal: 12,
+              vertical: 12,
             ),
             border: border,
             enabledBorder: border,

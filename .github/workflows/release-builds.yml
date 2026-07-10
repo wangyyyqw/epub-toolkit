@@ -26,12 +26,15 @@ jobs:
       artifact_suffix: ${{ steps.version.outputs.artifact_suffix }}
       release_tag: ${{ steps.version.outputs.release_tag }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Compute semantic version
         id: version
         shell: bash
         run: |
-          patch=$((GITHUB_RUN_NUMBER - 1))
-          app_version="1.0.${patch}"
+          version_value="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          app_version="${version_value%%+*}"
           build_number="${GITHUB_RUN_NUMBER}"
           release_tag="v${app_version}"
           echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"

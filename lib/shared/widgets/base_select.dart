@@ -23,11 +23,11 @@ class BaseSelect extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final OutlineInputBorder border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: context.themeDivider, width: 1),
     );
     final OutlineInputBorder focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: context.themeDivider, width: 1.5),
     );
 
@@ -39,7 +39,7 @@ class BaseSelect extends StatelessWidget {
           Text(
             label!,
             style: TextStyle(
-              fontSize: 13.5,
+              fontSize: 12.5,
               color: context.themeTextSecondary,
               fontWeight: FontWeight.w600,
             ),
@@ -54,7 +54,7 @@ class BaseSelect extends StatelessWidget {
                   hint!,
                   style: TextStyle(
                     color: context.themeTextTertiary,
-                    fontSize: 15,
+                    fontSize: 14,
                   ),
                 )
               : null,
@@ -80,8 +80,8 @@ class BaseSelect extends StatelessWidget {
             fillColor: context.themeCard,
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+              horizontal: 12,
+              vertical: 12,
             ),
             border: border,
             enabledBorder: border,

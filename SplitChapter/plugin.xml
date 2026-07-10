@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+<name>SplitChapter</name>
+<type>edit</type>
+<author>ichigo_250</author>
+<description>.......</description>
+<engine>python3.4</engine>
+<version>3.4.0</version>
+<oslist>win,osx,unx</oslist>
+<autostart>true</autostart>
+<autoclose>true</autoclose>
+</plugin>

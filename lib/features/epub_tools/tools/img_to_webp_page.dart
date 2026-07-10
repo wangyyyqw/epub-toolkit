@@ -183,28 +183,7 @@ class _ImgToWebpPageState extends State<ImgToWebpPage> {
                   isComplete: _outputPath.isNotEmpty,
                 ),
                 const SizedBox(height: 8),
-                ExpansionTile(
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 0),
-                  dense: true,
-                  title: Text(
-                    '输出日志',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  leading: Icon(
-                    Icons.terminal,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  children: [
-                    SizedBox(
-                      height: 150,
-                      child: OutputLog(controller: _logController),
-                    ),
-                  ],
-                ),
+                OutputLog(controller: _logController),
               ],
             ),
           ),

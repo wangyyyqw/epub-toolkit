@@ -318,9 +318,7 @@ class _ConvertVersionPageState extends State<ConvertVersionPage> {
                       padding: const EdgeInsets.all(12),
                       child: SelectableText(
                         _resultText,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
+                        style: theme.textTheme.bodySmall,
                       ),
                     ),
                   ),

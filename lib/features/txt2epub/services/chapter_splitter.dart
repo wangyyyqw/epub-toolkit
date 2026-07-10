@@ -26,7 +26,7 @@ class PresetPattern {
   const PresetPattern(this.name, this.pattern, this.level, this.split);
 }
 
-/// 20 套预设正则列表
+/// 预设正则列表
 ///
 /// 移植自 Python chapter_splitter.py 并扩展，覆盖常见的章节标题格式。
 /// 每套预设包含 name（名称）、pattern（正则）、level（层级）、split（是否切分）。
@@ -156,20 +156,70 @@ final List<PresetPattern> presetPatterns = [
     1,
     true,
   ),
+  // SplitChapter 风格：独立规则可自动组合出卷/部→章/回→节的多级目录。
+  PresetPattern('卷标题（中文数字）', r'^\s*第[一二三四五六七八九十零〇百千两]+卷.*$', 1, true),
+  PresetPattern('部标题（中文数字）', r'^\s*第[一二三四五六七八九十零〇百千两]+部.*$', 1, true),
+  PresetPattern('章标题（中文数字）', r'^\s*第[一二三四五六七八九十零〇百千两]+章.*$', 2, true),
+  PresetPattern('回标题（中文数字）', r'^\s*第[一二三四五六七八九十零〇百千两]+回.*$', 2, true),
+  PresetPattern('节标题（中文数字）', r'^\s*第[一二三四五六七八九十零〇百千两]+节.*$', 3, true),
+  PresetPattern('卷标题（数字）', r'^\s*第\d+卷.*$', 1, true),
+  PresetPattern('部标题（数字）', r'^\s*第\d+部.*$', 1, true),
+  PresetPattern('章标题（数字）', r'^\s*第\d+章.*$', 2, true),
+  PresetPattern('回标题（数字）', r'^\s*第\d+回.*$', 2, true),
+  PresetPattern('节标题（数字）', r'^\s*第\d+节.*$', 3, true),
+  PresetPattern('序言/简介/后记/尾声', r'^\s*(?:序[1-9言曲]?|内容简介|简介|后记|尾声)\s*$', 2, true),
 ];
 
-/// 内部使用的原始章节数据（分割过程中的中间结果）
-class _RawChapter {
-  final String title;
-  final String content;
+/// 一行分章规则。规则按列表顺序执行，同一行只采用首个匹配规则。
+class ChapterSplitRule {
+  const ChapterSplitRule({
+    required this.pattern,
+    required this.level,
+    required this.split,
+  });
 
-  _RawChapter(this.title, this.content);
+  final String pattern;
+  final int level;
+  final bool split;
+}
+
+/// 预览中识别到的标题。
+class ChapterTitleMatch {
+  const ChapterTitleMatch({
+    required this.lineIndex,
+    required this.title,
+    required this.level,
+    required this.split,
+    required this.ruleIndex,
+    required this.ignored,
+  });
+
+  final int lineIndex;
+  final String title;
+  final int level;
+  final bool split;
+  final int ruleIndex;
+  final bool ignored;
+}
+
+/// 一次规则分析的完整结果。
+class ChapterSplitAnalysis {
+  const ChapterSplitAnalysis({
+    required this.chapters,
+    required this.matches,
+    required this.matchCounts,
+    required this.invalidRuleIndexes,
+  });
+
+  final List<Chapter> chapters;
+  final List<ChapterTitleMatch> matches;
+  final List<int> matchCounts;
+  final List<int> invalidRuleIndexes;
 }
 
 /// 章节分割器
 ///
-/// 移植自 Python chapter_splitter.py，提供 12 套预设正则和自定义正则的章节分割功能。
-/// 支持扁平切分和层级递归切分两种模式。
+/// 提供常见标题预设、自定义正则以及顺序多规则分章功能。
 class ChapterSplitter {
   /// 扁平切分
   ///
@@ -185,40 +235,15 @@ class ChapterSplitter {
     String customPattern, {
     bool splitTitle = false,
   }) {
-    // 空模式或空文本，整篇作为一个章节
-    if (customPattern.isEmpty || text.trim().isEmpty) {
-      return [Chapter(title: '正文', content: text, level: 1)];
-    }
-
-    final RegExp pattern;
-    try {
-      pattern = RegExp(customPattern);
-    } catch (_) {
-      // 正则编译失败，整篇作为一个章节
-      return [Chapter(title: '正文', content: text, level: 1)];
-    }
-
-    // 逐行扫描切分
-    final rawChapters = _splitTextInternal(text, pattern, true);
-
-    // 转换为 Chapter 对象，根据 splitTitle 决定是否保留标题在正文中
-    return rawChapters.map((rc) {
-      var content = rc.content;
-      if (!splitTitle && rc.title != '正文' && rc.title != '简介') {
-        // 标题保留在正文首行。
-        // 注：Dart 字符串插值 '$rc.title' 会被解析为 '$rc' + '.title'，
-        // 导致 rc.toString() 被调用，输出 "Instance of '_RawChapter'.title"。
-        // 必须用 ${rc.title} 显式访问字段。
-        content = content.isEmpty ? rc.title : '${rc.title}\n$content';
-      }
-      return Chapter(title: rc.title, content: content.trim(), level: 1);
-    }).toList();
+    return analyzeAndSplit(text, [
+      ChapterSplitRule(pattern: customPattern, level: 1, split: true),
+    ], keepSplitTitleInContent: !splitTitle).chapters;
   }
 
-  /// 层级递归切分
+  /// 多级规则切分
   ///
-  /// 使用多套正则模式递归切分文本，生成嵌套的章节结构。
-  /// 第一套模式按 [levels[0]] 层级切分，每章内容再用第二套模式按 [levels[1]] 层级切分，依此类推。
+  /// 使用多套正则从上到下扫描文本，再按 [levels] 生成嵌套目录。
+  /// 同一行只会由第一条匹配的规则处理。
   /// [splits] 数组控制每层模式是否实际切分（false=匹配行合并到上一章正文）。
   ///
   /// [text] 待分割的文本
@@ -232,16 +257,226 @@ class ChapterSplitter {
     List<int> levels,
     List<bool> splits,
   ) {
-    if (patterns.isEmpty || text.trim().isEmpty) {
-      return [Chapter(title: '正文', content: text, level: 1)];
+    final count = [
+      patterns.length,
+      levels.length,
+      splits.length,
+    ].reduce((a, b) => a < b ? a : b);
+    final rules = [
+      for (var i = 0; i < count; i++)
+        ChapterSplitRule(
+          pattern: patterns[i],
+          level: levels[i],
+          split: splits[i],
+        ),
+    ];
+    return analyzeAndSplit(text, rules).chapters;
+  }
+
+  /// 按 SplitChapter 的行为顺序扫描规则并生成预览与章节树。
+  ///
+  /// - 规则从上到下执行，同一行由首个匹配规则处理，避免重复匹配。
+  /// - `split=true` 的标题创建独立 XHTML 页面。
+  /// - `split=false` 的标题保留在当前页面，并输出为对应 h1–h6。
+  /// - [ignoredLineIndexes] 中的误识别标题按普通正文处理。
+  /// - [suppressedLineIndexes] 中的行不再参与任何规则匹配，用于整类取消。
+  ChapterSplitAnalysis analyzeAndSplit(
+    String text,
+    List<ChapterSplitRule> rules, {
+    Set<int> ignoredLineIndexes = const {},
+    Set<int> suppressedLineIndexes = const {},
+    bool keepSplitTitleInContent = false,
+  }) {
+    if (text.trim().isEmpty) {
+      return ChapterSplitAnalysis(
+        chapters: [Chapter(title: '正文', content: text, level: 1)],
+        matches: const [],
+        matchCounts: List<int>.filled(rules.length, 0),
+        invalidRuleIndexes: const [],
+      );
     }
 
-    return _splitRecursive(text, patterns, levels, splits, 0);
+    final compiled = <RegExp?>[];
+    final invalidRuleIndexes = <int>[];
+    for (var i = 0; i < rules.length; i++) {
+      final source = rules[i].pattern.trim();
+      if (source.isEmpty) {
+        compiled.add(null);
+        continue;
+      }
+      try {
+        compiled.add(RegExp(source));
+      } catch (_) {
+        compiled.add(null);
+        invalidRuleIndexes.add(i);
+      }
+    }
+
+    final lines = text.split('\n');
+    final matches = <ChapterTitleMatch>[];
+    final matchesByLine = <int, ChapterTitleMatch>{};
+    final matchCounts = List<int>.filled(rules.length, 0);
+    for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      if (suppressedLineIndexes.contains(lineIndex)) continue;
+      final sourceLine = lines[lineIndex].replaceFirst(RegExp(r'\r$'), '');
+      for (var ruleIndex = 0; ruleIndex < rules.length; ruleIndex++) {
+        final pattern = compiled[ruleIndex];
+        if (pattern == null || !pattern.hasMatch(sourceLine)) continue;
+        final rule = rules[ruleIndex];
+        final match = ChapterTitleMatch(
+          lineIndex: lineIndex,
+          title: sourceLine.trim(),
+          level: rule.level.clamp(1, 6),
+          split: rule.split,
+          ruleIndex: ruleIndex,
+          ignored: ignoredLineIndexes.contains(lineIndex),
+        );
+        matches.add(match);
+        matchesByLine[lineIndex] = match;
+        matchCounts[ruleIndex]++;
+        break;
+      }
+    }
+
+    final drafts = <_PageDraft>[];
+    String? currentTitle;
+    var currentLevel = 1;
+    var synthetic = true;
+    int? currentSourceLineIndex;
+    int? currentRuleIndex;
+    var currentLines = <String>[];
+    var inlineHeadings = <ChapterInlineHeading>[];
+
+    void flush() {
+      final hasContent = currentLines.any((line) => line.trim().isNotEmpty);
+      if (currentTitle == null && !hasContent) return;
+
+      var firstContentLine = 0;
+      while (firstContentLine < currentLines.length &&
+          currentLines[firstContentLine].trim().isEmpty) {
+        firstContentLine++;
+      }
+      var lastContentLine = currentLines.length;
+      while (lastContentLine > firstContentLine &&
+          currentLines[lastContentLine - 1].trim().isEmpty) {
+        lastContentLine--;
+      }
+      final normalizedLines = currentLines.sublist(
+        firstContentLine,
+        lastContentLine,
+      );
+      final normalizedHeadings = [
+        for (final heading in inlineHeadings)
+          if (heading.lineIndex >= firstContentLine &&
+              heading.lineIndex < lastContentLine)
+            ChapterInlineHeading(
+              lineIndex: heading.lineIndex - firstContentLine,
+              level: heading.level,
+            ),
+      ];
+      drafts.add(
+        _PageDraft(
+          title: currentTitle ?? (drafts.isEmpty ? '简介' : '正文'),
+          content: normalizedLines.join('\n'),
+          level: currentLevel,
+          synthetic: synthetic,
+          sourceLineIndex: currentSourceLineIndex,
+          matchedRuleIndex: currentRuleIndex,
+          inlineHeadings: List.unmodifiable(normalizedHeadings),
+        ),
+      );
+    }
+
+    for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      final line = lines[lineIndex].replaceFirst(RegExp(r'\r$'), '');
+      final match = matchesByLine[lineIndex];
+      if (match != null && match.split && !match.ignored) {
+        flush();
+        currentTitle = match.title;
+        currentLevel = match.level;
+        synthetic = false;
+        currentSourceLineIndex = match.lineIndex;
+        currentRuleIndex = match.ruleIndex;
+        currentLines = keepSplitTitleInContent ? [match.title] : <String>[];
+        inlineHeadings = <ChapterInlineHeading>[];
+        continue;
+      }
+
+      if (match != null && !match.split && !match.ignored) {
+        inlineHeadings.add(
+          ChapterInlineHeading(
+            lineIndex: currentLines.length,
+            level: match.level,
+          ),
+        );
+      }
+      currentLines.add(line);
+    }
+    flush();
+
+    if (drafts.isEmpty) {
+      drafts.add(
+        _PageDraft(
+          title: '正文',
+          content: text.trim(),
+          level: 1,
+          synthetic: true,
+          sourceLineIndex: null,
+          matchedRuleIndex: null,
+          inlineHeadings: const [],
+        ),
+      );
+    }
+
+    return ChapterSplitAnalysis(
+      chapters: _buildChapterTree(drafts),
+      matches: List.unmodifiable(matches),
+      matchCounts: List.unmodifiable(matchCounts),
+      invalidRuleIndexes: List.unmodifiable(invalidRuleIndexes),
+    );
+  }
+
+  List<Chapter> _buildChapterTree(List<_PageDraft> drafts) {
+    final roots = <_MutableChapter>[];
+    final stack = <_MutableChapter>[];
+
+    for (final draft in drafts) {
+      final node = _MutableChapter(draft);
+      if (draft.synthetic) {
+        roots.add(node);
+        stack.clear();
+        continue;
+      }
+
+      while (stack.isNotEmpty && stack.last.draft.level >= draft.level) {
+        stack.removeLast();
+      }
+      if (stack.isEmpty) {
+        roots.add(node);
+      } else {
+        stack.last.children.add(node);
+      }
+      stack.add(node);
+    }
+
+    Chapter freeze(_MutableChapter node) {
+      return Chapter(
+        title: node.draft.title,
+        content: node.draft.content,
+        level: node.draft.level,
+        sourceLineIndex: node.draft.sourceLineIndex,
+        matchedRuleIndex: node.draft.matchedRuleIndex,
+        inlineHeadings: node.draft.inlineHeadings,
+        children: node.children.map(freeze).toList(growable: false),
+      );
+    }
+
+    return roots.map(freeze).toList(growable: false);
   }
 
   /// 扫描模式
   ///
-  /// 用全部 12 套预设正则扫描文本，返回每套预设的匹配统计信息。
+  /// 用全部预设正则扫描文本，返回每套预设的匹配统计信息。
   /// 用于帮助用户选择最合适的分割预设。
   ///
   /// [text] 待扫描的文本
@@ -264,6 +499,7 @@ class ChapterSplitter {
           'name': preset.name,
           'count': 0,
           'chapters': <String>[],
+          'lineIndexes': <int>[],
           'example': '',
         });
         continue;
@@ -271,10 +507,13 @@ class ChapterSplitter {
 
       // 逐行匹配，收集匹配行
       final matchedLines = <String>[];
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (pattern.hasMatch(trimmed)) {
-          matchedLines.add(trimmed);
+      final matchedLineIndexes = <int>[];
+      for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        final line = lines[lineIndex];
+        final sourceLine = line.replaceFirst(RegExp(r'\r$'), '');
+        if (pattern.hasMatch(sourceLine)) {
+          matchedLines.add(sourceLine.trim());
+          matchedLineIndexes.add(lineIndex);
         }
       }
 
@@ -282,143 +521,38 @@ class ChapterSplitter {
         'name': preset.name,
         'count': matchedLines.length,
         'chapters': matchedLines.take(20).toList(),
+        'lineIndexes': matchedLineIndexes,
         'example': matchedLines.isNotEmpty ? matchedLines.first : '',
       });
     }
 
     return results;
   }
+}
 
-  /// 递归切分内部实现
-  ///
-  /// [text] 当前层待分割的文本
-  /// [patterns] 全部正则模式列表
-  /// [levels] 全部层级列表
-  /// [splits] 全部切分标志列表
-  /// [depth] 当前递归深度（对应 patterns/levels/splits 的索引）
-  /// 返回当前层的章节列表
-  List<Chapter> _splitRecursive(
-    String text,
-    List<String> patterns,
-    List<int> levels,
-    List<bool> splits,
-    int depth,
-  ) {
-    // 超出模式列表深度，返回为叶子章节
-    if (depth >= patterns.length) {
-      if (text.trim().isEmpty) return [];
-      return [
-        Chapter(
-          title: '正文',
-          content: text,
-          level: depth > 0 ? levels[depth - 1] + 1 : 1,
-        ),
-      ];
-    }
+class _PageDraft {
+  const _PageDraft({
+    required this.title,
+    required this.content,
+    required this.level,
+    required this.synthetic,
+    required this.sourceLineIndex,
+    required this.matchedRuleIndex,
+    required this.inlineHeadings,
+  });
 
-    final patternStr = patterns[depth];
-    final level = levels[depth];
-    final shouldSplit = splits[depth];
+  final String title;
+  final String content;
+  final int level;
+  final bool synthetic;
+  final int? sourceLineIndex;
+  final int? matchedRuleIndex;
+  final List<ChapterInlineHeading> inlineHeadings;
+}
 
-    // 空模式，直接递归下一层
-    if (patternStr.isEmpty) {
-      return _splitRecursive(text, patterns, levels, splits, depth + 1);
-    }
+class _MutableChapter {
+  _MutableChapter(this.draft);
 
-    final RegExp pattern;
-    try {
-      pattern = RegExp(patternStr);
-    } catch (_) {
-      // 正则编译失败，直接递归下一层
-      return _splitRecursive(text, patterns, levels, splits, depth + 1);
-    }
-
-    // 用当前模式分割文本
-    final rawChapters = _splitTextInternal(text, pattern, shouldSplit);
-
-    // 已是最深层，返回扁平章节
-    if (depth + 1 >= patterns.length) {
-      return rawChapters
-          .map(
-            (rc) => Chapter(title: rc.title, content: rc.content, level: level),
-          )
-          .toList();
-    }
-
-    // 递归分割每章的内容
-    final result = <Chapter>[];
-    for (final rc in rawChapters) {
-      final children = _splitRecursive(
-        rc.content,
-        patterns,
-        levels,
-        splits,
-        depth + 1,
-      );
-      result.add(
-        Chapter(
-          title: rc.title,
-          // 有子章节时正文为空（正文已在子章节中），无子章节时保留正文
-          content: children.isEmpty ? rc.content : '',
-          level: level,
-          children: children,
-        ),
-      );
-    }
-    return result;
-  }
-
-  /// 逐行扫描切分文本（内部方法）
-  ///
-  /// [text] 待分割的文本
-  /// [pattern] 已编译的正则
-  /// [shouldSplit] 是否按匹配行切分（false=匹配行归入正文，不切分）
-  /// 返回原始章节列表
-  List<_RawChapter> _splitTextInternal(
-    String text,
-    RegExp pattern,
-    bool shouldSplit,
-  ) {
-    final lines = text.split('\n');
-    final chapters = <_RawChapter>[];
-    String? currentTitle;
-    final currentContent = <String>[];
-
-    for (final line in lines) {
-      final trimmedLine = line.trim();
-      final isMatch = pattern.hasMatch(trimmedLine);
-
-      if (isMatch && shouldSplit) {
-        // 匹配到标题且需要切分，保存前一章
-        if (currentTitle != null) {
-          chapters.add(
-            _RawChapter(currentTitle, currentContent.join('\n').trim()),
-          );
-        } else if (currentContent.any((l) => l.trim().isNotEmpty)) {
-          // 首个匹配之前有内容，作为「简介」章节
-          chapters.add(_RawChapter('简介', currentContent.join('\n').trim()));
-        }
-        currentTitle = trimmedLine;
-        currentContent.clear();
-      } else {
-        // 非匹配行或不需要切分的匹配行，归入当前章节正文
-        currentContent.add(line);
-      }
-    }
-
-    // 保存最后一章
-    if (currentTitle != null) {
-      chapters.add(_RawChapter(currentTitle, currentContent.join('\n').trim()));
-    } else if (currentContent.any((l) => l.trim().isNotEmpty)) {
-      // 没有匹配到任何标题，整篇作为一个章节
-      chapters.add(_RawChapter('正文', currentContent.join('\n').trim()));
-    }
-
-    // 空文本兜底
-    if (chapters.isEmpty && text.trim().isNotEmpty) {
-      chapters.add(_RawChapter('正文', text));
-    }
-
-    return chapters;
-  }
+  final _PageDraft draft;
+  final List<_MutableChapter> children = [];
 }

@@ -287,9 +287,7 @@ class _ReformatPageState extends State<ReformatPage> {
                       padding: const EdgeInsets.all(12),
                       child: SelectableText(
                         _resultText,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
+                        style: theme.textTheme.bodySmall,
                       ),
                     ),
                   ),

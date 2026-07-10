@@ -519,7 +519,7 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(
-              'v0.9.1',
+              'v1.0.5',
               style: TextStyle(
                 fontSize: 11,
                 color: context.themeTextTertiary.withValues(alpha: 0.5),

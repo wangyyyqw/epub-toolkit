@@ -241,18 +241,7 @@ class _ZipPasswordPageState extends State<ZipPasswordPage> {
                   isComplete: _outputPath.isNotEmpty,
                 ),
                 const SizedBox(height: 8),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: const Icon(Icons.terminal, size: 18),
-                  title: const Text('输出日志', style: TextStyle(fontSize: 13)),
-                  children: [
-                    SizedBox(
-                      height: 150,
-                      child: OutputLog(controller: _logController),
-                    ),
-                  ],
-                ),
+                OutputLog(controller: _logController),
               ],
             ),
           ),

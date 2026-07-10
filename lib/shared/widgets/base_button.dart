@@ -64,17 +64,17 @@ class BaseButton extends StatelessWidget {
     );
 
     final OutlinedBorder shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      borderRadius: BorderRadius.circular(8),
     );
     const EdgeInsets padding = EdgeInsets.symmetric(
-      horizontal: 18,
-      vertical: 10,
+      horizontal: 14,
+      vertical: 9,
     );
 
     switch (variant) {
       case BaseButtonVariant.primary:
         return SizedBox(
-          height: 48,
+          height: 44,
           child: ElevatedButton(
             onPressed: disabled ? null : onPressed,
             style: ElevatedButton.styleFrom(
@@ -95,7 +95,7 @@ class BaseButton extends StatelessWidget {
         );
       case BaseButtonVariant.secondary:
         return SizedBox(
-          height: 48,
+          height: 44,
           child: OutlinedButton(
             onPressed: disabled ? null : onPressed,
             style: OutlinedButton.styleFrom(
@@ -110,7 +110,7 @@ class BaseButton extends StatelessWidget {
         );
       case BaseButtonVariant.danger:
         return SizedBox(
-          height: 48,
+          height: 44,
           child: ElevatedButton(
             onPressed: disabled ? null : onPressed,
             style: ElevatedButton.styleFrom(

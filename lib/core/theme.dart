@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 /// 应用主题配置（阅微设置页风格）
 
-/// 中文字体方案：思源宋体优先
-const List<String> _sansFallback = [
+/// 应用内置字体。界面统一使用思源宋体，不依赖操作系统是否安装字体。
+const String appFontFamily = 'SourceHanSerifApp';
+
+const List<String> _serifFallback = [
   'Source Han Serif SC',
   'Source Han Serif CN',
   'Noto Serif CJK SC',
@@ -15,8 +17,10 @@ const List<String> _sansFallback = [
   'serif',
 ];
 
-TextStyle _withSans(TextStyle s) =>
-    s.copyWith(fontFamily: null, fontFamilyFallback: _sansFallback);
+TextStyle _withAppFont(TextStyle style) => style.copyWith(
+  fontFamily: appFontFamily,
+  fontFamilyFallback: _serifFallback,
+);
 
 ///
 /// 设计哲学：
@@ -155,7 +159,8 @@ class AppTheme {
 
   static ThemeData get light => ThemeData(
     useMaterial3: true,
-    fontFamilyFallback: _sansFallback,
+    fontFamily: appFontFamily,
+    fontFamilyFallback: _serifFallback,
     brightness: Brightness.light,
     scaffoldBackgroundColor: bgBase,
     colorScheme: const ColorScheme.light(
@@ -187,6 +192,7 @@ class AppTheme {
       backgroundColor: Colors.transparent,
       foregroundColor: textPrimary,
       titleTextStyle: TextStyle(
+        fontFamily: appFontFamily,
         fontSize: 17,
         fontWeight: FontWeight.w600,
         color: textPrimary,
@@ -269,9 +275,9 @@ class AppTheme {
       thickness: 0.5,
       space: 1,
     ),
-    // 文字主题：工具界面统一使用无衬线，提升扫描效率
+    // 文字主题：所有界面统一使用内置思源宋体。
     textTheme: TextTheme(
-      displayLarge: _withSans(
+      displayLarge: _withAppFont(
         const TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.w700,
@@ -280,7 +286,7 @@ class AppTheme {
           height: 1.2,
         ),
       ),
-      headlineLarge: _withSans(
+      headlineLarge: _withAppFont(
         const TextStyle(
           fontSize: 26,
           fontWeight: FontWeight.w700,
@@ -289,7 +295,7 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      headlineMedium: _withSans(
+      headlineMedium: _withAppFont(
         const TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w700,
@@ -298,7 +304,7 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      headlineSmall: _withSans(
+      headlineSmall: _withAppFont(
         const TextStyle(
           fontSize: 19,
           fontWeight: FontWeight.w600,
@@ -307,7 +313,7 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      titleLarge: _withSans(
+      titleLarge: _withAppFont(
         const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
@@ -315,7 +321,7 @@ class AppTheme {
           letterSpacing: 0.2,
         ),
       ),
-      titleMedium: _withSans(
+      titleMedium: _withAppFont(
         const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w600,
@@ -323,7 +329,7 @@ class AppTheme {
           letterSpacing: 0.2,
         ),
       ),
-      titleSmall: _withSans(
+      titleSmall: _withAppFont(
         const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -331,16 +337,16 @@ class AppTheme {
           letterSpacing: 0.3,
         ),
       ),
-      bodyLarge: _withSans(
+      bodyLarge: _withAppFont(
         const TextStyle(fontSize: 16, color: textSecondary, height: 1.5),
       ),
-      bodyMedium: _withSans(
+      bodyMedium: _withAppFont(
         const TextStyle(fontSize: 14, color: textSecondary, height: 1.5),
       ),
-      bodySmall: _withSans(
+      bodySmall: _withAppFont(
         const TextStyle(fontSize: 12, color: textTertiary, letterSpacing: 0.2),
       ),
-      labelLarge: _withSans(
+      labelLarge: _withAppFont(
         const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -353,7 +359,8 @@ class AppTheme {
 
   static ThemeData get dark => ThemeData(
     useMaterial3: true,
-    fontFamilyFallback: _sansFallback,
+    fontFamily: appFontFamily,
+    fontFamilyFallback: _serifFallback,
     brightness: Brightness.dark,
     scaffoldBackgroundColor: darkBgBase,
     colorScheme: const ColorScheme.dark(
@@ -382,6 +389,7 @@ class AppTheme {
       backgroundColor: Colors.transparent,
       foregroundColor: darkTextPrimary,
       titleTextStyle: TextStyle(
+        fontFamily: appFontFamily,
         fontSize: 17,
         fontWeight: FontWeight.w600,
         color: darkTextPrimary,
@@ -453,7 +461,7 @@ class AppTheme {
       space: 1,
     ),
     textTheme: TextTheme(
-      displayLarge: _withSans(
+      displayLarge: _withAppFont(
         const TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.w700,
@@ -461,7 +469,7 @@ class AppTheme {
           height: 1.2,
         ),
       ),
-      headlineLarge: _withSans(
+      headlineLarge: _withAppFont(
         const TextStyle(
           fontSize: 26,
           fontWeight: FontWeight.w700,
@@ -469,7 +477,7 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      headlineMedium: _withSans(
+      headlineMedium: _withAppFont(
         const TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.w700,
@@ -477,7 +485,7 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      headlineSmall: _withSans(
+      headlineSmall: _withAppFont(
         const TextStyle(
           fontSize: 19,
           fontWeight: FontWeight.w600,
@@ -485,37 +493,37 @@ class AppTheme {
           height: 1.3,
         ),
       ),
-      titleLarge: _withSans(
+      titleLarge: _withAppFont(
         const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
           color: darkTextPrimary,
         ),
       ),
-      titleMedium: _withSans(
+      titleMedium: _withAppFont(
         const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w600,
           color: darkTextPrimary,
         ),
       ),
-      titleSmall: _withSans(
+      titleSmall: _withAppFont(
         const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: darkTextPrimary,
         ),
       ),
-      bodyLarge: _withSans(
+      bodyLarge: _withAppFont(
         const TextStyle(fontSize: 16, color: darkTextSecondary, height: 1.5),
       ),
-      bodyMedium: _withSans(
+      bodyMedium: _withAppFont(
         const TextStyle(fontSize: 14, color: darkTextSecondary, height: 1.5),
       ),
-      bodySmall: _withSans(
+      bodySmall: _withAppFont(
         const TextStyle(fontSize: 12, color: darkTextTertiary),
       ),
-      labelLarge: _withSans(
+      labelLarge: _withAppFont(
         const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,

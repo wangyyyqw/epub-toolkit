@@ -299,10 +299,7 @@ class _MetadataPageState extends State<MetadataPage> {
                 padding: const EdgeInsets.all(12),
                 child: SelectableText(
                   content,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                    height: 1.45,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
                 ),
               ),
             ),

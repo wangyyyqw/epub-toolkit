@@ -8,6 +8,7 @@ import 'package:epub_gadget/core/file_service.dart';
 import 'package:epub_gadget/features/txt2epub/models/chapter.dart';
 import 'package:epub_gadget/features/txt2epub/services/chapter_splitter.dart';
 import 'package:epub_gadget/features/txt2epub/services/epub_generator.dart';
+import 'package:epub_gadget/features/txt2epub/services/output_naming.dart';
 import 'package:epub_gadget/features/txt2epub/services/text_cleaner.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 import 'package:epub_gadget/shared/widgets/base_button.dart';
@@ -15,27 +16,42 @@ import 'package:epub_gadget/shared/widgets/output_log.dart';
 
 /// 单个标题级别的配置
 class LevelConfig {
-  int presetIndex;
-  String customRegex;
+  final TextEditingController regexController;
+  int level;
   bool split;
-  LevelConfig({
-    required this.presetIndex,
-    this.customRegex = '',
-    this.split = true,
-  });
+  String? presetName;
 
-  String get pattern =>
-      customRegex.trim().isNotEmpty ? customRegex.trim() : _presetPattern();
-  String _presetPattern() =>
-      presetPatterns[presetIndex.clamp(0, presetPatterns.length - 1)].pattern;
-  int get level => presetIndex.clamp(0, presetPatterns.length - 1) < 0
-      ? 1
-      : presetPatterns[presetIndex.clamp(0, presetPatterns.length - 1)].level;
+  LevelConfig({
+    required String pattern,
+    required this.level,
+    this.split = true,
+    this.presetName,
+  }) : regexController = TextEditingController(text: pattern);
+
+  factory LevelConfig.fromPreset(PresetPattern preset) {
+    return LevelConfig(
+      pattern: preset.pattern,
+      level: preset.level,
+      split: preset.split,
+      presetName: preset.name,
+    );
+  }
+
+  String get pattern => regexController.text.trim();
+
+  void applyPreset(PresetPattern preset) {
+    regexController.text = preset.pattern;
+    level = preset.level;
+    split = preset.split;
+    presetName = preset.name;
+  }
+
+  void dispose() => regexController.dispose();
 }
 
 /// TXT 转 EPUB 页面
 ///
-/// 支持多级标题：用户可动态添加 1-3 级标题规则，
+/// 支持多级标题：用户可动态添加最多 15 条标题规则，
 /// 每级可选预设正则或自定义正则，并控制是否按该级切分。
 class Txt2EpubPage extends StatefulWidget {
   const Txt2EpubPage({super.key});
@@ -50,19 +66,31 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
 
   String _txtPath = '';
   String _outputPath = '';
+  bool _outputPathManuallySelected = false;
+  int _outputPathRevision = 0;
   String _title = '';
   String _author = '';
   String _coverPath = '';
+  String _headerImagePath = '';
+  String _fullScreenCoverImagePath = '';
+  ChapterHeaderImageStyle _headerImageStyle = ChapterHeaderImageStyle.yuewei;
+  bool _addFullScreenCover = false;
+  FullScreenCoverStyle _fullScreenCoverStyle = FullScreenCoverStyle.yuewei;
 
-  /// 多级标题配置（至少 1 级，最多 3 级）
-  final List<LevelConfig> _levels = [LevelConfig(presetIndex: 0)];
+  /// 多级标题配置（至少 1 条，最多 15 条）
+  final List<LevelConfig> _levels = [
+    LevelConfig.fromPreset(presetPatterns.first),
+  ];
 
   bool _removeEmptyLines = true;
   bool _fixIndent = true;
-  bool _splitTitle = false;
   bool _loading = false;
   bool _scanning = false;
   List<Chapter> _chapters = [];
+  ChapterSplitAnalysis? _chapterAnalysis;
+  String _preparedText = '';
+  final Set<int> _ignoredTitleLines = {};
+  final Map<int, Set<int>> _disabledRuleLines = {};
   List<Map<String, dynamic>> _scanResults = [];
   final OutputLogController _logController = OutputLogController();
 
@@ -80,6 +108,9 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   void dispose() {
     _tabController.dispose();
     _logController.dispose();
+    for (final level in _levels) {
+      level.dispose();
+    }
     super.dispose();
   }
 
@@ -88,20 +119,25 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   Future<void> _pickTxt() async {
     final path = await FileService.pickTxt();
     if (path == null) return;
-    _txtPath = path;
-    if (_title.isEmpty) {
-      _title = p.basenameWithoutExtension(path);
-    }
-    if (_outputPath.isEmpty) {
-      final name = _title.trim().isNotEmpty
-          ? '${_title.trim()}.epub'
-          : '${p.basenameWithoutExtension(path)}.epub';
-      _outputPath = await FileService.getDefaultOutputPathForInput(
-        inputPath: path,
-        filename: name,
-      );
-    }
-    if (mounted) setState(() {});
+    final inputChanged = path != _txtPath;
+    final previousTitleWasAutomatic =
+        _txtPath.isNotEmpty &&
+        _title.trim() == p.basenameWithoutExtension(_txtPath).trim();
+    setState(() {
+      _txtPath = path;
+      _scanResults = [];
+      _invalidateAnalysis();
+      if (_title.trim().isEmpty || previousTitleWasAutomatic) {
+        _title = p.basenameWithoutExtension(path);
+      }
+      if (inputChanged) {
+        _outputPath = '';
+        _outputPathManuallySelected = false;
+        _outputPathRevision++;
+      }
+    });
+    await _refreshAutomaticOutputPath();
+    await _scanPatterns();
   }
 
   Future<void> _pickCover() async {
@@ -110,15 +146,77 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     setState(() => _coverPath = path);
   }
 
+  Future<void> _pickHeaderImage() async {
+    final path = await FileService.pickImage();
+    if (path == null) return;
+    final extension = p.extension(path).toLowerCase();
+    if (extension != '.png' && extension != '.jpg' && extension != '.jpeg') {
+      if (mounted) {
+        context.read<ToastProvider>().showWarning('章节头图仅支持 PNG、JPG 或 JPEG 图片');
+      }
+      return;
+    }
+    setState(() => _headerImagePath = path);
+  }
+
+  Future<void> _pickFullScreenCoverImage() async {
+    final path = await FileService.pickImage();
+    if (path == null) return;
+    final extension = p.extension(path).toLowerCase();
+    if (extension != '.png' && extension != '.jpg' && extension != '.jpeg') {
+      if (mounted) {
+        context.read<ToastProvider>().showWarning('首页图片仅支持 PNG、JPG 或 JPEG 图片');
+      }
+      return;
+    }
+    setState(() => _fullScreenCoverImagePath = path);
+  }
+
   Future<void> _pickOutput() async {
-    final defaultName = _title.trim().isNotEmpty
-        ? '${_title.trim()}.epub'
-        : 'output.epub';
+    final defaultName = Txt2EpubNaming.buildFilename(
+      title: _title,
+      author: _author,
+      inputPath: _txtPath,
+    );
     final path = await FileService.saveFile(
       defaultFileName: defaultName,
       initialDirectory: _txtPath.isNotEmpty ? p.dirname(_txtPath) : null,
     );
     if (path == null) return;
+    setState(() {
+      _outputPath = path;
+      _outputPathManuallySelected = true;
+      _outputPathRevision++;
+    });
+  }
+
+  void _updateTitle(String value) {
+    setState(() => _title = value);
+    _refreshAutomaticOutputPath();
+  }
+
+  void _updateAuthor(String value) {
+    setState(() => _author = value);
+    _refreshAutomaticOutputPath();
+  }
+
+  Future<void> _refreshAutomaticOutputPath() async {
+    if (_outputPathManuallySelected || _txtPath.isEmpty) return;
+    final revision = ++_outputPathRevision;
+    final filename = Txt2EpubNaming.buildFilename(
+      title: _title,
+      author: _author,
+      inputPath: _txtPath,
+    );
+    final path = await FileService.getDefaultOutputPathForInput(
+      inputPath: _txtPath,
+      filename: filename,
+    );
+    if (!mounted ||
+        revision != _outputPathRevision ||
+        _outputPathManuallySelected) {
+      return;
+    }
     setState(() => _outputPath = path);
   }
 
@@ -146,11 +244,14 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     return '${dir.substring(0, keep)}.../$base';
   }
 
-  /// 收集所有级别的正则、层级、切分标志
-  List<String> get _allPatterns => _levels.map((l) => l.pattern).toList();
-  List<int> get _allLevels =>
-      _levels.asMap().entries.map((e) => e.key + 1).toList();
-  List<bool> get _allSplits => _levels.map((l) => l.split).toList();
+  List<ChapterSplitRule> get _splitRules => [
+    for (final level in _levels)
+      ChapterSplitRule(
+        pattern: level.pattern,
+        level: level.level,
+        split: level.split,
+      ),
+  ];
 
   // ==================== 扫描与预览 ====================
 
@@ -170,22 +271,64 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       final cleanText = cleaner.clean(rawText);
       final splitter = ChapterSplitter();
       final results = splitter.scan(cleanText);
-      results.sort((a, b) => (b['count'] as int) - (a['count'] as int));
-      setState(() => _scanResults = results);
+      final displayedResults = [...results]
+        ..sort((a, b) => (b['count'] as int) - (a['count'] as int));
 
-      final best = results.isNotEmpty && (results.first['count'] as int) > 0
-          ? results.first
-          : null;
-      if (best != null) {
-        final bestName = best['name'] as String;
-        final bestCount = best['count'] as int;
-        final index = _presetNames.indexOf(bestName);
-        if (index >= 0) {
-          setState(() => _levels.first.presetIndex = index);
+      // 依照预设顺序组合互补规则。已经由前面规则覆盖的标题不会再添加
+      // 宽泛预设，避免同一章节被重复识别。
+      final selectedPresets = <PresetPattern>[];
+      final coveredLines = <int>{};
+      final splitChapterPresetNames = {
+        '卷标题（中文数字）',
+        '部标题（中文数字）',
+        '章标题（中文数字）',
+        '回标题（中文数字）',
+        '节标题（中文数字）',
+        '卷标题（数字）',
+        '部标题（数字）',
+        '章标题（数字）',
+        '回标题（数字）',
+        '节标题（数字）',
+        '序言/简介/后记/尾声',
+      };
+      final prioritizedIndexes = [
+        for (var index = 0; index < presetPatterns.length; index++)
+          if (splitChapterPresetNames.contains(presetPatterns[index].name))
+            index,
+        for (var index = 0; index < presetPatterns.length; index++)
+          if (!splitChapterPresetNames.contains(presetPatterns[index].name))
+            index,
+      ];
+      for (final index in prioritizedIndexes) {
+        final lineIndexes = (results[index]['lineIndexes'] as List<int>?) ?? [];
+        if (lineIndexes.isEmpty ||
+            !lineIndexes.any(
+              (lineIndex) => !coveredLines.contains(lineIndex),
+            )) {
+          continue;
         }
+        selectedPresets.add(presetPatterns[index]);
+        coveredLines.addAll(lineIndexes);
+        if (selectedPresets.length >= 8) break;
+      }
+
+      setState(() {
+        _scanResults = displayedResults;
+        if (selectedPresets.isNotEmpty) {
+          for (final level in _levels) {
+            level.dispose();
+          }
+          _levels
+            ..clear()
+            ..addAll(selectedPresets.map(LevelConfig.fromPreset));
+          _invalidateAnalysis();
+        }
+      });
+
+      if (selectedPresets.isNotEmpty) {
         if (mounted) {
           context.read<ToastProvider>().showSuccess(
-            '推荐预设：「$bestName」(匹配 $bestCount 处)',
+            '已自动添加 ${selectedPresets.length} 条规则，识别 ${coveredLines.length} 个标题',
           );
         }
       } else if (mounted) {
@@ -211,35 +354,17 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     }
     setState(() => _loading = true);
     try {
-      final encoding = EncodingDetector.detect(_txtPath);
-      final rawText = EncodingDetector.readFile(_txtPath, encoding);
-      final cleaner = TextCleaner(
-        removeEmptyLines: _removeEmptyLines,
-        fixIndent: _fixIndent,
-      );
-      final cleanText = cleaner.clean(rawText);
-      final splitter = ChapterSplitter();
-
-      List<Chapter> chapters;
-      if (_levels.length == 1) {
-        chapters = splitter.split(
-          cleanText,
-          _levels.first.pattern,
-          splitTitle: _splitTitle,
-        );
-      } else {
-        chapters = splitter.splitHierarchical(
-          cleanText,
-          _allPatterns,
-          _allLevels,
-          _allSplits,
-        );
-      }
-      setState(() => _chapters = chapters);
+      final cleanText = _readAndCleanText();
+      final analysis = _analyzeText(cleanText);
+      setState(() {
+        _preparedText = cleanText;
+        _chapterAnalysis = analysis;
+        _chapters = analysis.chapters;
+      });
       _tabController.animateTo(1);
       if (mounted) {
         context.read<ToastProvider>().showSuccess(
-          '分割完成，共 ${_countLeafChapters(chapters)} 章',
+          '识别 ${analysis.matches.length} 个标题，生成 ${_countAllChapters(analysis.chapters)} 个页面',
         );
       }
     } catch (e) {
@@ -249,15 +374,141 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     }
   }
 
-  /// 统计叶子章节数
-  int _countLeafChapters(List<Chapter> chapters) {
+  String _readAndCleanText() {
+    final encoding = EncodingDetector.detect(_txtPath);
+    final rawText = EncodingDetector.readFile(_txtPath, encoding);
+    return TextCleaner(
+      removeEmptyLines: _removeEmptyLines,
+      fixIndent: _fixIndent,
+    ).clean(rawText);
+  }
+
+  ChapterSplitAnalysis _analyzeText(String text) {
+    final suppressedLineIndexes = <int>{
+      for (final lines in _disabledRuleLines.values) ...lines,
+    };
+    return ChapterSplitter().analyzeAndSplit(
+      text,
+      _splitRules,
+      ignoredLineIndexes: _ignoredTitleLines,
+      suppressedLineIndexes: suppressedLineIndexes,
+      keepSplitTitleInContent: false,
+    );
+  }
+
+  void _invalidateAnalysis({bool clearIgnored = true}) {
+    _chapterAnalysis = null;
+    _preparedText = '';
+    _chapters = [];
+    if (clearIgnored) {
+      _ignoredTitleLines.clear();
+      _disabledRuleLines.clear();
+    }
+  }
+
+  void _toggleTitleMatch(ChapterTitleMatch match, bool enabled) {
+    if (enabled) {
+      _ignoredTitleLines.remove(match.lineIndex);
+    } else {
+      _ignoredTitleLines.add(match.lineIndex);
+    }
+    if (_preparedText.isEmpty) return;
+    final analysis = _analyzeText(_preparedText);
+    setState(() {
+      _chapterAnalysis = analysis;
+      _chapters = analysis.chapters;
+    });
+  }
+
+  void _toggleRuleCategory(int ruleIndex, bool enabled) {
+    if (_preparedText.isEmpty || _chapterAnalysis == null) return;
+    if (enabled) {
+      _disabledRuleLines.remove(ruleIndex);
+    } else {
+      final lineIndexes = {
+        for (final match in _chapterAnalysis!.matches)
+          if (match.ruleIndex == ruleIndex) match.lineIndex,
+      };
+      if (lineIndexes.isEmpty) return;
+      _disabledRuleLines[ruleIndex] = lineIndexes;
+    }
+    final analysis = _analyzeText(_preparedText);
+    setState(() {
+      _chapterAnalysis = analysis;
+      _chapters = analysis.chapters;
+    });
+  }
+
+  String _ruleCategoryLabel(int ruleIndex) {
+    if (ruleIndex < 0 || ruleIndex >= _levels.length) {
+      return '规则 ${ruleIndex + 1}';
+    }
+    final presetName = _levels[ruleIndex].presetName;
+    return presetName == null || presetName.isEmpty
+        ? '自定义规则 ${ruleIndex + 1}'
+        : presetName;
+  }
+
+  String _rulePattern(int ruleIndex) {
+    if (ruleIndex < 0 || ruleIndex >= _levels.length) return '';
+    return _levels[ruleIndex].pattern;
+  }
+
+  Widget _buildRuleMatchDetails(int? ruleIndex) {
+    final cs = Theme.of(context).colorScheme;
+    final isAutomatic = ruleIndex == null;
+    final label = isAutomatic ? '自动正文（未匹配正则）' : _ruleCategoryLabel(ruleIndex);
+    final pattern = isAutomatic ? '' : _rulePattern(ruleIndex);
+
+    return Tooltip(
+      message: pattern.isEmpty ? label : '$label\n$pattern',
+      waitDuration: const Duration(milliseconds: 350),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isAutomatic ? label : '匹配规则：$label',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.25,
+                fontWeight: FontWeight.w600,
+                color: isAutomatic ? cs.onSurfaceVariant : cs.primary,
+              ),
+            ),
+            if (pattern.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                pattern,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.3,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 统计实际生成的 XHTML 页面数（父级标题页也会生成页面）。
+  int _countAllChapters(List<Chapter> chapters) {
     var count = 0;
     for (final ch in chapters) {
-      if (ch.children.isEmpty) {
-        count++;
-      } else {
-        count += _countLeafChapters(ch.children);
-      }
+      count++;
+      count += _countAllChapters(ch.children);
     }
     return count;
   }
@@ -267,8 +518,8 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       context.read<ToastProvider>().showWarning('请先选择 TXT 文件');
       return;
     }
-    if (_title.trim().isEmpty) {
-      context.read<ToastProvider>().showWarning('请输入书名');
+    if (_addFullScreenCover && _fullScreenCoverImagePath.isEmpty) {
+      context.read<ToastProvider>().showWarning('添加全屏首页前请先选择首页图片');
       return;
     }
     for (final l in _levels) {
@@ -300,32 +551,25 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       _logController.append('文本清洗完成');
 
       _logController.append('正在分割章节...');
-      final splitter = ChapterSplitter();
-      List<Chapter> chapters;
-      if (_levels.length == 1) {
-        chapters = splitter.split(
-          cleanText,
-          _levels.first.pattern,
-          splitTitle: _splitTitle,
-        );
-        _logController.append('章节分割完成（单级），共 ${chapters.length} 章');
-      } else {
-        chapters = splitter.splitHierarchical(
-          cleanText,
-          _allPatterns,
-          _allLevels,
-          _allSplits,
-        );
-        _logController.append(
-          '章节分割完成（${_levels.length} 级），共 ${_countLeafChapters(chapters)} 个叶子章节',
-        );
-      }
-      setState(() => _chapters = chapters);
+      final analysis = _analyzeText(cleanText);
+      final chapters = analysis.chapters;
+      _logController.append(
+        '章节分析完成：${analysis.matches.length} 个标题，${_countAllChapters(chapters)} 个页面',
+      );
+      setState(() {
+        _preparedText = cleanText;
+        _chapterAnalysis = analysis;
+        _chapters = chapters;
+      });
 
       String outputPath = _outputPath;
       if (outputPath.isEmpty) {
         _logController.append('请选择输出路径...');
-        final defaultName = '${_title.trim()}.epub';
+        final defaultName = Txt2EpubNaming.buildFilename(
+          title: _title,
+          author: _author,
+          inputPath: _txtPath,
+        );
         final selectedPath = await FileService.saveFile(
           defaultFileName: defaultName,
           initialDirectory: _txtPath.isNotEmpty ? p.dirname(_txtPath) : null,
@@ -338,16 +582,33 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           return;
         }
         outputPath = selectedPath;
-        setState(() => _outputPath = outputPath);
+        setState(() {
+          _outputPath = outputPath;
+          _outputPathManuallySelected = true;
+          _outputPathRevision++;
+        });
       }
 
       _logController.append('正在生成 EPUB...');
+      final resolvedTitle = Txt2EpubNaming.resolveTitle(
+        title: _title,
+        inputPath: _txtPath,
+      );
       final (log, userVisiblePath) = await EpubGenerator.generate(
         outputPath: outputPath,
-        title: _title.trim(),
+        title: resolvedTitle,
         author: _author.trim().isEmpty ? '未知' : _author.trim(),
         chapters: chapters,
         coverPath: _coverPath.isNotEmpty ? _coverPath : null,
+        headerImagePath: _headerImagePath.isNotEmpty ? _headerImagePath : null,
+        headerImageStyle: _headerImageStyle,
+        fullScreenCoverImagePath:
+            _addFullScreenCover && _fullScreenCoverImagePath.isNotEmpty
+            ? _fullScreenCoverImagePath
+            : null,
+        fullScreenCoverStyle: _addFullScreenCover
+            ? _fullScreenCoverStyle
+            : null,
       );
 
       outputPath = userVisiblePath;
@@ -433,6 +694,122 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     );
   }
 
+  Widget _buildSettingsCard({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.themeCard,
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        border: Border.all(color: context.themeDividerLight),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildResponsivePair(Widget first, Widget second) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(children: [first, const SizedBox(height: 10), second]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            const SizedBox(width: 12),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildImagePickerWithClear({
+    required String label,
+    required String path,
+    required String hint,
+    required VoidCallback onPick,
+    required VoidCallback onClear,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildFilePickerRow(
+            icon: Icons.add_photo_alternate_outlined,
+            label: label,
+            value: path.isEmpty ? '' : p.basename(path),
+            hint: hint,
+            onTap: _loading ? () {} : onPick,
+            isComplete: path.isNotEmpty,
+          ),
+        ),
+        if (path.isNotEmpty) ...[
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: '移除$label',
+            onPressed: _loading ? null : onClear,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 19),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFeatureToggle({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: value ? cs.primaryContainer : cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: value ? cs.primary : cs.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: _loading ? null : onChanged,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ],
+    );
+  }
+
   Widget _buildTextField({
     required String label,
     required String value,
@@ -503,185 +880,231 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
 
   /// 单个级别的配置卡片
   Widget _buildLevelConfigCard(int index) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final level = _levels[index];
-    final levelNum = index + 1;
+    final levelNum = level.level;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: context.themeCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
         border: Border.all(color: context.themeDividerLight),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 级别标题 + 切分开关 + 删除按钮
+          // 标题级别、分页状态和规则管理各自占用明确区域，避免互相遮挡。
           Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                height: 26,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: context.themeAccent,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                  color: context.themeAccentLight,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: context.themeAccent.withValues(alpha: 0.35),
+                  ),
                 ),
                 child: Text(
-                  'L$levelNum',
+                  'H$levelNum',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                     color: context.themeTextPrimary,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '第 $levelNum 级标题',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+              SizedBox(
+                width: 104,
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: level.level,
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(8),
+                    icon: const Icon(Icons.expand_more_rounded, size: 18),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextPrimary,
+                    ),
+                    items: [
+                      for (var value = 1; value <= 6; value++)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text('$value 级标题'),
+                        ),
+                    ],
+                    onChanged: _loading
+                        ? null
+                        : (value) => setState(() {
+                            level.level = value ?? level.level;
+                            level.presetName = null;
+                            _invalidateAnalysis();
+                          }),
+                  ),
                 ),
               ),
               const Spacer(),
-              // 切分开关
-              Text(
-                '切分',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              Tooltip(
+                message: '开启后，匹配到的标题会新建 EPUB 页面',
+                child: FilterChip(
+                  selected: level.split,
+                  showCheckmark: true,
+                  checkmarkColor: context.themeWarm,
+                  selectedColor: context.themeWarmLight,
+                  backgroundColor: context.themeBgWarm,
+                  side: BorderSide(
+                    color: level.split
+                        ? context.themeWarm.withValues(alpha: 0.55)
+                        : context.themeDividerLight,
+                  ),
+                  label: const Text('分页'),
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: level.split
+                        ? context.themeWarm
+                        : context.themeTextSecondary,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onSelected: _loading
+                      ? null
+                      : (value) => setState(() {
+                          level.split = value;
+                          _invalidateAnalysis();
+                        }),
+                ),
               ),
               const SizedBox(width: 4),
-              SizedBox(
-                width: 38,
-                height: 24,
-                child: Switch(
-                  value: level.split,
-                  onChanged: _loading
-                      ? null
-                      : (v) => setState(() => level.split = v),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-              // 删除按钮（仅多级时可删）
-              if (_levels.length > 1) ...[
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: Icon(Icons.close, size: 18, color: cs.error),
-                  onPressed: _loading
-                      ? null
-                      : () => setState(() => _levels.removeAt(index)),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 28,
-                    minHeight: 28,
+              PopupMenuButton<String>(
+                tooltip: '管理规则',
+                enabled: !_loading,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'up',
+                    enabled: index > 0,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_upward_rounded, size: 18),
+                        SizedBox(width: 10),
+                        Text('上移规则'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  PopupMenuItem(
+                    value: 'down',
+                    enabled: index < _levels.length - 1,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_downward_rounded, size: 18),
+                        SizedBox(width: 10),
+                        Text('下移规则'),
+                      ],
+                    ),
+                  ),
+                  if (_levels.length > 1) ...[
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: cs.error,
+                          ),
+                          const SizedBox(width: 10),
+                          Text('删除规则', style: TextStyle(color: cs.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+                onSelected: (action) => setState(() {
+                  switch (action) {
+                    case 'up':
+                      final item = _levels.removeAt(index);
+                      _levels.insert(index - 1, item);
+                      break;
+                    case 'down':
+                      final item = _levels.removeAt(index);
+                      _levels.insert(index + 1, item);
+                      break;
+                    case 'delete':
+                      _levels.removeAt(index).dispose();
+                      break;
+                  }
+                  _invalidateAnalysis();
+                }),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          // 预设正则下拉
-          _buildDropdownField(
-            label: '预设正则',
-            value: _presetNames[level.presetIndex],
-            items: _presetNames,
-            onChanged: (v) {
-              if (v == null) return;
-              final idx = _presetNames.indexOf(v);
-              if (idx >= 0) setState(() => level.presetIndex = idx);
-            },
+          const SizedBox(height: 9),
+          Text(
+            level.presetName == null ? '自定义匹配规则' : '预设 · ${level.presetName}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: context.themeTextTertiary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          const SizedBox(height: 8),
-          // 自定义正则
-          _buildTextField(
-            label: '自定义正则（优先于预设）',
-            value: level.customRegex,
-            hint: '留空则使用预设正则',
-            icon: Icons.code,
-            onChanged: (v) => setState(() => level.customRegex = v),
+          const SizedBox(height: 4),
+          TextField(
+            controller: level.regexController,
+            enabled: !_loading,
+            maxLines: 1,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: '输入正则表达式，靠前规则优先匹配',
+              errorText: _isValidRegex(level.pattern) ? null : '正则无效',
+              isDense: true,
+              contentPadding: const EdgeInsets.fromLTRB(12, 11, 4, 11),
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 40,
+                minHeight: 40,
+              ),
+              suffixIcon: PopupMenuButton<int>(
+                tooltip: '选择预设正则',
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.rule_rounded, size: 19),
+                itemBuilder: (context) => [
+                  for (
+                    var presetIndex = 0;
+                    presetIndex < presetPatterns.length;
+                    presetIndex++
+                  )
+                    PopupMenuItem(
+                      value: presetIndex,
+                      child: Text(
+                        'H${presetPatterns[presetIndex].level} · '
+                        '${presetPatterns[presetIndex].name}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                ],
+                onSelected: (presetIndex) => setState(() {
+                  level.applyPreset(presetPatterns[presetIndex]);
+                  _invalidateAnalysis();
+                }),
+              ),
+            ),
+            onChanged: (_) => setState(() {
+              level.presetName = null;
+              _invalidateAnalysis();
+            }),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: cs.onSurfaceVariant,
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 7),
-        SizedBox(
-          height: 52,
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('$label-$value'),
-            initialValue: value,
-            isExpanded: true,
-            items: items
-                .map(
-                  (e) => DropdownMenuItem(
-                    value: e,
-                    child: Text(
-                      e,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: context.themeTextPrimary,
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: context.themeCard,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: cs.outline),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: cs.outline),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: context.themeDivider, width: 1.5),
-              ),
-            ),
-            icon: Icon(
-              Icons.keyboard_arrow_down,
-              color: cs.onSurfaceVariant,
-              size: 20,
-            ),
-            dropdownColor: context.themeCard,
-          ),
-        ),
-      ],
     );
   }
 
@@ -756,7 +1179,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           final name = r['name'] as String;
           final count = r['count'] as int;
           final example = r['example'] as String;
-          final isSelected = name == _presetNames[_levels.first.presetIndex];
+          final isSelected = _levels.any((level) => level.presetName == name);
 
           return ListTile(
             dense: true,
@@ -798,8 +1221,18 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             onTap: count > 0
                 ? () {
                     final idx = _presetNames.indexOf(name);
-                    if (idx >= 0) {
-                      setState(() => _levels.first.presetIndex = idx);
+                    if (idx >= 0 && !isSelected) {
+                      setState(() {
+                        if (_levels.length == 1 &&
+                            _levels.first.pattern.isEmpty) {
+                          _levels.first.applyPreset(presetPatterns[idx]);
+                        } else if (_levels.length < 15) {
+                          _levels.add(
+                            LevelConfig.fromPreset(presetPatterns[idx]),
+                          );
+                        }
+                        _invalidateAnalysis();
+                      });
                     }
                   }
                 : null,
@@ -816,72 +1249,232 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     final cs = theme.colorScheme;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 100),
       children: [
         // ---- 文件信息区 ----
         _buildSectionLabel(theme, cs, Icons.folder_open, '文件信息'),
         const SizedBox(height: 8),
-        _buildFilePickerRow(
-          icon: Icons.description,
-          label: 'TXT 文件',
-          value: _txtPath.isNotEmpty ? p.basename(_txtPath) : '',
-          hint: '点击选择 TXT 文件',
-          onTap: _loading ? () {} : _pickTxt,
-          isComplete: _txtPath.isNotEmpty,
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTextField(
-                label: '书名',
-                value: _title,
-                hint: '输入书名',
-                icon: Icons.book,
-                onChanged: (v) => setState(() => _title = v),
-                required: true,
+        _buildSettingsCard(
+          child: Column(
+            children: [
+              _buildFilePickerRow(
+                icon: Icons.description,
+                label: 'TXT 文件',
+                value: _txtPath.isNotEmpty ? p.basename(_txtPath) : '',
+                hint: '点击选择 TXT 文件',
+                onTap: _loading ? () {} : _pickTxt,
+                isComplete: _txtPath.isNotEmpty,
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildTextField(
-                label: '作者',
-                value: _author,
-                hint: '输入作者（可选）',
-                icon: Icons.person,
-                onChanged: (v) => setState(() => _author = v),
+              const SizedBox(height: 10),
+              _buildResponsivePair(
+                _buildTextField(
+                  label: '书名',
+                  value: _title,
+                  hint: '输入书名（留空则使用原文件名）',
+                  icon: Icons.book,
+                  onChanged: _updateTitle,
+                ),
+                _buildTextField(
+                  label: '作者',
+                  value: _author,
+                  hint: '输入作者（可选）',
+                  icon: Icons.person,
+                  onChanged: _updateAuthor,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildFilePickerRow(
-                icon: Icons.image,
-                label: '封面图片',
-                value: _coverPath.isNotEmpty ? p.basename(_coverPath) : '',
-                hint: '可选',
-                onTap: _loading ? () {} : _pickCover,
-                isComplete: _coverPath.isNotEmpty,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildFilePickerRow(
+              const SizedBox(height: 10),
+              _buildFilePickerRow(
                 icon: Icons.folder_open,
                 label: '输出路径',
                 value: _outputPath.isNotEmpty ? _truncatePath(_outputPath) : '',
-                hint: '点击选择',
+                hint: '点击选择 EPUB 保存位置',
                 onTap: _loading ? () {} : _pickOutput,
                 isComplete: _outputPath.isNotEmpty,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+
+        // ---- 图片设置 ----
+        _buildSectionLabel(theme, cs, Icons.collections_outlined, '图片设置'),
+        const SizedBox(height: 8),
+        _buildSettingsCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildImagePickerWithClear(
+                label: '封面图片',
+                path: _coverPath,
+                hint: '可选，用于普通封面页',
+                onPick: _pickCover,
+                onClear: () => setState(() => _coverPath = ''),
+              ),
+              const Divider(height: 24),
+              _buildFeatureToggle(
+                icon: Icons.crop_portrait,
+                title: '全屏首页',
+                subtitle: '使用独立图片作为阅读顺序第一页',
+                value: _addFullScreenCover,
+                onChanged: (value) =>
+                    setState(() => _addFullScreenCover = value),
+              ),
+              if (_addFullScreenCover) ...[
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.only(left: 44),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildImagePickerWithClear(
+                        label: '首页图片',
+                        path: _fullScreenCoverImagePath,
+                        hint:
+                            _fullScreenCoverStyle == FullScreenCoverStyle.yuewei
+                            ? '1080×2400 · PNG/JPG'
+                            : '1536×2048 · PNG/JPG',
+                        onPick: _pickFullScreenCoverImage,
+                        onClear: () =>
+                            setState(() => _fullScreenCoverImagePath = ''),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '模板',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          _buildChip(
+                            '阅微 1080×2400',
+                            _fullScreenCoverStyle ==
+                                FullScreenCoverStyle.yuewei,
+                            (_) => setState(
+                              () => _fullScreenCoverStyle =
+                                  FullScreenCoverStyle.yuewei,
+                            ),
+                          ),
+                          _buildChip(
+                            'Kindle 1536×2048',
+                            _fullScreenCoverStyle ==
+                                FullScreenCoverStyle.kindle,
+                            (_) => setState(
+                              () => _fullScreenCoverStyle =
+                                  FullScreenCoverStyle.kindle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const Divider(height: 24),
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _headerImagePath.isNotEmpty
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.panorama_outlined,
+                      size: 18,
+                      color: _headerImagePath.isNotEmpty
+                          ? cs.primary
+                          : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '章节头图',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '可选，在每个章节标题前显示',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.only(left: 44),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildImagePickerWithClear(
+                      label: '头图图片',
+                      path: _headerImagePath,
+                      hint: '选择 PNG/JPG 图片',
+                      onPick: _pickHeaderImage,
+                      onClear: () => setState(() => _headerImagePath = ''),
+                    ),
+                    if (_headerImagePath.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '样式',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          _buildChip(
+                            '阅微通栏',
+                            _headerImageStyle == ChapterHeaderImageStyle.yuewei,
+                            (_) => setState(
+                              () => _headerImageStyle =
+                                  ChapterHeaderImageStyle.yuewei,
+                            ),
+                          ),
+                          _buildChip(
+                            'Kindle 越界',
+                            _headerImageStyle == ChapterHeaderImageStyle.kindle,
+                            (_) => setState(
+                              () => _headerImageStyle =
+                                  ChapterHeaderImageStyle.kindle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
 
         // ---- 章节分割区（多级标题）----
         Row(
@@ -889,17 +1482,21 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             _buildSectionLabel(theme, cs, Icons.content_cut, '章节分割'),
             const Spacer(),
             // 添加级别按钮
-            if (_levels.length < 3)
+            if (_levels.length < 15)
               TextButton.icon(
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('添加级别', style: TextStyle(fontSize: 12)),
+                label: const Text('添加规则', style: TextStyle(fontSize: 12)),
                 onPressed: _loading
                     ? null
-                    : () => setState(
-                        () => _levels.add(
-                          LevelConfig(presetIndex: _levels.length),
-                        ),
-                      ),
+                    : () => setState(() {
+                        _levels.add(
+                          LevelConfig(
+                            pattern: '',
+                            level: (_levels.last.level + 1).clamp(1, 6),
+                          ),
+                        );
+                        _invalidateAnalysis();
+                      }),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   minimumSize: const Size(0, 32),
@@ -910,23 +1507,21 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         ),
         const SizedBox(height: 4),
 
-        // 多级提示
-        if (_levels.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 14, color: cs.primary),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    '多级标题模式：上级匹配的章节内容会被下级正则再次切分，生成嵌套目录',
-                    style: TextStyle(fontSize: 11, color: cs.primary),
-                  ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 14, color: cs.primary),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '规则从上到下执行，同一行只采用首个匹配；取消“分割”会保留标题样式但不新建页面',
+                  style: TextStyle(fontSize: 11, color: cs.primary),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
 
         // 各级配置卡片
         ..._levels.asMap().entries.map((e) => _buildLevelConfigCard(e.key)),
@@ -965,17 +1560,18 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             _buildChip(
               '去除空行',
               _removeEmptyLines,
-              (v) => setState(() => _removeEmptyLines = v),
+              (v) => setState(() {
+                _removeEmptyLines = v;
+                _invalidateAnalysis();
+              }),
             ),
             _buildChip(
               '修正缩进',
               _fixIndent,
-              (v) => setState(() => _fixIndent = v),
-            ),
-            _buildChip(
-              '拆分标题',
-              _splitTitle,
-              (v) => setState(() => _splitTitle = v),
+              (v) => setState(() {
+                _fixIndent = v;
+                _invalidateAnalysis();
+              }),
             ),
           ],
         ),
@@ -1009,8 +1605,23 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       );
     }
 
-    final leafCount = _countLeafChapters(_chapters);
+    final pageCount = _countAllChapters(_chapters);
     final totalWords = _sumWords(_chapters);
+    final activeTitleCount =
+        _chapterAnalysis?.matches.where((match) => !match.ignored).length ?? 0;
+    final categoryCounts = <int, int>{};
+    for (final match
+        in _chapterAnalysis?.matches ?? const <ChapterTitleMatch>[]) {
+      categoryCounts.update(
+        match.ruleIndex,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    for (final entry in _disabledRuleLines.entries) {
+      categoryCounts[entry.key] = entry.value.length;
+    }
+    final categoryIndexes = categoryCounts.keys.toList()..sort();
 
     return Column(
       children: [
@@ -1022,7 +1633,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           child: Row(
             children: [
               Text(
-                '$leafCount 章',
+                '$pageCount 个页面',
                 style: TextStyle(
                   color: cs.primary,
                   fontWeight: FontWeight.bold,
@@ -1034,7 +1645,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                 '$totalWords 字',
                 style: TextStyle(color: cs.outline, fontSize: 12),
               ),
-              if (_levels.length > 1) ...[
+              if (_chapterAnalysis != null) ...[
                 const SizedBox(width: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1046,7 +1657,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    '${_levels.length}级',
+                    '$activeTitleCount 个标题',
                     style: TextStyle(
                       fontSize: 11,
                       color: cs.onSecondaryContainer,
@@ -1060,6 +1671,103 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             ],
           ),
         ),
+        if (_chapterAnalysis != null && categoryIndexes.isNotEmpty)
+          ExpansionTile(
+            dense: true,
+            initiallyExpanded: false,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: const Text('检查识别标题', style: TextStyle(fontSize: 13)),
+            subtitle: Text(
+              '可整类关闭目录规则，也可逐条排除误识别',
+              style: TextStyle(fontSize: 11, color: cs.outline),
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final ruleIndex in categoryIndexes)
+                        FilterChip(
+                          selected: !_disabledRuleLines.containsKey(ruleIndex),
+                          showCheckmark: true,
+                          visualDensity: VisualDensity.compact,
+                          label: Text(
+                            '${_ruleCategoryLabel(ruleIndex)} '
+                            '(${categoryCounts[ruleIndex]})',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onSelected: _loading
+                              ? null
+                              : (enabled) =>
+                                    _toggleRuleCategory(ruleIndex, enabled),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: cs.outlineVariant),
+              if (_chapterAnalysis!.matches.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '当前所有识别标题类型均已关闭',
+                    style: TextStyle(fontSize: 12, color: cs.outline),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _chapterAnalysis!.matches.length,
+                    itemBuilder: (context, index) {
+                      final match = _chapterAnalysis!.matches[index];
+                      return CheckboxListTile(
+                        dense: false,
+                        isThreeLine: true,
+                        visualDensity: VisualDensity.compact,
+                        value: !match.ignored,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: _loading
+                            ? null
+                            : (value) =>
+                                  _toggleTitleMatch(match, value ?? true),
+                        title: Text(
+                          match.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            decoration: match.ignored
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: match.title.length > 30 ? cs.error : null,
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '第 ${match.lineIndex + 1} 行 · H${match.level} · '
+                              '${match.split ? '分割页面' : '页内标题'}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            _buildRuleMatchDetails(match.ruleIndex),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
         // 章节列表（支持嵌套）
         Expanded(
           child: ListView.builder(
@@ -1140,9 +1848,16 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(left: 34, top: 2),
-            child: Text(
-              '${chapter.wordCount} 字',
-              style: TextStyle(fontSize: 11, color: cs.outline),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${chapter.wordCount} 字 · H${chapter.level}'
+                  '${chapter.sourceLineIndex == null ? '' : ' · 第 ${chapter.sourceLineIndex! + 1} 行'}',
+                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                ),
+                _buildRuleMatchDetails(chapter.matchedRuleIndex),
+              ],
             ),
           ),
           children: [
@@ -1206,6 +1921,20 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             ),
           ],
         ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(left: 26, top: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${chapter.wordCount} 字 · H${chapter.level}'
+                '${chapter.sourceLineIndex == null ? '' : ' · 第 ${chapter.sourceLineIndex! + 1} 行'}',
+                style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+              ),
+              _buildRuleMatchDetails(chapter.matchedRuleIndex),
+            ],
+          ),
+        ),
         children: chapter.children
             .asMap()
             .entries
@@ -1249,7 +1978,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                       ),
                       SizedBox(width: 4),
                       Text(
-                        '将 TXT 转换为 EPUB 电子书',
+                        '导入 TXT → 自动识别 → 检查分章 → 生成 EPUB',
                         style: TextStyle(
                           fontSize: 11,
                           color: AppTheme.accent,
@@ -1291,8 +2020,8 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                 ),
                 padding: const EdgeInsets.all(3),
                 tabs: const [
-                  Tab(text: '设置'),
-                  Tab(text: '预览'),
+                  Tab(text: '1  导入与规则'),
+                  Tab(text: '2  检查与生成'),
                 ],
               ),
             ),

@@ -14,18 +14,18 @@ class BaseCard extends StatelessWidget {
     required this.child,
     this.title,
     this.trailing,
-    this.padding = const EdgeInsets.all(16),
-    this.titleSpacing = 12,
+    this.padding = const EdgeInsets.all(12),
+    this.titleSpacing = 10,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.themeCard,
+    return Material(
+      color: context.themeCard,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.radiusL),
-        boxShadow: context.themeCardShadowLight,
-        border: Border.all(color: context.themeDividerLight, width: 1),
+        side: BorderSide(color: context.themeDividerLight, width: 1),
       ),
       child: Padding(
         padding: padding,
@@ -42,7 +42,7 @@ class BaseCard extends StatelessWidget {
                         child: Text(
                           title!,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: context.themeTextPrimary,
                           ),

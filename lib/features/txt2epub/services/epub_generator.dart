@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 
 import '../../../core/epub_packer.dart';
 import 'package:crypto/crypto.dart';
@@ -10,6 +12,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:epub_gadget/core/file_service.dart';
 import 'package:epub_gadget/features/txt2epub/models/chapter.dart';
+
+/// 章节头图针对不同阅读器的排版样式。
+enum ChapterHeaderImageStyle { yuewei, kindle }
+
+/// 打开 EPUB 时显示在正文之前的全屏首页模板。
+enum FullScreenCoverStyle { yuewei, kindle }
 
 /// EPUB 生成器
 ///
@@ -39,6 +47,10 @@ class EpubGenerator {
   /// [author] 作者
   /// [chapters] 章节列表
   /// [coverPath] 封面图片路径（可选）
+  /// [headerImagePath] 每章标题前显示的头图路径（可选）
+  /// [headerImageStyle] 头图排版样式，支持阅微和 Kindle
+  /// [fullScreenCoverImagePath] 全屏首页独立图片；未传入时兼容性复用 [coverPath]
+  /// [fullScreenCoverStyle] 全屏首页模板；null 表示不生成
   /// [lang] 语言代码，默认 zh-CN
   ///
   /// 返回 (生成过程的日志字符串, 用户可见路径)。
@@ -51,6 +63,10 @@ class EpubGenerator {
     required String author,
     required List<Chapter> chapters,
     String? coverPath,
+    String? headerImagePath,
+    ChapterHeaderImageStyle headerImageStyle = ChapterHeaderImageStyle.yuewei,
+    String? fullScreenCoverImagePath,
+    FullScreenCoverStyle? fullScreenCoverStyle,
     String lang = 'zh-CN',
   }) async {
     final log = StringBuffer();
@@ -77,11 +93,77 @@ class EpubGenerator {
     final flatChapters = _flattenChapters(chapters);
     log.writeln('PROGRESS: 共 ${flatChapters.length} 个章节');
 
-    // 4. 生成 CSS 样式文件
-    final cssContent = _generateCss();
+    // 4. 处理章节头图。选中头图后必须成功写入，避免生成引用缺失资源的 EPUB。
+    String? headerImageFileName;
+    String? headerImageMediaType;
+    if (headerImagePath != null && headerImagePath.trim().isNotEmpty) {
+      final imageInfo = _chapterHeaderImageInfo(headerImagePath);
+      final headerImageBytes = await File(headerImagePath).readAsBytes();
+      headerImageFileName = 'logo.${imageInfo.extension}';
+      headerImageMediaType = imageInfo.mediaType;
+      archive.addFile(
+        ArchiveFile(
+          'OEBPS/Images/$headerImageFileName',
+          headerImageBytes.length,
+          headerImageBytes,
+        ),
+      );
+      log.writeln(
+        'PROGRESS: 已添加${headerImageStyle == ChapterHeaderImageStyle.yuewei ? '阅微' : 'Kindle'}章节头图 ($headerImageFileName)',
+      );
+    }
+
+    // 5. 使用独立图片生成可选的全屏首页资源。
+    String? fullScreenCoverImageHref;
+    if (fullScreenCoverStyle != null) {
+      final sourceImagePath =
+          fullScreenCoverImagePath?.trim().isNotEmpty == true
+          ? fullScreenCoverImagePath!.trim()
+          : coverPath?.trim();
+      if (sourceImagePath == null || sourceImagePath.isEmpty) {
+        throw const FormatException('添加全屏首页前请先选择首页图片');
+      }
+      final prepared = await _prepareFullScreenCoverImage(
+        sourceImagePath,
+        fullScreenCoverStyle,
+      );
+      if (fullScreenCoverStyle == FullScreenCoverStyle.yuewei) {
+        archive.addFile(
+          ArchiveFile('cover~slim.png', prepared.bytes.length, prepared.bytes),
+        );
+        fullScreenCoverImageHref = '../cover~slim.png';
+      } else {
+        archive.addFile(
+          ArchiveFile(
+            'OEBPS/Images/fullscreen-cover.png',
+            prepared.bytes.length,
+            prepared.bytes,
+          ),
+        );
+        fullScreenCoverImageHref = 'Images/fullscreen-cover.png';
+      }
+      _addStringFile(
+        archive,
+        'OEBPS/Styles/main.css',
+        _generateFullScreenCoverCss(fullScreenCoverStyle),
+      );
+      _addStringFile(
+        archive,
+        'OEBPS/Text/fullscreen-cover.xhtml',
+        _generateFullScreenCoverXhtml(fullScreenCoverStyle),
+      );
+      log.writeln(
+        'PROGRESS: 已添加${fullScreenCoverStyle == FullScreenCoverStyle.yuewei ? '阅微' : 'Kindle'}全屏首页（${prepared.width}×${prepared.height}）',
+      );
+    }
+
+    // 6. 生成 CSS 样式文件
+    final cssContent = _generateCss(
+      headerImageStyle: headerImageFileName == null ? null : headerImageStyle,
+    );
     _addStringFile(archive, 'OEBPS/style.css', cssContent);
 
-    // 5. 处理封面图片
+    // 7. 处理封面图片
     String? coverExt;
     String? coverMediaType;
     bool hasCover = false;
@@ -90,13 +172,12 @@ class EpubGenerator {
         final coverBytes = await File(coverPath).readAsBytes();
         coverExt = coverPath.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
         coverMediaType = coverExt == 'png' ? 'image/png' : 'image/jpeg';
-        archive.addFile(
-          ArchiveFile(
-            'OEBPS/Images/cover.$coverExt',
-            coverBytes.length,
-            coverBytes,
-          ),
-        );
+        final coverArchivePath = 'OEBPS/Images/cover.$coverExt';
+        if (archive.findFile(coverArchivePath) == null) {
+          archive.addFile(
+            ArchiveFile(coverArchivePath, coverBytes.length, coverBytes),
+          );
+        }
         hasCover = true;
         log.writeln('PROGRESS: 已添加封面图片 (cover.$coverExt)');
       } catch (e) {
@@ -104,22 +185,25 @@ class EpubGenerator {
       }
     }
 
-    // 6. 生成封面页 XHTML（如果有封面）
+    // 8. 生成封面页 XHTML（如果有封面）
     if (hasCover) {
       final coverXhtml = _generateCoverXhtml(coverExt!);
       _addStringFile(archive, 'OEBPS/cover.xhtml', coverXhtml);
     }
 
-    // 7. 生成每章的 XHTML 文件
+    // 9. 生成每章的 XHTML 文件
     for (var i = 0; i < flatChapters.length; i++) {
       final chapter = flatChapters[i];
       final fileName = _chapterFileName(i);
-      final xhtml = _generateChapterXhtml(chapter);
+      final xhtml = _generateChapterXhtml(
+        chapter,
+        headerImageFileName: headerImageFileName,
+      );
       _addStringFile(archive, 'OEBPS/$fileName', xhtml);
     }
     log.writeln('PROGRESS: 已生成 ${flatChapters.length} 个章节文件');
 
-    // 8. 生成 content.opf（元数据、manifest、spine）
+    // 10. 生成 content.opf（元数据、manifest、spine）
     final bookId = _generateBookId(title);
     final opf = _generateOpf(
       title: title,
@@ -130,28 +214,32 @@ class EpubGenerator {
       hasCover: hasCover,
       coverExt: coverExt,
       coverMediaType: coverMediaType,
+      headerImageFileName: headerImageFileName,
+      headerImageMediaType: headerImageMediaType,
+      fullScreenCoverStyle: fullScreenCoverStyle,
+      fullScreenCoverImageHref: fullScreenCoverImageHref,
     );
     _addStringFile(archive, 'OEBPS/content.opf', opf);
     log.writeln('PROGRESS: 已生成 content.opf');
 
-    // 9. 生成 toc.ncx（EPUB2 目录）
+    // 11. 生成 toc.ncx（EPUB2 目录）
     final ncx = _generateNcx(title: title, bookId: bookId, chapters: chapters);
     _addStringFile(archive, 'OEBPS/toc.ncx', ncx);
     log.writeln('PROGRESS: 已生成 toc.ncx');
 
-    // 10. 生成 nav.xhtml（EPUB3 导航）
+    // 12. 生成 nav.xhtml（EPUB3 导航）
     final nav = _generateNav(chapters);
     _addStringFile(archive, 'OEBPS/nav.xhtml', nav);
     log.writeln('PROGRESS: 已生成 nav.xhtml');
 
-    // 11. 写入 EPUB。统一走 EpubPacker，确保阅读器可导入的 OCF ZIP 结构。
+    // 13. 写入 EPUB。统一走 EpubPacker，确保阅读器可导入的 OCF ZIP 结构。
     await EpubPacker.pack(archive: archive, outputPath: outputPath);
     final fileSize = await File(outputPath).length();
     log.writeln(
       'PROGRESS: EPUB 打包完成（${(fileSize / 1024).toStringAsFixed(1)} KB）',
     );
 
-    // 12. 复制到用户可见位置
+    // 14. 复制到用户可见位置
     // - 在 Android 上：先写到 outputPath（应用专属目录，File API 可写），
     //   然后通过 MediaStore.Downloads 复制到公共 Download/books/，
     //   返回用户可见的公共路径。这是 Android 11+ Scoped Storage 唯一
@@ -220,13 +308,11 @@ class EpubGenerator {
 
   /// 生成 CSS 样式
   ///
-  /// 段落首行缩进 2em，行高 1.8；标题居中；封面图片自适应宽度。
-  static String _generateCss() {
-    return 'body {\n'
-        '  margin: 5%;\n'
-        '  font-family: "Noto Serif CJK SC", "Songti SC", serif;\n'
-        '  line-height: 1.8;\n'
-        '}\n'
+  /// 段落首行缩进 2em；标题居中；封面图片自适应宽度。
+  /// 不注入全局 body 边距、字体或行高，由阅读器和用户设置决定。
+  static String _generateCss({ChapterHeaderImageStyle? headerImageStyle}) {
+    final css = StringBuffer()
+      ..write(
         'p {\n'
         '  text-indent: 2em;\n'
         '  margin: 0;\n'
@@ -244,6 +330,156 @@ class EpubGenerator {
         '.cover img {\n'
         '  max-width: 100%;\n'
         '  height: auto;\n'
+        '}\n',
+      );
+
+    if (headerImageStyle == ChapterHeaderImageStyle.yuewei) {
+      css.write(
+        'div {\n'
+        '  margin: 0;\n'
+        '}\n'
+        '.logo {\n'
+        '  text-align: center;\n'
+        '  text-indent: 0;\n'
+        '  duokan-text-indent: 0;\n'
+        '  duokan-bleed: lefttopright;\n'
+        '}\n'
+        '.logo .responsive-image {\n'
+        '  width: 100%;\n'
+        '}\n',
+      );
+    } else if (headerImageStyle == ChapterHeaderImageStyle.kindle) {
+      css.write(
+        'div {\n'
+        '  margin: 0;\n'
+        '}\n'
+        'div.logo {\n'
+        '  width: 122%;\n'
+        '  margin: -8% -11% 0;\n'
+        '  max-width: none;\n'
+        '  text-align: center;\n'
+        '}\n'
+        'img.responsive-image {\n'
+        '  width: 100%;\n'
+        '  height: auto;\n'
+        '  display: block;\n'
+        '}\n',
+      );
+    }
+
+    return css.toString();
+  }
+
+  static ({String extension, String mediaType}) _chapterHeaderImageInfo(
+    String path,
+  ) {
+    final extension = p.extension(path).toLowerCase().replaceFirst('.', '');
+    return switch (extension) {
+      'png' => (extension: 'png', mediaType: 'image/png'),
+      'jpg' || 'jpeg' => (extension: 'jpg', mediaType: 'image/jpeg'),
+      _ => throw const FormatException('章节头图仅支持 PNG、JPG 或 JPEG 图片'),
+    };
+  }
+
+  static Future<({Uint8List bytes, int width, int height})>
+  _prepareFullScreenCoverImage(String path, FullScreenCoverStyle style) async {
+    final sourceBytes = await File(path).readAsBytes();
+    final decoded = img.decodeImage(sourceBytes);
+    if (decoded == null) {
+      throw const FormatException('无法读取全屏首页图片');
+    }
+    final requiredWidth = style == FullScreenCoverStyle.yuewei ? 1080 : 1536;
+    final requiredHeight = style == FullScreenCoverStyle.yuewei ? 2400 : 2048;
+    if (decoded.width != requiredWidth || decoded.height != requiredHeight) {
+      final name = style == FullScreenCoverStyle.yuewei ? '阅微' : 'Kindle';
+      throw FormatException(
+        '$name 全屏首页图片必须为 $requiredWidth×$requiredHeight，'
+        '当前为 ${decoded.width}×${decoded.height}',
+      );
+    }
+    final isPng = p.extension(path).toLowerCase() == '.png';
+    return (
+      bytes: isPng
+          ? sourceBytes
+          : Uint8List.fromList(img.encodePng(decoded, level: 9)),
+      width: decoded.width,
+      height: decoded.height,
+    );
+  }
+
+  static String _generateFullScreenCoverXhtml(FullScreenCoverStyle style) {
+    final body = style == FullScreenCoverStyle.yuewei
+        ? '  <body class="cover-page">\n'
+              '    <div class="fm">\n'
+              '      <p>&#160;</p>\n'
+              '    </div>\n'
+              '    <h2 class="none">封面</h2>\n'
+              '  </body>\n'
+        : '  <body class="epub-cover">\n'
+              '    <div class="cover-image-container">\n'
+              '      <img alt="cover" src="../Images/fullscreen-cover.png"/>\n'
+              '    </div>\n'
+              '  </body>\n';
+    return '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml">\n'
+        '<head>\n'
+        '  <title>封面</title>\n'
+        '  <style>\n'
+        '    html, body {\n'
+        '      height: 100%;\n'
+        '      margin: 0;\n'
+        '      padding: 0;\n'
+        '      overflow: hidden;\n'
+        '    }\n'
+        '  </style>\n'
+        '  <link href="../Styles/main.css" type="text/css" rel="stylesheet"/>\n'
+        '</head>\n'
+        '$body'
+        '</html>';
+  }
+
+  static String _generateFullScreenCoverCss(FullScreenCoverStyle style) {
+    if (style == FullScreenCoverStyle.yuewei) {
+      return '/* ===== 封面页样式 ==== */\n'
+          '.cover-page {\n'
+          '  background-image: url("../../cover~slim.png");\n'
+          '  background-repeat: no-repeat;\n'
+          '  background-size: cover;\n'
+          '  background-position: center;\n'
+          '  width: 100%;\n'
+          '  min-height: 100%;\n'
+          '  display: block;\n'
+          '  margin: 0;\n'
+          '  padding: 0;\n'
+          '}\n'
+          '.fm p {\n'
+          '  color: rgba(255, 255, 255, 0);\n'
+          '}\n'
+          '.none {\n'
+          '  display: none;\n'
+          '}\n';
+    }
+    return 'body.epub-cover {\n'
+        '  margin: 0;\n'
+        '  padding: 0;\n'
+        '  text-align: center;\n'
+        '  background-color: #000;\n'
+        '}\n'
+        'body.epub-cover .cover-image-container {\n'
+        '  display: block;\n'
+        '  width: 100%;\n'
+        '  height: 100vh;\n'
+        '  display: flex;\n'
+        '  justify-content: center;\n'
+        '  align-items: center;\n'
+        '}\n'
+        'body.epub-cover .cover-image-container img {\n'
+        '  max-width: 100%;\n'
+        '  max-height: 95vh;\n'
+        '  height: auto;\n'
+        '  width: auto;\n'
+        '  margin: auto;\n'
+        '  display: block;\n'
         '}\n';
   }
 
@@ -275,11 +511,13 @@ class EpubGenerator {
   /// 但 EPUB 渲染时标题已由 <h1> 单独展示，正文中保留会导致重复。）
   ///
   /// [chapter] 章节数据
-  static String _generateChapterXhtml(Chapter chapter) {
+  static String _generateChapterXhtml(
+    Chapter chapter, {
+    String? headerImageFileName,
+  }) {
     final title = _escapeXml(chapter.title);
     // 标题层级限制在 1-6 之间（h1-h6）
     final level = chapter.level.clamp(1, 6);
-
     final sb = StringBuffer();
     sb.writeln('<?xml version="1.0" encoding="UTF-8"?>');
     sb.writeln('<html xmlns="http://www.w3.org/1999/xhtml">');
@@ -288,16 +526,28 @@ class EpubGenerator {
     sb.writeln('  <link rel="stylesheet" type="text/css" href="style.css"/>');
     sb.writeln('</head>');
     sb.writeln('<body>');
+    if (headerImageFileName != null) {
+      sb.writeln('  <div class="logo">');
+      sb.writeln(
+        '    <img class="responsive-image" alt="logo" src="Images/$headerImageFileName"/>',
+      );
+      sb.writeln('  </div>');
+    }
     sb.writeln('  <h$level>$title</h$level>');
 
     // 将正文按换行分割为段落
     if (chapter.content.isNotEmpty) {
       final paragraphs = chapter.content.split('\n');
+      final inlineHeadingLevels = {
+        for (final heading in chapter.inlineHeadings)
+          heading.lineIndex: heading.level.clamp(1, 6),
+      };
       // 比较用：标题去除所有空白后的形式
       final titleCompact = title.replaceAll(RegExp(r'\s+'), '');
       var skippedFirst = false;
 
-      for (final para in paragraphs) {
+      for (var lineIndex = 0; lineIndex < paragraphs.length; lineIndex++) {
+        final para = paragraphs[lineIndex];
         final trimmed = para.trim();
         if (trimmed.isEmpty) continue;
 
@@ -311,7 +561,12 @@ class EpubGenerator {
           skippedFirst = true;
         }
 
-        sb.writeln('  <p>${_escapeXml(trimmed)}</p>');
+        final inlineLevel = inlineHeadingLevels[lineIndex];
+        if (inlineLevel != null) {
+          sb.writeln('  <h$inlineLevel>${_escapeXml(trimmed)}</h$inlineLevel>');
+        } else {
+          sb.writeln('  <p>${_escapeXml(trimmed)}</p>');
+        }
       }
     }
 
@@ -332,6 +587,10 @@ class EpubGenerator {
     required bool hasCover,
     String? coverExt,
     String? coverMediaType,
+    String? headerImageFileName,
+    String? headerImageMediaType,
+    FullScreenCoverStyle? fullScreenCoverStyle,
+    String? fullScreenCoverImageHref,
   }) {
     final sb = StringBuffer();
     sb.writeln('<?xml version="1.0" encoding="UTF-8"?>');
@@ -368,6 +627,22 @@ class EpubGenerator {
         '    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>',
       );
     }
+    if (headerImageFileName != null && headerImageMediaType != null) {
+      sb.writeln(
+        '    <item id="chapter-header-image" href="Images/$headerImageFileName" media-type="$headerImageMediaType"/>',
+      );
+    }
+    if (fullScreenCoverStyle != null && fullScreenCoverImageHref != null) {
+      sb.writeln(
+        '    <item id="fullscreen-cover" href="Text/fullscreen-cover.xhtml" media-type="application/xhtml+xml"/>',
+      );
+      sb.writeln(
+        '    <item id="fullscreen-cover-css" href="Styles/main.css" media-type="text/css"/>',
+      );
+      sb.writeln(
+        '    <item id="fullscreen-cover-image" href="$fullScreenCoverImageHref" media-type="image/png"/>',
+      );
+    }
     for (var i = 0; i < flatChapters.length; i++) {
       final fileName = _chapterFileName(i);
       final itemId = _chapterItemId(i);
@@ -379,6 +654,9 @@ class EpubGenerator {
 
     // spine
     sb.writeln('  <spine toc="ncx">');
+    if (fullScreenCoverStyle != null) {
+      sb.writeln('    <itemref idref="fullscreen-cover"/>');
+    }
     if (hasCover) {
       sb.writeln('    <itemref idref="cover" linear="no"/>');
     }

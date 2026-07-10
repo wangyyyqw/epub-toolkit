@@ -1,0 +1,29 @@
+import shutil,zipfile
+from pathlib import Path as path
+
+DST_DIR = "SplitChapter"
+
+if not path(DST_DIR).exists():
+    path(DST_DIR).mkdir()
+else:
+    shutil.rmtree(DST_DIR)
+
+for fp in path(".").iterdir():
+    if str(fp) in ["template","main_form","misc","main_ui","widget_class","docs","resources","tools"]:
+        if path(fp).is_dir():
+            shutil.copytree(fp,"%s/%s"%(DST_DIR,fp))
+    elif str(fp).lower().endswith((".py",".xml",".png")):
+        if str(fp) == path(__file__).name:
+            continue
+        shutil.copyfile(fp,"%s/%s"%(DST_DIR,fp))
+
+for fp in path(DST_DIR).rglob("__pycache__"):
+    shutil.rmtree(fp)
+
+# 归档
+with zipfile.ZipFile("%s.zip"%DST_DIR,"w") as archive:
+    for fp in path(DST_DIR).rglob("*"):
+        archive.write(fp,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+
+# 删除临时目录
+shutil.rmtree(DST_DIR)

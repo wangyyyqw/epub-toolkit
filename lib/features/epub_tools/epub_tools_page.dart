@@ -1690,7 +1690,7 @@ class _EpubToolsPageState extends State<EpubToolsPage> {
 
     return Scaffold(
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1702,7 +1702,7 @@ class _EpubToolsPageState extends State<EpubToolsPage> {
               description:
                   '查看元数据、替换封面、格式化、版本转换、转TXT、广告清理、图片压缩/转WebP/WebP转图片、下载网络图片、简繁转换、拼音标注、字体子集化、加密/解密、字体加密、合并/拆分EPUB、批注/脚注转换、阅微转多看、得到转多看',
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
 
             // 操作选择卡片
             BaseCard(
@@ -1811,9 +1811,7 @@ class _EpubToolsPageState extends State<EpubToolsPage> {
                     padding: const EdgeInsets.all(12),
                     child: SelectableText(
                       _resultText,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                      ),
+                      style: theme.textTheme.bodySmall,
                     ),
                   ),
                 ),

@@ -31,11 +31,11 @@ Widget buildSectionLabel(BuildContext context, IconData icon, String text) {
   return Row(
     children: [
       Icon(icon, size: 16, color: context.themeAccent),
-      const SizedBox(width: 8),
+      const SizedBox(width: 6),
       Text(
         text,
         style: TextStyle(
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: FontWeight.w700,
           color: context.themeTextPrimary,
         ),
@@ -48,19 +48,24 @@ Widget buildSectionLabel(BuildContext context, IconData icon, String text) {
 Widget buildInfoBar(BuildContext context, String text) {
   return Container(
     width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: context.themeAccentLight,
-      borderRadius: BorderRadius.circular(AppTheme.radiusS),
+      color: context.themeAccentLight.withValues(alpha: 0.72),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: context.themeAccent.withValues(alpha: 0.12)),
     ),
     child: Row(
       children: [
-        Icon(Icons.info_outline, size: 16, color: context.themeAccent),
-        const SizedBox(width: 8),
+        Icon(Icons.info_outline, size: 15, color: context.themeAccent),
+        const SizedBox(width: 7),
         Expanded(
           child: Text(
             text,
-            style: TextStyle(fontSize: 13, color: context.themeAccent),
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: context.themeAccent,
+            ),
           ),
         ),
       ],
@@ -76,22 +81,27 @@ Widget buildHelpInfoBar(
 }) {
   return InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(AppTheme.radiusS),
+    borderRadius: BorderRadius.circular(8),
     child: Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.themeAccentLight,
-        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        color: context.themeAccentLight.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.themeAccent.withValues(alpha: 0.12)),
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline, size: 16, color: context.themeAccent),
-          const SizedBox(width: 8),
+          Icon(Icons.info_outline, size: 15, color: context.themeAccent),
+          const SizedBox(width: 7),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(fontSize: 13, color: context.themeAccent),
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: context.themeAccent,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -218,7 +228,6 @@ class _HelpContent extends StatelessWidget {
             fontSize: 12,
             height: 1.45,
             color: context.themeTextPrimary,
-            fontFamily: 'monospace',
           ),
         ),
       ),
@@ -238,38 +247,26 @@ Widget buildFilePickerRow(
 }) {
   return InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(AppTheme.radiusL),
+    borderRadius: BorderRadius.circular(8),
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.themeCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusL),
-        boxShadow: context.themeCardShadowLight,
+        color: context.themeBgWarm,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isComplete ? context.themeDivider : context.themeDividerLight,
-          width: isComplete ? 1.4 : 1,
+          color: isComplete
+              ? context.themeAccent.withValues(alpha: 0.32)
+              : context.themeDividerLight,
         ),
       ),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: isComplete
-                  ? context.themeAccentLight
-                  : context.themeBgWarm,
-              borderRadius: BorderRadius.circular(AppTheme.radiusS),
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: isComplete
-                  ? context.themeAccent
-                  : context.themeTextTertiary,
-            ),
+          Icon(
+            icon,
+            size: 20,
+            color: isComplete ? context.themeAccent : context.themeTextTertiary,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,11 +275,11 @@ Widget buildFilePickerRow(
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 11,
                     color: context.themeTextTertiary,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   value.isNotEmpty
                       ? (value.length > 40 ? truncatePath(value) : value)
@@ -290,7 +287,7 @@ Widget buildFilePickerRow(
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     color: value.isNotEmpty
                         ? context.themeTextPrimary
                         : context.themeTextTertiary,
@@ -460,35 +457,38 @@ Widget buildToolHeader(
 }) {
   final mutedIconColor = _mutedIconColor(iconColor, context.isDarkMode);
   return Padding(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
-    child: Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: mutedIconColor.withValues(
-              alpha: context.isDarkMode ? 0.2 : 0.14,
-            ),
-            borderRadius: BorderRadius.circular(AppTheme.radiusS),
+    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: mutedIconColor.withValues(
+            alpha: context.isDarkMode ? 0.18 : 0.1,
           ),
-          child: Icon(icon, color: mutedIconColor, size: 20),
+          borderRadius: BorderRadius.circular(6),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            subtitle,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.themeTextTertiary,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: mutedIconColor, size: 12),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: mutedIconColor,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     ),
   );
 }
@@ -504,14 +504,13 @@ Widget buildBottomActionBar(
   return SafeArea(
     top: false,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: loading
           ? Container(
-              height: 56,
+              height: 50,
               decoration: BoxDecoration(
                 color: context.themeCard,
-                borderRadius: BorderRadius.circular(AppTheme.radiusL),
-                boxShadow: context.themeCardShadowLight,
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
                 border: Border.all(color: context.themeDividerLight),
               ),
               child: Row(
@@ -538,7 +537,7 @@ Widget buildBottomActionBar(
               ),
             )
           : SizedBox(
-              height: 56,
+              height: 50,
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: onPressed,
@@ -548,7 +547,7 @@ Widget buildBottomActionBar(
                   elevation: 0,
                   shadowColor: context.themeAccent.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
                   ),
                 ),
                 child: Row(
@@ -559,7 +558,7 @@ Widget buildBottomActionBar(
                     Text(
                       label,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF202124),
                       ),
@@ -572,7 +571,7 @@ Widget buildBottomActionBar(
   );
 }
 
-/// 日志面板入口。日志组件本身已经支持折叠、滚动、复制和清空。
+/// 日志按钮入口。日志组件会在弹窗中提供滚动、选择、复制和清空操作。
 Widget buildLogPanel(BuildContext context, Widget logController) {
   return logController;
 }
@@ -636,13 +635,13 @@ Widget buildSettingRow({
 Widget buildGroupCard({
   required BuildContext context,
   required List<Widget> children,
-  EdgeInsets padding = const EdgeInsets.all(4),
+  EdgeInsets padding = const EdgeInsets.all(12),
 }) {
   return Container(
     decoration: BoxDecoration(
       color: context.themeCard,
       borderRadius: BorderRadius.circular(AppTheme.radiusL),
-      boxShadow: context.themeCardShadowLight,
+      border: Border.all(color: context.themeDividerLight),
     ),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.radiusL),

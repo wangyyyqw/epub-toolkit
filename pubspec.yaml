@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.5+5
 
 environment:
   sdk: ^3.12.0
@@ -82,6 +82,18 @@ dependency_overrides:
 flutter:
   uses-material-design: true
 
+  fonts:
+    - family: SourceHanSerifApp
+      fonts:
+        - asset: assets/fonts/SourceHanSerifCN-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SourceHanSerifCN-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/SourceHanSerifCN-Bold.otf
+          weight: 700
+
   assets:
     - assets/opencc/
     - assets/note.png
+    - third_party/source-han-serif/OFL.txt
+    - third_party/source-han-serif/NOTICE.md
