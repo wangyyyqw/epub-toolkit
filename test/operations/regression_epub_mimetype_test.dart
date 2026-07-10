@@ -45,16 +45,20 @@ void main() {
       final archive = Archive();
 
       // 先加一些普通文件
-      archive.addFile(ArchiveFile(
-        'META-INF/container.xml',
-        100,
-        utf8.encode('<?xml version="1.0"?><container></container>'),
-      ));
-      archive.addFile(ArchiveFile(
-        'OEBPS/content.opf',
-        50,
-        utf8.encode('<?xml version="1.0"?><package version="2.0"></package>'),
-      ));
+      archive.addFile(
+        ArchiveFile(
+          'META-INF/container.xml',
+          100,
+          utf8.encode('<?xml version="1.0"?><container></container>'),
+        ),
+      );
+      archive.addFile(
+        ArchiveFile(
+          'OEBPS/content.opf',
+          50,
+          utf8.encode('<?xml version="1.0"?><package version="2.0"></package>'),
+        ),
+      );
 
       // ensureMimetype + pack
       EpubPacker.ensureMimetype(archive);
@@ -64,25 +68,37 @@ void main() {
       // 读取输出 ZIP 并验证第一个 Local Header
       final bytes = await File(outputPath).readAsBytes();
       final header = _readFirstLocalHeader(bytes);
-      expect(header.name, 'mimetype',
-          reason: 'mimetype 必须是 ZIP 第一个文件');
-      expect(header.compressionMethod, 0,
-          reason: 'mimetype 必须是 STORED（压缩方式=0）');
+      expect(header.name, 'mimetype', reason: 'mimetype 必须是 ZIP 第一个文件');
+      expect(
+        header.compressionMethod,
+        0,
+        reason: 'mimetype 必须是 STORED（压缩方式=0）',
+      );
 
       // 验证 mimetype 内容
       final newArchive = ZipDecoder().decodeBytes(bytes);
       final mimetype = newArchive.findFile('mimetype');
       expect(mimetype, isNotNull);
-      expect(utf8.decode(mimetype!.content as List<int>), 'application/epub+zip');
+      expect(
+        utf8.decode(mimetype!.content as List<int>),
+        'application/epub+zip',
+      );
     });
 
-    test('缺少 mimetype 文件时 pack 应抛出异常', () async {
+    test('缺少 mimetype 文件时 pack 应自动补齐规范值', () async {
       final archive = Archive();
       archive.addFile(ArchiveFile('content.txt', 5, utf8.encode('hello')));
       final outputPath = '${Directory.systemTemp.path}/test_no_mimetype.epub';
+      await EpubPacker.pack(archive: archive, outputPath: outputPath);
+
+      final packed = ZipDecoder().decodeBytes(
+        await File(outputPath).readAsBytes(),
+      );
+      final mimetype = packed.findFile('mimetype');
+      expect(mimetype, isNotNull);
       expect(
-        () => EpubPacker.pack(archive: archive, outputPath: outputPath),
-        throwsException,
+        utf8.decode(mimetype!.content as List<int>),
+        'application/epub+zip',
       );
     });
 
@@ -90,20 +106,31 @@ void main() {
       final archive = Archive();
       final customMime = 'application/x-foo';
       final customBytes = utf8.encode(customMime);
-      archive.addFile(ArchiveFile('mimetype', customBytes.length, Uint8List.fromList(customBytes)));
+      archive.addFile(
+        ArchiveFile(
+          'mimetype',
+          customBytes.length,
+          Uint8List.fromList(customBytes),
+        ),
+      );
 
       EpubPacker.ensureMimetype(archive);
 
       final mime = archive.findFile('mimetype')!;
-      expect(utf8.decode(mime.content as List<int>), customMime,
-          reason: 'ensureMimetype 不应覆盖已有 mimetype');
+      expect(
+        utf8.decode(mime.content as List<int>),
+        customMime,
+        reason: 'ensureMimetype 不应覆盖已有 mimetype',
+      );
     });
 
     test('ensureMimetype 后 findFile 能找到（_fileMap 已更新）', () {
       // 关键回归：直接操作 archive.files.insert(0) 不更新 _fileMap，
       // 会导致后续 findFile 找不到。用 addFile(ArchiveFile) 才能修复。
       final archive = Archive();
-      archive.addFile(ArchiveFile('other.xml', 5, Uint8List.fromList(utf8.encode('hello'))));
+      archive.addFile(
+        ArchiveFile('other.xml', 5, Uint8List.fromList(utf8.encode('hello'))),
+      );
 
       EpubPacker.ensureMimetype(archive);
 

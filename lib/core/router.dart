@@ -4,7 +4,6 @@ import '../features/dashboard/dashboard_page.dart';
 import '../features/txt2epub/txt2epub_page.dart';
 // 工具箱入口已移除，工具直接通过侧边栏分类访问
 // import '../features/epub_tools/epub_tools_hub_page.dart';
-import '../features/epub_tools/tools/view_opf_page.dart';
 import '../features/epub_tools/tools/replace_cover_page.dart';
 import '../features/epub_tools/tools/reformat_page.dart';
 import '../features/epub_tools/tools/convert_version_page.dart';
@@ -25,7 +24,6 @@ import '../features/epub_tools/tools/download_images_page.dart';
 import '../features/epub_tools/tools/encrypt_page.dart';
 import '../features/epub_tools/tools/decrypt_page.dart';
 import '../features/epub_tools/tools/encrypt_font_page.dart';
-import '../features/epub_tools/tools/list_font_targets_page.dart';
 import '../features/epub_tools/tools/merge_page.dart';
 import '../features/epub_tools/tools/split_page.dart';
 import '../features/epub_tools/tools/list_split_targets_page.dart';
@@ -57,10 +55,6 @@ class AppRouter {
             builder: (context, state) => const Txt2EpubPage(),
           ),
           // EPUB 工具子页面（通过侧边栏分类直接访问）
-          GoRoute(
-            path: '/epub-tool/view-opf',
-            builder: (context, state) => const ViewOpfPage(),
-          ),
           GoRoute(
             path: '/epub-tool/replace-cover',
             builder: (context, state) => const ReplaceCoverPage(),
@@ -140,10 +134,6 @@ class AppRouter {
           GoRoute(
             path: '/epub-tool/encrypt-font',
             builder: (context, state) => const EncryptFontPage(),
-          ),
-          GoRoute(
-            path: '/epub-tool/list-font-targets',
-            builder: (context, state) => const ListFontTargetsPage(),
           ),
           GoRoute(
             path: '/epub-tool/merge',

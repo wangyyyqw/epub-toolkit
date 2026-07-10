@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
@@ -11,6 +12,7 @@ import '../../shared/widgets/base_card.dart';
 import '../../shared/widgets/base_input.dart';
 import '../../shared/widgets/base_select.dart';
 import '../../shared/widgets/page_header.dart';
+import '../view_opf/view_opf.dart';
 import 'metadata_service.dart';
 
 /// 元数据编辑页面
@@ -38,6 +40,12 @@ class _MetadataPageState extends State<MetadataPage> {
   /// 读取到的元数据，未加载时为 null
   MetadataData? _metadata;
 
+  /// 格式化后的 OPF XML，按需读取
+  String? _opfContent;
+
+  /// 是否正在读取 OPF XML
+  bool _opfLoading = false;
+
   /// 用户选择的新封面图片路径（替换封面时使用）
   String? _coverPath;
 
@@ -59,7 +67,7 @@ class _MetadataPageState extends State<MetadataPage> {
               icon: Icons.edit_note_outlined,
               iconColor: Color(0xFF10B981),
               title: '元数据编辑',
-              description: '读取和修改 EPUB 的书名、作者、封面等元数据信息',
+              description: '编辑书名、作者、封面等元数据，并查看完整 OPF 源码',
             ),
             const SizedBox(height: 12),
             // 卡片1：文件选择
@@ -68,6 +76,8 @@ class _MetadataPageState extends State<MetadataPage> {
             if (_metadata != null) ...[
               const SizedBox(height: 12),
               _buildMetadataEditCard(),
+              const SizedBox(height: 12),
+              _buildOpfCard(),
               const SizedBox(height: 16),
               _buildSaveButton(),
             ],
@@ -236,6 +246,69 @@ class _MetadataPageState extends State<MetadataPage> {
     );
   }
 
+  /// 构建 OPF 源码卡片。
+  ///
+  /// XML 按需读取，避免仅编辑常规元数据时额外渲染完整 OPF 文档。
+  Widget _buildOpfCard() {
+    final theme = Theme.of(context);
+    final content = _opfContent;
+
+    return BaseCard(
+      title: 'OPF 源码',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (content != null)
+            IconButton(
+              tooltip: '复制 OPF',
+              icon: const Icon(Icons.copy_outlined, size: 20),
+              onPressed: _copyOpf,
+            ),
+          TextButton.icon(
+            onPressed: (_loading || _opfLoading) ? null : _loadOpf,
+            icon: _opfLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    content == null ? Icons.code_outlined : Icons.refresh,
+                    size: 18,
+                  ),
+            label: Text(content == null ? '查看 OPF' : '刷新'),
+          ),
+        ],
+      ),
+      child: content == null
+          ? Text(
+              '查看 EPUB 包中的完整 OPF XML，包括 metadata、manifest 和 spine。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          : Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 360),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  content,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
   /// 构建封面预览与操作区
   ///
   /// 左侧显示封面图片预览，右侧提供「替换封面」和「移除封面」按钮。
@@ -363,6 +436,8 @@ class _MetadataPageState extends State<MetadataPage> {
       _epubPath = path;
       _outputPath = safePath;
       _metadata = null;
+      _opfContent = null;
+      _opfLoading = false;
       _coverPath = null;
       _coverRemoved = false;
       _loading = true;
@@ -383,6 +458,34 @@ class _MetadataPageState extends State<MetadataPage> {
       // 读取失败时显示错误提示
       context.read<ToastProvider>().showError('读取元数据失败：$e');
     }
+  }
+
+  /// 按需读取并格式化当前 EPUB 的 OPF XML。
+  Future<void> _loadOpf() async {
+    final path = _epubPath;
+    if (path == null || _opfLoading) return;
+
+    setState(() => _opfLoading = true);
+    try {
+      final content = await ViewOpfOperation.execute(path);
+      if (!mounted) return;
+      setState(() => _opfContent = content);
+    } catch (e) {
+      if (!mounted) return;
+      context.read<ToastProvider>().showError('读取 OPF 失败：$e');
+    } finally {
+      if (mounted) setState(() => _opfLoading = false);
+    }
+  }
+
+  /// 复制已经读取的 OPF XML。
+  Future<void> _copyOpf() async {
+    final content = _opfContent;
+    if (content == null) return;
+
+    await Clipboard.setData(ClipboardData(text: content));
+    if (!mounted) return;
+    context.read<ToastProvider>().showSuccess('OPF 源码已复制');
   }
 
   /// 更新元数据字段

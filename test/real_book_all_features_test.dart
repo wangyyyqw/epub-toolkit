@@ -181,6 +181,11 @@ Future<String> _validateOutputEpub(String path, {String extra = ''}) async {
 }
 
 void main() {
+  if (!File(_inputEpub).existsSync()) {
+    test('真实书籍全功能测试需要本机夹具', () {}, skip: '提供测试书籍后再运行此测试文件。');
+    return;
+  }
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('使用指定真实 EPUB 逐项测试所有功能', () async {

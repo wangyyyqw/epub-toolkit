@@ -6,6 +6,9 @@ import 'package:epub_gadget/features/encrypt_font/encrypt_font.dart';
 import 'package:epub_gadget/features/list_font_targets/list_font_targets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _wailsReferenceFont =
+    '/Users/aaa/Documents/github/epub-gadget/epub-gadget/frontend/src/assets/fonts/SourceHanSerifSC.ttf';
+
 void main() {
   test('字体加密按 Wails 行为定向替换正文为真实韩文混淆字符', () async {
     final tempDir = await Directory.systemTemp.createTemp('font_encrypt_');
@@ -15,9 +18,7 @@ void main() {
       }
     });
 
-    final fontPath =
-        '/Users/aaa/Documents/github/epub-gadget/epub-gadget/frontend/src/assets/fonts/SourceHanSerifSC.ttf';
-    final fontBytes = await File(fontPath).readAsBytes();
+    final fontBytes = await File(_wailsReferenceFont).readAsBytes();
     final inputPath = '${tempDir.path}/input.epub';
     final outputPath = '${tempDir.path}/output.epub';
     await File(inputPath).writeAsBytes(_buildEpub(fontBytes));
@@ -53,7 +54,7 @@ void main() {
 
     expect(ch2, contains('丁戊'));
     expect(ch2.runes.any((r) => r >= 0xAC00 && r < 0xD7AF), isFalse);
-  });
+  }, skip: !File(_wailsReferenceFont).existsSync());
 }
 
 List<int> _buildEpub(List<int> fontBytes) {

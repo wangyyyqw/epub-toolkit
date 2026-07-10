@@ -89,15 +89,8 @@ class DashboardPage extends StatelessWidget {
       color: Color(0xFF8A633F),
       tools: [
         _ToolEntry(
-          title: '查看 OPF 元数据',
-          subtitle: '读取包信息',
-          route: '/epub-tool/view-opf',
-          icon: Icons.code_outlined,
-          color: Color(0xFF8A633F),
-        ),
-        _ToolEntry(
           title: '编辑元数据',
-          subtitle: '书名、作者、封面',
+          subtitle: '书名、作者、封面与 OPF',
           route: '/metadata',
           icon: Icons.edit_note_rounded,
           color: Color(0xFF8A633F),
@@ -193,13 +186,6 @@ class DashboardPage extends StatelessWidget {
           subtitle: '字形混淆保护',
           route: '/epub-tool/encrypt-font',
           icon: Icons.security_outlined,
-          color: Color(0xFF7A5D9F),
-        ),
-        _ToolEntry(
-          title: '列出字体目标',
-          subtitle: '扫描字体引用',
-          route: '/epub-tool/list-font-targets',
-          icon: Icons.format_size_outlined,
           color: Color(0xFF7A5D9F),
         ),
         _ToolEntry(

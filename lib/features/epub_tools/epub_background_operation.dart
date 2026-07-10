@@ -40,6 +40,7 @@ enum EpubBackgroundOperation {
   encrypt,
   decrypt,
   encryptFont,
+  scanFontTargets,
   listFontTargets,
   merge,
   split,
@@ -147,6 +148,14 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
             ?.cast<String>(),
         targetXhtmlFiles: (args['targetXhtmlFiles'] as List?)?.cast<String>(),
       );
+    case 'scanFontTargets':
+      final targets = await ListFontTargetsOperation.scan(
+        epubPath: args['epubPath'] as String,
+      );
+      return {
+        'fontFamilies': targets.fontFamilies,
+        'xhtmlFiles': targets.xhtmlFiles,
+      };
     case 'listFontTargets':
       return ListFontTargetsOperation.execute(
         epubPath: args['epubPath'] as String,

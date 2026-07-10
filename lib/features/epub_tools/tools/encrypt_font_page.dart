@@ -25,13 +25,15 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
   String _epubPath = '';
   String _outputPath = '';
   bool _loading = false;
+  bool _scanning = false;
   final OutputLogController _logController = OutputLogController();
 
-  /// 目标字体族（逗号分隔，留空则全部加密）
-  String _targetFontFamilies = '';
+  List<String> _availableFontFamilies = const [];
+  List<String> _availableXhtmlFiles = const [];
+  final Set<String> _selectedFontFamilies = {};
+  final Set<String> _selectedXhtmlFiles = {};
 
-  /// 目标 XHTML 文件（逗号分隔，留空则全部处理）
-  String _targetXhtmlFiles = '';
+  bool get _busy => _loading || _scanning;
 
   @override
   void dispose() {
@@ -45,8 +47,52 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
     if (path == null) return;
     _epubPath = path;
     _outputPath = '';
+    setState(() {
+      _availableFontFamilies = const [];
+      _availableXhtmlFiles = const [];
+      _selectedFontFamilies.clear();
+      _selectedXhtmlFiles.clear();
+      _scanning = true;
+    });
     await _autoFillOutputPath();
-    if (mounted) setState(() {});
+    await _scanTargets(path);
+  }
+
+  /// 导入 EPUB 后自动扫描可加密字体和正文文件。
+  Future<void> _scanTargets(String path) async {
+    _logController.clear();
+    _logController.append('PROGRESS: 正在扫描可加密字体...');
+    try {
+      final result = await runEpubBackgroundOperation<Map>(
+        EpubBackgroundOperation.scanFontTargets,
+        {'epubPath': path},
+      );
+      if (!mounted || _epubPath != path) return;
+      final fontFamilies = (result['fontFamilies'] as List).cast<String>();
+      final xhtmlFiles = (result['xhtmlFiles'] as List).cast<String>();
+      setState(() {
+        _availableFontFamilies = fontFamilies;
+        _availableXhtmlFiles = xhtmlFiles;
+        _selectedFontFamilies
+          ..clear()
+          ..addAll(fontFamilies);
+        _selectedXhtmlFiles
+          ..clear()
+          ..addAll(xhtmlFiles);
+      });
+      _logController.append(
+        '扫描完成：${fontFamilies.length} 个字体族，${xhtmlFiles.length} 个正文文件',
+      );
+      if (fontFamilies.isEmpty) {
+        context.read<ToastProvider>().showWarning('未发现可加密的字体');
+      }
+    } catch (e) {
+      if (!mounted || _epubPath != path) return;
+      _logController.append('ERROR: 扫描失败：$e');
+      context.read<ToastProvider>().showError('扫描字体失败：$e');
+    } finally {
+      if (mounted && _epubPath == path) setState(() => _scanning = false);
+    }
   }
 
   /// 自动填充输出路径
@@ -119,6 +165,18 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
       context.read<ToastProvider>().showWarning('请先选择 EPUB 文件');
       return;
     }
+    if (_scanning) {
+      context.read<ToastProvider>().showWarning('请等待字体扫描完成');
+      return;
+    }
+    if (_availableFontFamilies.isEmpty) {
+      context.read<ToastProvider>().showWarning('当前 EPUB 中未发现可加密字体');
+      return;
+    }
+    if (_selectedFontFamilies.isEmpty || _selectedXhtmlFiles.isEmpty) {
+      context.read<ToastProvider>().showWarning('请至少选择一个字体族和一个正文文件');
+      return;
+    }
     if (_outputPath.isEmpty) {
       await _autoFillOutputPath();
     }
@@ -127,29 +185,13 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
     _logController.append('PROGRESS: 开始执行「字体加密」操作...');
     _logController.append('输入文件：$_epubPath');
     try {
-      // 解析目标字体族（逗号分隔，留空则传 null 表示全部）
-      final fontFamilies = _targetFontFamilies.trim().isEmpty
-          ? null
-          : _targetFontFamilies
-                .split(',')
-                .map((s) => s.trim())
-                .where((s) => s.isNotEmpty)
-                .toList();
-      // 解析目标 XHTML 文件（逗号分隔，留空则传 null 表示全部）
-      final xhtmlFiles = _targetXhtmlFiles.trim().isEmpty
-          ? null
-          : _targetXhtmlFiles
-                .split(',')
-                .map((s) => s.trim())
-                .where((s) => s.isNotEmpty)
-                .toList();
       final result = await runEpubBackgroundOperation<String>(
         EpubBackgroundOperation.encryptFont,
         {
           'epubPath': _epubPath,
           'outputPath': _outputPath,
-          'targetFontFamilies': fontFamilies,
-          'targetXhtmlFiles': xhtmlFiles,
+          'targetFontFamilies': _selectedFontFamilies.toList(),
+          'targetXhtmlFiles': _selectedXhtmlFiles.toList(),
         },
       );
       _logAppendLines(result);
@@ -187,7 +229,7 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
                   label: 'EPUB 文件',
                   value: _epubPath,
                   hint: '点击选择 EPUB 文件',
-                  onTap: _loading ? () {} : _pickEpub,
+                  onTap: _busy ? () {} : _pickEpub,
                   isComplete: _epubPath.isNotEmpty,
                 ),
                 const SizedBox(height: 16),
@@ -198,23 +240,7 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
                   '对 TTF 字体进行字形混淆加密，复制出来为韩文乱码，实现防复制保护。仅支持含 glyf 表的 TTF 字体。',
                 ),
                 const SizedBox(height: 12),
-                buildCompactField(
-                  context,
-                  label: '目标字体族（逗号分隔，留空则全部）',
-                  value: _targetFontFamilies,
-                  hint: '如 font1,font2',
-                  icon: Icons.font_download_outlined,
-                  onChanged: _loading ? (_) {} : (v) => _targetFontFamilies = v,
-                ),
-                const SizedBox(height: 12),
-                buildCompactField(
-                  context,
-                  label: '目标 XHTML 文件（逗号分隔，留空则全部）',
-                  value: _targetXhtmlFiles,
-                  hint: '如 chapter1.xhtml,chapter2.xhtml',
-                  icon: Icons.article_outlined,
-                  onChanged: _loading ? (_) {} : (v) => _targetXhtmlFiles = v,
-                ),
+                _buildScanResults(),
                 const SizedBox(height: 16),
                 buildSectionLabel(context, Icons.output, '输出路径'),
                 const SizedBox(height: 8),
@@ -224,7 +250,7 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
                   label: '输出文件',
                   value: _outputPath,
                   hint: '点击选择输出路径',
-                  onTap: _loading ? () {} : _pickOutput,
+                  onTap: _busy ? () {} : _pickOutput,
                   isComplete: _outputPath.isNotEmpty,
                 ),
                 const SizedBox(height: 8),
@@ -255,11 +281,140 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
           ),
           buildBottomActionBar(
             context,
-            loading: _loading,
-            onPressed: _loading ? () {} : _execute,
+            loading: _busy,
+            onPressed: _busy ? () {} : _execute,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildScanResults() {
+    final theme = Theme.of(context);
+    if (_epubPath.isEmpty) {
+      return buildInfoBar(context, '导入 EPUB 后将自动扫描可加密的字体和正文文件。');
+    }
+    if (_scanning) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_availableFontFamilies.isEmpty) {
+      return buildInfoBar(context, '未找到引用 EPUB 内字体文件的 @font-face 定义。');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '字体族（${_selectedFontFamilies.length}/${_availableFontFamilies.length}）',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => setState(
+                      () =>
+                          _selectedFontFamilies.addAll(_availableFontFamilies),
+                    ),
+              child: const Text('全选'),
+            ),
+            TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => setState(_selectedFontFamilies.clear),
+              child: const Text('清空'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final family in _availableFontFamilies)
+              FilterChip(
+                label: Text(family),
+                selected: _selectedFontFamilies.contains(family),
+                onSelected: _loading
+                    ? null
+                    : (selected) => setState(() {
+                        if (selected) {
+                          _selectedFontFamilies.add(family);
+                        } else {
+                          _selectedFontFamilies.remove(family);
+                        }
+                      }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.article_outlined, size: 20),
+          title: Text(
+            '正文文件（${_selectedXhtmlFiles.length}/${_availableXhtmlFiles.length}）',
+            style: theme.textTheme.titleSmall,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: _loading
+                    ? null
+                    : () => setState(
+                        () => _selectedXhtmlFiles.addAll(_availableXhtmlFiles),
+                      ),
+                child: const Text('全选'),
+              ),
+              TextButton(
+                onPressed: _loading
+                    ? null
+                    : () => setState(_selectedXhtmlFiles.clear),
+                child: const Text('清空'),
+              ),
+              const Icon(Icons.expand_more),
+            ],
+          ),
+          children: [
+            SizedBox(
+              height: 240,
+              child: ListView.builder(
+                itemCount: _availableXhtmlFiles.length,
+                itemBuilder: (context, index) {
+                  final file = _availableXhtmlFiles[index];
+                  return CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      file,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    value: _selectedXhtmlFiles.contains(file),
+                    onChanged: _loading
+                        ? null
+                        : (selected) => setState(() {
+                            if (selected ?? false) {
+                              _selectedXhtmlFiles.add(file);
+                            } else {
+                              _selectedXhtmlFiles.remove(file);
+                            }
+                          }),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

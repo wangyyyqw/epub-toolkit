@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:enough_convert/big5.dart' as big5;
+import 'package:enough_convert/gbk.dart' as gbk;
+
 /// 文本编码检测器
 ///
 /// 用于检测 TXT 文件的编码格式。支持 UTF-8（含 BOM）、GBK、Big5。
@@ -21,7 +24,10 @@ class EncodingDetector {
   /// 从字节数组检测编码
   static String detectFromBytes(Uint8List bytes) {
     // 1. 检查 BOM 头
-    if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
       return 'utf-8';
     }
     if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
@@ -36,14 +42,19 @@ class EncodingDetector {
       return 'utf-8';
     }
 
-    // 3. 比较 GBK 和 Big5 的可读性
+    // 3. 比较 GBK 和 Big5 的字节合法性与解码后可读性
     final gbkScore = _scoreGbk(bytes);
     final big5Score = _scoreBig5(bytes);
 
-    if (gbkScore >= big5Score) {
-      return 'gbk';
+    if (gbkScore != big5Score) {
+      return gbkScore > big5Score ? 'gbk' : 'big5';
     }
-    return 'big5';
+
+    // 标准 Big5 的字节范围是 GBK 的子集，合法 Big5 文本通常会在上面的
+    // 字节评分中打平。此时需要比较两种解码结果，而不能固定偏向 GBK。
+    final gbkReadability = _scoreChineseReadability(_decodeGbk(bytes));
+    final big5Readability = _scoreChineseReadability(_decodeBig5(bytes));
+    return big5Readability > gbkReadability ? 'big5' : 'gbk';
   }
 
   /// 用指定编码读取文件
@@ -57,7 +68,10 @@ class EncodingDetector {
     switch (encoding.toLowerCase()) {
       case 'utf-8':
         // 跳过 BOM
-        if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+        if (bytes.length >= 3 &&
+            bytes[0] == 0xEF &&
+            bytes[1] == 0xBB &&
+            bytes[2] == 0xBF) {
           return utf8.decode(bytes.sublist(3), allowMalformed: true);
         }
         return utf8.decode(bytes, allowMalformed: true);
@@ -67,8 +81,11 @@ class EncodingDetector {
         return _decodeUtf16(bytes, littleEndian: false);
       case 'gbk':
       case 'gb2312':
-      case 'gb18030':
         return _decodeGbk(bytes);
+      case 'gb18030':
+        throw UnsupportedError(
+          'GB18030 decoding is not supported; use UTF-8, GBK, or Big5.',
+        );
       case 'big5':
         return _decodeBig5(bytes);
       default:
@@ -90,57 +107,59 @@ class EncodingDetector {
   ///
   /// GBK 编码：第一字节 0x81-0xFE，第二字节 0x40-0xFE（不含 0x7F）
   static String _decodeGbk(Uint8List bytes) {
-    // 尝试用系统编解码器（如果可用），否则降级为 latin1
-    try {
-      return _decodeWithSystemCodec(bytes, 'gbk');
-    } catch (_) {
-      // 降级：按字节直接映射 ASCII 部分，非 ASCII 用占位符
-      return _fallbackDecode(bytes);
-    }
+    return gbk.gbk.decode(bytes, allowInvalid: true);
   }
 
   /// Big5 解码
   static String _decodeBig5(Uint8List bytes) {
-    try {
-      return _decodeWithSystemCodec(bytes, 'big5');
-    } catch (_) {
-      return _fallbackDecode(bytes);
-    }
+    return const big5.Big5Codec(allowInvalid: true).decode(bytes);
   }
 
-  /// 尝试用系统编解码器解码
-  static String _decodeWithSystemCodec(Uint8List bytes, String codec) {
-    // Dart 的 dart:convert 不直接支持 GBK/Big5
-    // 在 Flutter 中需要依赖 flutter_encoding 或者手动处理
-    // 这里用 latin1 作为降级方案，配合前端的编码检测提示
-    final result = StringBuffer();
-    for (var i = 0; i < bytes.length; i++) {
-      final b = bytes[i];
-      if (b < 0x80) {
-        result.writeCharCode(b);
-      } else if (i + 1 < bytes.length) {
-        // 双字节字符，用替换字符占位（原始值未使用，跳过计算）
-        result.writeCharCode(0xFFFD); // 替换字符
-        i++;
+  /// 对解码结果进行中文可读性评分。
+  ///
+  /// GBK 的字节范围包含标准 Big5，单靠字节合法性无法区分二者。正确解码
+  /// 通常会包含较多高频汉字，而错误解码得到的随机汉字命中率明显更低。
+  static int _scoreChineseReadability(String text) {
+    var score = 0;
+    for (final rune in text.runes) {
+      if (rune == 0xFFFD) {
+        score -= 20;
+        continue;
+      }
+      if (_commonChineseRunes.contains(rune)) {
+        score += 3;
+      } else if ((rune >= 0x4E00 && rune <= 0x9FFF) ||
+          (rune >= 0x3400 && rune <= 0x4DBF)) {
+        score += 1;
+      } else if (rune < 0x20 && rune != 0x09 && rune != 0x0A && rune != 0x0D) {
+        score -= 5;
       }
     }
-    return result.toString();
+    return score;
   }
 
-  /// 降级解码：ASCII 部分正常，非 ASCII 用替换字符
-  static String _fallbackDecode(Uint8List bytes) {
-    final result = StringBuffer();
-    for (var i = 0; i < bytes.length; i++) {
-      final b = bytes[i];
-      if (b < 0x80) {
-        result.writeCharCode(b);
-      } else if (i + 1 < bytes.length) {
-        result.writeCharCode(0xFFFD);
-        i++;
-      }
-    }
-    return result.toString();
-  }
+  static final Set<int> _commonChineseRunes =
+      '''
+的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会
+可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部
+度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应
+开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正
+心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情
+者最立代想已通并提直题程展五果料象员位入常文总次品式活设及管特件长求老
+头基资边流路级少图山统接知较将组见计别她手角期根论运农指区强放决西被干
+做必战先回则任取据处理世车空快收类即建保造百规热领海口东导器压志金增争
+济油思术极交受联认共权证改清己美再转更单风切打白教速花带安场身例真务具
+万每目至达走积示议声报完离华名确才科张信马节话米整元况今集温传土许步群
+广石记需段研界拉林律叫究观越织装影算低音众书布复容儿须际商非验连断深难
+近矿千周委素技备半办青省列习响约支般史感劳便团往历市克何除消构府称太准
+精值号率族维划选标写存候毛亲效斯院查江型眼王按格养易置派层片始却专状育
+厂京识适属圆包火住调满县局照参红细引听该铁价严龙飞
+這國們來時說產種麼為會發動過對學經著裡還開關樣總長頭邊級圖將見計別運農
+區強決戰則處車類華確張馬話萬達積聲報鬥離書復兒際驗斷難礦週委備辦習團歷
+市構府準號劃選寫親效院查江眼養置層專廠識屬圓滿縣照參紅細聽該鐵價嚴龍飛
+'''
+          .runes
+          .toSet();
 
   /// UTF-16 解码
   static String _decodeUtf16(Uint8List bytes, {required bool littleEndian}) {

@@ -52,11 +52,13 @@ Archive _buildMinimalEpub({
   final archive = Archive();
 
   // mimetype（必须无压缩，作为第一个 entry）
-  archive.addFile(ArchiveFile(
-    'mimetype',
-    'application/epub+zip'.length,
-    utf8.encode('application/epub+zip'),
-  )..compress = false);
+  archive.addFile(
+    ArchiveFile(
+      'mimetype',
+      'application/epub+zip'.length,
+      utf8.encode('application/epub+zip'),
+    )..compress = false,
+  );
 
   // META-INF/container.xml
   const containerXml =
@@ -68,11 +70,13 @@ Archive _buildMinimalEpub({
       'media-type="application/oebps-package+xml"/>\n'
       '  </rootfiles>\n'
       '</container>';
-  archive.addFile(ArchiveFile(
-    'META-INF/container.xml',
-    containerXml.length,
-    utf8.encode(containerXml),
-  ));
+  archive.addFile(
+    ArchiveFile(
+      'META-INF/container.xml',
+      containerXml.length,
+      utf8.encode(containerXml),
+    ),
+  );
 
   // OEBPS/content.opf
   final manifestItems = StringBuffer();
@@ -80,7 +84,8 @@ Archive _buildMinimalEpub({
   for (var i = 0; i < chapterTitles.length; i++) {
     final href = 'chapter${i + 1}.xhtml';
     manifestItems.writeln(
-        '    <item id="ch${i + 1}" href="$href" media-type="application/xhtml+xml"/>');
+      '    <item id="ch${i + 1}" href="$href" media-type="application/xhtml+xml"/>',
+    );
     spineItems.writeln('    <itemref idref="ch${i + 1}"/>');
   }
   for (var i = 0; i < imagePaths.length; i++) {
@@ -89,20 +94,22 @@ Archive _buildMinimalEpub({
     final media = ext == 'png'
         ? 'image/png'
         : ext == 'gif'
-            ? 'image/gif'
-            : 'image/jpeg';
+        ? 'image/gif'
+        : 'image/jpeg';
     final id = 'img${i + 1}';
     manifestItems.writeln('    <item id="$id" href="$p" media-type="$media"/>');
   }
   for (var i = 0; i < fontPaths.length; i++) {
     final p = fontPaths[i];
     final id = 'font${i + 1}';
-    manifestItems
-        .writeln('    <item id="$id" href="$p" media-type="font/ttf"/>');
+    manifestItems.writeln(
+      '    <item id="$id" href="$p" media-type="font/ttf"/>',
+    );
   }
   if (cssContent.isNotEmpty) {
     manifestItems.writeln(
-        '    <item id="css1" href="style.css" media-type="text/css"/>');
+      '    <item id="css1" href="style.css" media-type="text/css"/>',
+    );
   }
 
   final opf =
@@ -116,8 +123,9 @@ Archive _buildMinimalEpub({
       '  <manifest>\n$manifestItems  </manifest>\n'
       '  <spine>\n$spineItems  </spine>\n'
       '</package>';
-  archive.addFile(ArchiveFile(
-      'OEBPS/content.opf', opf.length, utf8.encode(opf)));
+  archive.addFile(
+    ArchiveFile('OEBPS/content.opf', opf.length, utf8.encode(opf)),
+  );
 
   // 章节 XHTML
   for (var i = 0; i < chapterTitles.length; i++) {
@@ -129,28 +137,36 @@ Archive _buildMinimalEpub({
         '<head><title>${chapterTitles[i]}</title></head>\n'
         '<body><h1>${chapterTitles[i]}</h1>\n$body</body>\n'
         '</html>';
-    archive.addFile(ArchiveFile(
-        'OEBPS/chapter${i + 1}.xhtml', xhtml.length, utf8.encode(xhtml)));
+    archive.addFile(
+      ArchiveFile(
+        'OEBPS/chapter${i + 1}.xhtml',
+        xhtml.length,
+        utf8.encode(xhtml),
+      ),
+    );
   }
 
   // 图片
   for (final entry in imageBytesHex.entries) {
     final bytes = Uint8List.fromList(_hexToBytes(entry.value));
-    archive.addFile(ArchiveFile(
-        'OEBPS/${entry.key}', bytes.length, bytes));
+    archive.addFile(ArchiveFile('OEBPS/${entry.key}', bytes.length, bytes));
   }
 
   // 字体
   for (final entry in fontBytesHex.entries) {
     final bytes = Uint8List.fromList(_hexToBytes(entry.value));
-    archive.addFile(ArchiveFile(
-        'OEBPS/${entry.key}', bytes.length, bytes));
+    archive.addFile(ArchiveFile('OEBPS/${entry.key}', bytes.length, bytes));
   }
 
   // CSS
   if (cssContent.isNotEmpty) {
-    archive.addFile(ArchiveFile('OEBPS/style.css', cssContent.length,
-        utf8.encode(cssContent)));
+    archive.addFile(
+      ArchiveFile(
+        'OEBPS/style.css',
+        cssContent.length,
+        utf8.encode(cssContent),
+      ),
+    );
   }
 
   return archive;
@@ -221,7 +237,10 @@ void main() {
       coverFile.writeAsBytesSync(_hexToBytes(_k1PxPngHex));
       final out = '${_tempDir.path}/rep_cover_out.epub';
       await ReplaceCoverOperation.execute(
-          epubPath: f.path, coverPath: coverFile.path, outputPath: out);
+        epubPath: f.path,
+        coverPath: coverFile.path,
+        outputPath: out,
+      );
       expect(File(out).existsSync(), true);
       // 验证内部含 cover.png
       final bytes = File(out).readAsBytesSync();
@@ -235,8 +254,7 @@ void main() {
       final archive = _buildMinimalEpub(chapterTitles: ['A', 'B', 'C']);
       final f = _writeEpub('reformat_in.epub', archive);
       final out = '${_tempDir.path}/reformat_out.epub';
-      await ReformatOperation.execute(
-          epubPath: f.path, outputPath: out);
+      await ReformatOperation.execute(epubPath: f.path, outputPath: out);
       expect(File(out).existsSync(), true);
     });
   });
@@ -301,23 +319,29 @@ void main() {
   group('EncryptOperation & DecryptOperation', () {
     test('加密应混淆文件名', () async {
       final archive = Archive();
-      archive.addFile(ArchiveFile(
+      archive.addFile(
+        ArchiveFile(
           'mimetype',
           'application/epub+zip'.length,
-          utf8.encode('application/epub+zip'))
-        ..compress = false);
-      archive.addFile(ArchiveFile(
-        'META-INF/container.xml',
-        '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
-            .length,
-        utf8.encode(
-            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'),
-      ));
+          utf8.encode('application/epub+zip'),
+        )..compress = false,
+      );
+      archive.addFile(
+        ArchiveFile(
+          'META-INF/container.xml',
+          '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+              .length,
+          utf8.encode(
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+          ),
+        ),
+      );
       final opf =
           '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="b">x</dc:identifier><dc:title>x</dc:title></metadata><manifest><item id="c1" href="公众号二维码1.jpg" media-type="image/jpeg"/></manifest><spine/></package>';
-      archive.addFile(ArchiveFile('OEBPS/content.opf', opf.length, utf8.encode(opf)));
-      archive.addFile(ArchiveFile('OEBPS/公众号二维码1.jpg', 2,
-          [0, 0]));
+      archive.addFile(
+        ArchiveFile('OEBPS/content.opf', opf.length, utf8.encode(opf)),
+      );
+      archive.addFile(ArchiveFile('OEBPS/公众号二维码1.jpg', 2, [0, 0]));
 
       final f = _writeEpub('enc_in.epub', archive);
       final encOut = '${_tempDir.path}/enc_out.epub';
@@ -326,8 +350,9 @@ void main() {
       // 加密后文件名应该变化
       final encBytes = File(encOut).readAsBytesSync();
       final encArc = ZipDecoder().decodeBytes(encBytes);
-      final hasOriginal =
-          encArc.files.any((x) => x.name == 'OEBPS/公众号二维码1.jpg');
+      final hasOriginal = encArc.files.any(
+        (x) => x.name == 'OEBPS/公众号二维码1.jpg',
+      );
       expect(hasOriginal, false, reason: '加密后不应再含原中文文件名');
     });
 
@@ -335,33 +360,45 @@ void main() {
       // 先构造一个加密状态的 EPUB，再解密看是否还原
       // 这里直接复用 e2e 测试中已通过加密的输出（如果存在），或自行构造加密 EPUB
       final archive = Archive();
-      archive.addFile(ArchiveFile(
+      archive.addFile(
+        ArchiveFile(
           'mimetype',
           'application/epub+zip'.length,
-          utf8.encode('application/epub+zip'))
-        ..compress = false);
-      archive.addFile(ArchiveFile(
-        'META-INF/container.xml',
-        '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
-            .length,
-        utf8.encode(
-            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'),
-      ));
+          utf8.encode('application/epub+zip'),
+        )..compress = false,
+      );
+      archive.addFile(
+        ArchiveFile(
+          'META-INF/container.xml',
+          '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+              .length,
+          utf8.encode(
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+          ),
+        ),
+      );
       // 已加密状态：href 含 `*` 或 `:`
       final opf =
           '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="b">x</dc:identifier><dc:title>x</dc:title></metadata><manifest><item id="公众号二维码1.jpg" href="_*:*:*::*****:******:*::*:****::*:**::*:***:*:**:**::****:****::**::**:*::*:*::*:*::*:::*::::::*:*:*:*::*:***::***:***:::*:***::*.jpg" media-type="image/jpeg"/></manifest><spine/></package>';
-      archive.addFile(ArchiveFile('OEBPS/content.opf', opf.length, utf8.encode(opf)));
+      archive.addFile(
+        ArchiveFile('OEBPS/content.opf', opf.length, utf8.encode(opf)),
+      );
       // 文件名是混淆后的（obfuscateName('公众号二维码1.jpg', '_*:*:*...jpg')）
       // id 已被替换为原 href 的 basename
-      archive.addFile(ArchiveFile(
+      archive.addFile(
+        ArchiveFile(
           'OEBPS/_*:*:*::*****:******:*::*:****::*:**::*:***:*:**:**::****:****::**::**:*::*:*::*:*::*:::*::::::*:*:*:*::*:***::***:***:::*:***::*.jpg',
           2,
-          [0, 0]));
+          [0, 0],
+        ),
+      );
 
       final f = _writeEpub('dec_in.epub', archive);
       final decOut = '${_tempDir.path}/dec_out.epub';
-      final result =
-          await DecryptOperation.execute(epubPath: f.path, outputPath: decOut);
+      final result = await DecryptOperation.execute(
+        epubPath: f.path,
+        outputPath: decOut,
+      );
       expect(File(decOut).existsSync(), true);
       // 验证解密不抛异常
       expect(result, isNotEmpty);
@@ -394,7 +431,7 @@ void main() {
     test('列出含字体的目标', () async {
       final css =
           '@font-face { font-family: TestFont; src: url("test.ttf"); }\n'
-              'body { font-family: TestFont; }';
+          'body { font-family: TestFont; }';
       final archive = _buildMinimalEpub(
         chapterTitles: ['ch'],
         cssContent: css,
@@ -402,7 +439,10 @@ void main() {
         fontBytesHex: {'test.ttf': _kMinimalFontHex},
       );
       final f = _writeEpub('list_fonts_in.epub', archive);
+      final targets = await ListFontTargetsOperation.scan(epubPath: f.path);
       final result = await ListFontTargetsOperation.execute(epubPath: f.path);
+      expect(targets.fontFamilies, ['TestFont']);
+      expect(targets.xhtmlFiles, contains('OEBPS/chapter1.xhtml'));
       expect(result, contains('TestFont'));
     });
 
@@ -426,10 +466,14 @@ void main() {
 
   group('MergeOperation', () {
     test('合并两个 EPUB 不抛异常', () async {
-      final a = _writeEpub('merge_a.epub',
-          _buildMinimalEpub(chapterTitles: ['A1', 'A2']));
-      final b = _writeEpub('merge_b.epub',
-          _buildMinimalEpub(chapterTitles: ['B1', 'B2']));
+      final a = _writeEpub(
+        'merge_a.epub',
+        _buildMinimalEpub(chapterTitles: ['A1', 'A2']),
+      );
+      final b = _writeEpub(
+        'merge_b.epub',
+        _buildMinimalEpub(chapterTitles: ['B1', 'B2']),
+      );
       final out = '${_tempDir.path}/merge_out.epub';
       final result = await MergeOperation.execute(
         inputPaths: [a.path, b.path],
@@ -446,7 +490,8 @@ void main() {
         // 仅尝试解码 UTF-8，失败则跳过（合并后某些文件可能用其他编码）
         try {
           allHtml.write(
-              utf8.decode(f.content as List<int>, allowMalformed: true));
+            utf8.decode(f.content as List<int>, allowMalformed: true),
+          );
         } catch (_) {
           // skip non-decodable files
         }
@@ -462,7 +507,9 @@ void main() {
       final f = _writeEpub('encf_empty.epub', archive);
       final out = '${_tempDir.path}/encf_out.epub';
       final result = await EncryptFontOperation.execute(
-          epubPath: f.path, outputPath: out);
+        epubPath: f.path,
+        outputPath: out,
+      );
       expect(result, contains('未找到字体'));
       expect(File(out).existsSync(), true);
     });
@@ -499,7 +546,8 @@ void main() {
       // 先生成含 popup span 的输入
       final archive = _buildMinimalEpub(
         chapterTitles: ['章'],
-        bodyBuilder: (i) => '<p>文本 <span class="duokan-popup-note">批注A</span> 更多</p>',
+        bodyBuilder: (i) =>
+            '<p>文本 <span class="duokan-popup-note">批注A</span> 更多</p>',
       );
       final f = _writeEpub('span_in.epub', archive);
       final out = '${_tempDir.path}/span_out.epub';

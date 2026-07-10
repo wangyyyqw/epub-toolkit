@@ -91,11 +91,6 @@ final List<NavItem> _navGroups = [
         route: '/epub-tool/font-subset',
       ),
       const NavItem(
-        label: '查看 OPF',
-        icon: Icons.code_outlined,
-        route: '/epub-tool/view-opf',
-      ),
-      const NavItem(
         label: '重新格式化',
         icon: Icons.auto_fix_high_outlined,
         route: '/epub-tool/reformat',
@@ -120,11 +115,6 @@ final List<NavItem> _navGroups = [
         label: '字体加密',
         icon: Icons.security_outlined,
         route: '/epub-tool/encrypt-font',
-      ),
-      const NavItem(
-        label: '列出字体目标',
-        icon: Icons.font_download_outlined,
-        route: '/epub-tool/list-font-targets',
       ),
     ],
   ),
@@ -189,12 +179,6 @@ final List<NavItem> _navGroups = [
         icon: Icons.format_quote_outlined,
         route: '/epub-tool/span-to-footnote',
       ),
-    ],
-  ),
-  NavItem(
-    label: '平台适配',
-    icon: Icons.devices_outlined,
-    children: [
       const NavItem(
         label: '阅微转多看',
         icon: Icons.sync_alt_outlined,

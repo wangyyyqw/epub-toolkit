@@ -82,9 +82,12 @@ Future<bool> _isValidEpubZip(String path) async {
 
 // ==================== 测试常量 ====================
 
-const _kTestRoot = '/Users/aaa/Documents/github/epub-gadget/flutter_test_output';
-const _kEpub1Path = '/Users/aaa/Documents/github/epub-gadget/恐妻家 - [日]伊坂幸太郎.epub';
-const _kEpub2Path = '/Users/aaa/Documents/github/epub-gadget/C41-愤怒的葡萄-[美] 约翰·斯坦贝克-手机.epub';
+const _kTestRoot =
+    '/Users/aaa/Documents/github/epub-gadget/flutter_test_output';
+const _kEpub1Path =
+    '/Users/aaa/Documents/github/epub-gadget/恐妻家 - [日]伊坂幸太郎.epub';
+const _kEpub2Path =
+    '/Users/aaa/Documents/github/epub-gadget/C41-愤怒的葡萄-[美] 约翰·斯坦贝克-手机.epub';
 const _kTxtPath = '/Users/aaa/Documents/github/epub-gadget/一千零一夜.txt';
 
 late Uint8List _notePngBytes;
@@ -137,6 +140,15 @@ Future<bool> _isValidEpub(String path) => _isValidEpubZip(path);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  if (![
+    _kEpub1Path,
+    _kEpub2Path,
+    _kTxtPath,
+  ].every((path) => File(path).existsSync())) {
+    test('全功能端到端测试需要本机夹具', () {}, skip: '提供测试书籍后再运行此测试文件。');
+    return;
+  }
 
   setUpAll(() async {
     // 为所有用例准备 note.png 资源
@@ -223,7 +235,10 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out_3.0.epub';
       await ConvertVersionOperation.execute(
-          epubPath: src.path, outputPath: out, targetVersion: '3.0');
+        epubPath: src.path,
+        outputPath: out,
+        targetVersion: '3.0',
+      );
       expect(await _isValidEpub(out), true);
     } catch (e) {
       err = e.toString();
@@ -238,7 +253,10 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out_2.0.epub';
       await ConvertVersionOperation.execute(
-          epubPath: src.path, outputPath: out, targetVersion: '2.0');
+        epubPath: src.path,
+        outputPath: out,
+        targetVersion: '2.0',
+      );
       expect(await _isValidEpub(out), true);
     } catch (e) {
       err = e.toString();
@@ -273,7 +291,10 @@ void main() {
         '',
       ].join('|||');
       await AdCleanOperation.execute(
-          epubPath: src.path, outputPath: out, patterns: patterns);
+        epubPath: src.path,
+        outputPath: out,
+        patterns: patterns,
+      );
       expect(await _isValidEpub(out), true);
     } catch (e) {
       err = e.toString();
@@ -309,7 +330,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await ImgToWebpOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       // 桌面平台预期返回「不支持」消息；只检查不抛异常
       expect(result, isNotEmpty);
     } catch (e) {
@@ -326,7 +349,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await WebpToImgOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       expect(result, isNotEmpty);
     } catch (e) {
       err = e.toString();
@@ -342,7 +367,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await DownloadImagesOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       expect(result, isNotEmpty);
     } catch (e) {
       err = e.toString();
@@ -358,7 +385,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await S2tOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       await _writeLog('op_11_s2t', 'result.log', result);
       expect(await _isValidEpub(out), true);
     } catch (e) {
@@ -375,7 +404,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await T2sOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       await _writeLog('op_12_t2s', 'result.log', result);
       expect(await _isValidEpub(out), true);
     } catch (e) {
@@ -433,7 +464,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await FontSubsetOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       await _writeLog('op_14_font_subset', 'result.log', result);
       expect(await _isValidEpub(out), true);
     } catch (e) {
@@ -450,7 +483,9 @@ void main() {
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
       final out = '$dir/out.epub';
       final result = await EncryptOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       await _writeLog('op_15_encrypt', 'result.log', result);
       expect(await _isValidEpub(out), true);
     } catch (e) {
@@ -469,7 +504,9 @@ void main() {
       final encrypted = '$_kTestRoot/op_15_encrypt/out.epub';
       final out = '$dir/out.epub';
       final result = await DecryptOperation.execute(
-          epubPath: encrypted, outputPath: out);
+        epubPath: encrypted,
+        outputPath: out,
+      );
       await _writeLog('op_16_decrypt', 'result.log', result);
       expect(await _isValidEpub(out), true);
     } catch (e) {
@@ -501,8 +538,9 @@ void main() {
   test('OP-18 listFontTargets', () async {
     String? err;
     try {
-      final result =
-          await ListFontTargetsOperation.execute(epubPath: _kEpub1Path);
+      final result = await ListFontTargetsOperation.execute(
+        epubPath: _kEpub1Path,
+      );
       await _writeLog('op_18_list_font_targets', 'result.log', result);
       expect(result, isNotEmpty);
     } catch (e) {
@@ -538,8 +576,9 @@ void main() {
     try {
       final dir = '$_kTestRoot/op_20_split';
       final src = await _copyFile(_kEpub1Path, dir, 'src.epub');
-      final targets =
-          await ListSplitTargetsOperation.execute(epubPath: src.path);
+      final targets = await ListSplitTargetsOperation.execute(
+        epubPath: src.path,
+      );
       if (targets.isEmpty) {
         note = '无 TOC 目标，跳过';
       } else {
@@ -563,15 +602,20 @@ void main() {
     } catch (e) {
       err = e.toString();
     }
-    _stats.record('20 split${note != null ? " [$note]" : ""}', err == null, err);
+    _stats.record(
+      '20 split${note != null ? " [$note]" : ""}',
+      err == null,
+      err,
+    );
   });
 
   // ==================== 21. listSplitTargets ====================
   test('OP-21 listSplitTargets', () async {
     String? err;
     try {
-      final result =
-          await ListSplitTargetsOperation.execute(epubPath: _kEpub1Path);
+      final result = await ListSplitTargetsOperation.execute(
+        epubPath: _kEpub1Path,
+      );
       final formatted = ListSplitTargetsOperation.formatTargets(result);
       await _writeLog('op_21_list_split_targets', 'result.log', formatted);
       expect(result, isA<List>());
@@ -702,11 +746,17 @@ void main() {
       final cleaned = cleaner.clean(raw);
       // 3. 分割（用第一个预设）
       final splitter = ChapterSplitter();
-      final chapters = splitter.split(cleaned, presetPatterns[0].pattern,
-          splitTitle: true);
+      final chapters = splitter.split(
+        cleaned,
+        presetPatterns[0].pattern,
+        splitTitle: true,
+      );
 
-      await _writeLog('op_27_txt2epub', 'chapters.txt',
-          'encoding=$encoding\nchapters=${chapters.length}\nfirst 3 titles:\n${chapters.take(3).map((c) => "  - ${c.title}").join("\n")}');
+      await _writeLog(
+        'op_27_txt2epub',
+        'chapters.txt',
+        'encoding=$encoding\nchapters=${chapters.length}\nfirst 3 titles:\n${chapters.take(3).map((c) => "  - ${c.title}").join("\n")}',
+      );
 
       expect(chapters.length, greaterThan(0));
       if (chapters.isNotEmpty) {
@@ -733,10 +783,16 @@ void main() {
     buf.writeln();
     buf.writeln('**输入文件**:');
     buf.writeln('- EPUB1: `$_kEpub1Path`');
-    buf.writeln('- EPUB2: `$_kEpub2Path` (${await File(_kEpub2Path).length()} bytes)');
-    buf.writeln('- TXT:  `$_kTxtPath` (${await File(_kTxtPath).length()} bytes)');
+    buf.writeln(
+      '- EPUB2: `$_kEpub2Path` (${await File(_kEpub2Path).length()} bytes)',
+    );
+    buf.writeln(
+      '- TXT:  `$_kTxtPath` (${await File(_kTxtPath).length()} bytes)',
+    );
     buf.writeln();
-    buf.writeln('**汇总**: ${_stats.passed}/${_stats.total} 通过，${_stats.failed} 失败');
+    buf.writeln(
+      '**汇总**: ${_stats.passed}/${_stats.total} 通过，${_stats.failed} 失败',
+    );
     buf.writeln();
     buf.writeln('## 通过');
     for (final p in _stats.passList) {

@@ -52,8 +52,10 @@ import 'package:epub_gadget/features/txt2epub/services/text_cleaner.dart';
 // ==================== 测试常量 ====================
 
 const _kTestRoot = '/Users/aaa/Documents/github/epub-gadget/test_output';
-const _kEpub1Path = '/Users/aaa/Documents/github/epub-gadget/恐妻家 - [日]伊坂幸太郎.epub';
-const _kEpub2Path = '/Users/aaa/Documents/github/epub-gadget/C41-愤怒的葡萄-[美] 约翰·斯坦贝克-手机.epub';
+const _kEpub1Path =
+    '/Users/aaa/Documents/github/epub-gadget/恐妻家 - [日]伊坂幸太郎.epub';
+const _kEpub2Path =
+    '/Users/aaa/Documents/github/epub-gadget/C41-愤怒的葡萄-[美] 约翰·斯坦贝克-手机.epub';
 const _kTxtPath = '/Users/aaa/Documents/github/epub-gadget/一千零一夜.txt';
 
 late Uint8List _notePngBytes;
@@ -83,7 +85,11 @@ Future<String?> _checkUtf8Encoding(String path) async {
 /// 验证 EPUB 文件结构是否合法
 /// 检查项：mimetype、container.xml、OPF 文件、spine 中有内容
 Future<Map<String, dynamic>> _validateEpub(String path) async {
-  final result = <String, dynamic>{'valid': false, 'checks': <String, String>{}, 'details': <String, dynamic>{}};
+  final result = <String, dynamic>{
+    'valid': false,
+    'checks': <String, String>{},
+    'details': <String, dynamic>{},
+  };
 
   try {
     final bytes = await File(path).readAsBytes();
@@ -152,7 +158,9 @@ Future<Map<String, dynamic>> _validateEpub(String path) async {
     result['checks']['spine'] = hasSpine ? '正常' : '异常';
 
     // 6. 统计信息
-    result['details']['总文件数'] = archive.files.where((f) => f.name.isNotEmpty).length;
+    result['details']['总文件数'] = archive.files
+        .where((f) => f.name.isNotEmpty)
+        .length;
     result['details']['文件大小'] = bytes.length;
 
     // 7. 检查 HTML 文件编码
@@ -172,7 +180,9 @@ Future<Map<String, dynamic>> _validateEpub(String path) async {
     result['details']['HTML文件数'] = htmlCount;
     result['details']['HTML编码正常'] = htmlEncodingOk;
     result['checks']['HTML编码'] = htmlCount > 0
-        ? (htmlEncodingOk == htmlCount ? '全部正常 ($htmlCount个)' : '${htmlEncodingOk}/$htmlCount 正常')
+        ? (htmlEncodingOk == htmlCount
+              ? '全部正常 ($htmlCount个)'
+              : '${htmlEncodingOk}/$htmlCount 正常')
         : '无 HTML 文件';
 
     result['valid'] = hasManifest && hasSpine;
@@ -188,7 +198,9 @@ String _validateEpubQuick(Map<String, dynamic> result) {
   final checks = result['checks'] as Map<String, String>;
   final issues = <String>[];
   for (final entry in checks.entries) {
-    if (entry.value != '正常' && !entry.value.startsWith('全部正常') && !entry.value.startsWith('UTF-8')) {
+    if (entry.value != '正常' &&
+        !entry.value.startsWith('全部正常') &&
+        !entry.value.startsWith('UTF-8')) {
       issues.add('${entry.key}: ${entry.value}');
     }
   }
@@ -237,14 +249,22 @@ class TestResult {
 
 final _results = <TestResult>[];
 
-void _record(String name, bool passed, {String? error, String? detail, Map<String, dynamic>? validation}) {
-  _results.add(TestResult(
-    name: name,
-    passed: passed,
-    error: error,
-    detail: detail,
-    validation: validation ?? {},
-  ));
+void _record(
+  String name,
+  bool passed, {
+  String? error,
+  String? detail,
+  Map<String, dynamic>? validation,
+}) {
+  _results.add(
+    TestResult(
+      name: name,
+      passed: passed,
+      error: error,
+      detail: detail,
+      validation: validation ?? {},
+    ),
+  );
   final status = passed ? '✅ 通过' : '❌ 失败';
   print('$status - $name');
   if (error != null) print('  错误: $error');
@@ -255,6 +275,15 @@ void _record(String name, bool passed, {String? error, String? detail, Map<Strin
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  if (![
+    _kEpub1Path,
+    _kEpub2Path,
+    _kTxtPath,
+  ].every((path) => File(path).existsSync())) {
+    test('综合真实书籍测试需要本机夹具', () {}, skip: '提供测试书籍后再运行此测试文件。');
+    return;
+  }
 
   setUpAll(() async {
     // 准备 note.png
@@ -317,7 +346,9 @@ void main() {
         '<spine': result.contains('<spine'),
       };
 
-      final detail = checks.entries.map((e) => '  ${e.key}: ${e.value ? "存在" : "缺失"}').join('\n');
+      final detail = checks.entries
+          .map((e) => '  ${e.key}: ${e.value ? "存在" : "缺失"}')
+          .join('\n');
       _log('内容检查:\n$detail');
 
       await _writeLog('01_view_opf', 'opf.xml', result);
@@ -343,15 +374,73 @@ void main() {
       if (coverBytes.isEmpty) {
         // 生成最小 PNG
         coverBytes = Uint8List.fromList(const [
-          0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-          0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-          0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-          0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-          0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
-          0x54, 0x08, 0x99, 0x63, 0x00, 0x01, 0x00, 0x00,
-          0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-          0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-          0x42, 0x60, 0x82,
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
+          0x00,
+          0x00,
+          0x00,
+          0x0D,
+          0x49,
+          0x48,
+          0x44,
+          0x52,
+          0x00,
+          0x00,
+          0x00,
+          0x01,
+          0x00,
+          0x00,
+          0x00,
+          0x01,
+          0x08,
+          0x06,
+          0x00,
+          0x00,
+          0x00,
+          0x1F,
+          0x15,
+          0xC4,
+          0x89,
+          0x00,
+          0x00,
+          0x00,
+          0x0D,
+          0x49,
+          0x44,
+          0x41,
+          0x54,
+          0x08,
+          0x99,
+          0x63,
+          0x00,
+          0x01,
+          0x00,
+          0x00,
+          0x05,
+          0x00,
+          0x01,
+          0x0D,
+          0x0A,
+          0x2D,
+          0xB4,
+          0x00,
+          0x00,
+          0x00,
+          0x00,
+          0x49,
+          0x45,
+          0x4E,
+          0x44,
+          0xAE,
+          0x42,
+          0x60,
+          0x82,
         ]);
       }
       final coverFile = File('$dir/new_cover.png');
@@ -377,10 +466,19 @@ void main() {
       final outSize = await File(out).length();
       _log('文件大小: ${srcSize} → $outSize (${outSize > srcSize ? "增大" : "减小"})');
 
-      await _writeLog(dir, 'result.log', '验证: ${_validateEpubQuick(validation)}\n大小: $srcSize → $outSize');
+      await _writeLog(
+        dir,
+        'result.log',
+        '验证: ${_validateEpubQuick(validation)}\n大小: $srcSize → $outSize',
+      );
 
       final ok = validation['valid'] == true;
-      _record('02-replaceCover', ok, detail: '大小 ${srcSize}→$outSize', validation: validation);
+      _record(
+        '02-replaceCover',
+        ok,
+        detail: '大小 ${srcSize}→$outSize',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('02-replaceCover', false, error: e.toString());
@@ -408,7 +506,12 @@ void main() {
       _log('HTML 文件数: ${srcHtml.length} → ${outHtml.length}');
 
       final ok = validation['valid'] == true;
-      _record('03-reformat', ok, detail: 'HTML 文件 ${srcHtml.length}→${outHtml.length}', validation: validation);
+      _record(
+        '03-reformat',
+        ok,
+        detail: 'HTML 文件 ${srcHtml.length}→${outHtml.length}',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('03-reformat', false, error: e.toString());
@@ -425,7 +528,10 @@ void main() {
 
       final out = '$dir/out_3.0.epub';
       await ConvertVersionOperation.execute(
-          epubPath: src.path, outputPath: out, targetVersion: '3.0');
+        epubPath: src.path,
+        outputPath: out,
+        targetVersion: '3.0',
+      );
 
       final validation = await _validateEpub(out);
       _log('EPUB 验证: ${_validateEpubQuick(validation)}');
@@ -435,10 +541,19 @@ void main() {
       final hasVersion3 = opfContent.contains('version="3.0"');
       _log('版本检查: ${hasVersion3 ? "已转为 3.0" : "未检测到 3.0"}');
 
-      await _writeLog(dir, '3.0_result.log', '验证: ${_validateEpubQuick(validation)}\n版本3.0: $hasVersion3');
+      await _writeLog(
+        dir,
+        '3.0_result.log',
+        '验证: ${_validateEpubQuick(validation)}\n版本3.0: $hasVersion3',
+      );
 
       final ok = validation['valid'] == true && hasVersion3;
-      _record('04a-convertVersion→3.0', ok, detail: '版本3.0=$hasVersion3', validation: validation);
+      _record(
+        '04a-convertVersion→3.0',
+        ok,
+        detail: '版本3.0=$hasVersion3',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('04a-convertVersion→3.0', false, error: e.toString());
@@ -454,7 +569,10 @@ void main() {
 
       final out = '$dir/out_2.0.epub';
       await ConvertVersionOperation.execute(
-          epubPath: src.path, outputPath: out, targetVersion: '2.0');
+        epubPath: src.path,
+        outputPath: out,
+        targetVersion: '2.0',
+      );
 
       final validation = await _validateEpub(out);
       _log('EPUB 验证: ${_validateEpubQuick(validation)}');
@@ -463,10 +581,19 @@ void main() {
       final hasVersion2 = opfContent.contains('version="2.0"');
       _log('版本检查: ${hasVersion2 ? "已转为 2.0" : "未检测到 2.0"}');
 
-      await _writeLog(dir, '2.0_result.log', '验证: ${_validateEpubQuick(validation)}\n版本2.0: $hasVersion2');
+      await _writeLog(
+        dir,
+        '2.0_result.log',
+        '验证: ${_validateEpubQuick(validation)}\n版本2.0: $hasVersion2',
+      );
 
       final ok = validation['valid'] == true && hasVersion2;
-      _record('04b-convertVersion→2.0', ok, detail: '版本2.0=$hasVersion2', validation: validation);
+      _record(
+        '04b-convertVersion→2.0',
+        ok,
+        detail: '版本2.0=$hasVersion2',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('04b-convertVersion→2.0', false, error: e.toString());
@@ -525,7 +652,10 @@ void main() {
 
       final out = '$dir/out.epub';
       await AdCleanOperation.execute(
-          epubPath: src.path, outputPath: out, patterns: patterns);
+        epubPath: src.path,
+        outputPath: out,
+        patterns: patterns,
+      );
 
       final validation = await _validateEpub(out);
       _log('EPUB 验证: ${_validateEpubQuick(validation)}');
@@ -560,10 +690,17 @@ void main() {
 
       final srcSize = await src.length();
       final outSize = await File(out).length();
-      _log('文件大小: ${srcSize} → $outSize (${((1 - outSize / srcSize) * 100).toStringAsFixed(1)}% 缩减)');
+      _log(
+        '文件大小: ${srcSize} → $outSize (${((1 - outSize / srcSize) * 100).toStringAsFixed(1)}% 缩减)',
+      );
 
       final ok = validation['valid'] == true;
-      _record('07-imgCompress', ok, detail: '大小 ${srcSize}→$outSize', validation: validation);
+      _record(
+        '07-imgCompress',
+        ok,
+        detail: '大小 ${srcSize}→$outSize',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('07-imgCompress', false, error: e.toString());
@@ -580,14 +717,21 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await ImgToWebpOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       // 桌面平台可能返回「不支持」消息
       if (await File(out).exists()) {
         final validation = await _validateEpub(out);
         _log('EPUB 验证: ${_validateEpubQuick(validation)}');
-        _record('08-imgToWebp', validation['valid'] == true, detail: result, validation: validation);
+        _record(
+          '08-imgToWebp',
+          validation['valid'] == true,
+          detail: result,
+          validation: validation,
+        );
         expect(validation['valid'], true);
       } else {
         _record('08-imgToWebp', true, detail: '桌面平台不支持 WebP 编码（预期行为）');
@@ -607,13 +751,20 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await WebpToImgOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       if (await File(out).exists()) {
         final validation = await _validateEpub(out);
         _log('EPUB 验证: ${_validateEpubQuick(validation)}');
-        _record('09-webpToImg', validation['valid'] == true, detail: result, validation: validation);
+        _record(
+          '09-webpToImg',
+          validation['valid'] == true,
+          detail: result,
+          validation: validation,
+        );
         expect(validation['valid'], true);
       } else {
         _record('09-webpToImg', true, detail: '无 WebP 图片需转换（预期行为）');
@@ -633,13 +784,20 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await DownloadImagesOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       if (await File(out).exists()) {
         final validation = await _validateEpub(out);
         _log('EPUB 验证: ${_validateEpubQuick(validation)}');
-        _record('10-downloadImages', validation['valid'] == true, detail: result, validation: validation);
+        _record(
+          '10-downloadImages',
+          validation['valid'] == true,
+          detail: result,
+          validation: validation,
+        );
         expect(validation['valid'], true);
       } else {
         _record('10-downloadImages', true, detail: '无网络图片需下载（预期行为）');
@@ -659,7 +817,9 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await S2tOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       final validation = await _validateEpub(out);
@@ -668,7 +828,10 @@ void main() {
       // 抽样检查内容是否转换
       final htmls = await EpubService.readAllHtmlSafe(out);
       if (htmls.isNotEmpty) {
-        final sample = htmls.first.value.substring(0, htmls.first.value.length.clamp(0, 500));
+        final sample = htmls.first.value.substring(
+          0,
+          htmls.first.value.length.clamp(0, 500),
+        );
         _log('转换后内容抽样: ${sample.substring(0, sample.length.clamp(0, 200))}...');
       }
 
@@ -692,7 +855,9 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await T2sOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       final validation = await _validateEpub(out);
@@ -760,7 +925,12 @@ void main() {
       await _writeLog(dir, 'number.log', result);
 
       final ok = validation['valid'] == true;
-      _record('13b-phonetic-number', ok, detail: result, validation: validation);
+      _record(
+        '13b-phonetic-number',
+        ok,
+        detail: result,
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('13b-phonetic-number', false, error: e.toString());
@@ -777,7 +947,9 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await FontSubsetOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       final validation = await _validateEpub(out);
@@ -790,7 +962,12 @@ void main() {
       await _writeLog(dir, 'result.log', result);
 
       final ok = validation['valid'] == true;
-      _record('14-fontSubset', ok, detail: '大小 ${srcSize}→$outSize', validation: validation);
+      _record(
+        '14-fontSubset',
+        ok,
+        detail: '大小 ${srcSize}→$outSize',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('14-fontSubset', false, error: e.toString());
@@ -807,7 +984,9 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await EncryptOperation.execute(
-          epubPath: src.path, outputPath: out);
+        epubPath: src.path,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       final validation = await _validateEpub(out);
@@ -816,7 +995,10 @@ void main() {
       // 检查加密后的 HTML 内容是否已被混淆
       final htmls = await EpubService.readAllHtmlSafe(out);
       if (htmls.isNotEmpty) {
-        final sample = htmls.first.value.substring(0, htmls.first.value.length.clamp(0, 200));
+        final sample = htmls.first.value.substring(
+          0,
+          htmls.first.value.length.clamp(0, 200),
+        );
         _log('加密后内容抽样: $sample');
       }
 
@@ -845,7 +1027,9 @@ void main() {
 
       final out = '$dir/out.epub';
       final result = await DecryptOperation.execute(
-          epubPath: encrypted, outputPath: out);
+        epubPath: encrypted,
+        outputPath: out,
+      );
       _log('处理结果: $result');
 
       final validation = await _validateEpub(out);
@@ -895,7 +1079,9 @@ void main() {
     try {
       _log('选择文件: 恐妻家.epub → 功能: 列出字体文件');
 
-      final result = await ListFontTargetsOperation.execute(epubPath: _kEpub1Path);
+      final result = await ListFontTargetsOperation.execute(
+        epubPath: _kEpub1Path,
+      );
       _log('字体列表: $result');
 
       await _writeLog('18_list_font_targets', 'result.log', result);
@@ -950,7 +1136,9 @@ void main() {
       _log('选择文件: 恐妻家.epub → 功能: 拆分');
 
       // 先获取拆分目标
-      final targets = await ListSplitTargetsOperation.execute(epubPath: src.path);
+      final targets = await ListSplitTargetsOperation.execute(
+        epubPath: src.path,
+      );
       _log('拆分目标数: ${targets.length}');
 
       if (targets.length < 2) {
@@ -974,14 +1162,21 @@ void main() {
         final path = e.path;
         if (path.endsWith('.epub')) {
           final validation = await _validateEpub(path);
-          _log('  ${path.split('/').last}: ${_validateEpubQuick(validation)} (${await File(path).length()} bytes)');
+          _log(
+            '  ${path.split('/').last}: ${_validateEpubQuick(validation)} (${await File(path).length()} bytes)',
+          );
         }
       }
 
       await _writeLog(dir, 'result.log', result);
 
       final ok = entries.length >= 2;
-      _record('20-split', ok, detail: '产出 ${entries.length} 个文件', validation: {'文件数': entries.length});
+      _record(
+        '20-split',
+        ok,
+        detail: '产出 ${entries.length} 个文件',
+        validation: {'文件数': entries.length},
+      );
       expect(ok, true);
     } catch (e) {
       _record('20-split', false, error: e.toString());
@@ -994,7 +1189,9 @@ void main() {
     try {
       _log('选择文件: 恐妻家.epub → 功能: 列出拆分点');
 
-      final result = await ListSplitTargetsOperation.execute(epubPath: _kEpub1Path);
+      final result = await ListSplitTargetsOperation.execute(
+        epubPath: _kEpub1Path,
+      );
       final formatted = ListSplitTargetsOperation.formatTargets(result);
       _log('拆分点数量: ${result.length}');
       _log('格式化:\n$formatted');
@@ -1061,7 +1258,12 @@ void main() {
       await _writeLog(dir, 'result.log', result);
 
       final ok = validation['valid'] == true;
-      _record('23-footnoteToComment', ok, detail: result, validation: validation);
+      _record(
+        '23-footnoteToComment',
+        ok,
+        detail: result,
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('23-footnoteToComment', false, error: e.toString());
@@ -1205,8 +1407,11 @@ void main() {
 
       // 3. 分割
       final splitter = ChapterSplitter();
-      final chapters = splitter.split(cleaned, r'^第[一二三四五六七八九十百千万\d]+章\s+.*$',
-          splitTitle: true);
+      final chapters = splitter.split(
+        cleaned,
+        r'^第[一二三四五六七八九十百千万\d]+章\s+.*$',
+        splitTitle: true,
+      );
       _log('章节数: ${chapters.length}');
       for (final c in chapters) {
         _log('  - ${c.title} (${c.wordCount} 字)');
@@ -1242,11 +1447,20 @@ void main() {
       final encodingCheck = await _checkUtf8Encoding(out);
       if (encodingCheck != null) _log('编码警告: $encodingCheck');
 
-      await _writeLog(dir, 'chapters.txt', '章节数: ${chapters.length}\n${chapters.map((c) => "${c.title} (${c.wordCount}字)").join("\n")}');
+      await _writeLog(
+        dir,
+        'chapters.txt',
+        '章节数: ${chapters.length}\n${chapters.map((c) => "${c.title} (${c.wordCount}字)").join("\n")}',
+      );
       await _writeLog(dir, 'generate.log', log);
 
       final ok = validation['valid'] == true && htmls.isNotEmpty;
-      _record('27-txt2epub', ok, detail: '${chapters.length} 章节, ${htmls.length} HTML', validation: validation);
+      _record(
+        '27-txt2epub',
+        ok,
+        detail: '${chapters.length} 章节, ${htmls.length} HTML',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('27-txt2epub', false, error: e.toString());
@@ -1268,11 +1482,18 @@ void main() {
       _log('标识符: ${metadata.identifier}');
       _log('有封面: ${metadata.coverBytes != null}');
 
-      await _writeLog('28_metadata', 'read.log',
-          '书名: ${metadata.title}\n作者: ${metadata.author}\n语言: ${metadata.language}\n描述: ${metadata.description}');
+      await _writeLog(
+        '28_metadata',
+        'read.log',
+        '书名: ${metadata.title}\n作者: ${metadata.author}\n语言: ${metadata.language}\n描述: ${metadata.description}',
+      );
 
       final ok = metadata.title.isNotEmpty && metadata.author.isNotEmpty;
-      _record('28a-metadata-read', ok, detail: '${metadata.title} / ${metadata.author}');
+      _record(
+        '28a-metadata-read',
+        ok,
+        detail: '${metadata.title} / ${metadata.author}',
+      );
       expect(ok, true);
     } catch (e) {
       _record('28a-metadata-read', false, error: e.toString());
@@ -1314,17 +1535,23 @@ void main() {
       final validation = await _validateEpub(out);
       _log('EPUB 验证: ${_validateEpubQuick(validation)}');
 
-      await _writeLog(dir, 'write.log',
-          '原始: ${original.title} / ${original.author}\n修改后: ${reread.title} / ${reread.author}');
+      await _writeLog(
+        dir,
+        'write.log',
+        '原始: ${original.title} / ${original.author}\n修改后: ${reread.title} / ${reread.author}',
+      );
 
       final titleOk = reread.title.contains('测试修改');
       final authorOk = reread.author == '测试作者';
       final epubOk = validation['valid'] == true;
 
       final ok = titleOk && authorOk && epubOk;
-      _record('28b-metadata-write', ok,
-          detail: '标题修改=$titleOk, 作者修改=$authorOk, EPUB有效=$epubOk',
-          validation: validation);
+      _record(
+        '28b-metadata-write',
+        ok,
+        detail: '标题修改=$titleOk, 作者修改=$authorOk, EPUB有效=$epubOk',
+        validation: validation,
+      );
       expect(ok, true);
     } catch (e) {
       _record('28b-metadata-write', false, error: e.toString());
@@ -1339,9 +1566,15 @@ void main() {
     buf.writeln();
     buf.writeln('**测试时间**: ${DateTime.now()}');
     buf.writeln('**测试文件**:');
-    buf.writeln('- EPUB1: `$_kEpub1Path` (${await File(_kEpub1Path).length()} bytes)');
-    buf.writeln('- EPUB2: `$_kEpub2Path` (${await File(_kEpub2Path).length()} bytes)');
-    buf.writeln('- TXT:  `$_kTxtPath` (${await File(_kTxtPath).length()} bytes)');
+    buf.writeln(
+      '- EPUB1: `$_kEpub1Path` (${await File(_kEpub1Path).length()} bytes)',
+    );
+    buf.writeln(
+      '- EPUB2: `$_kEpub2Path` (${await File(_kEpub2Path).length()} bytes)',
+    );
+    buf.writeln(
+      '- TXT:  `$_kTxtPath` (${await File(_kTxtPath).length()} bytes)',
+    );
     buf.writeln();
     buf.writeln('**测试流程**: 选择文件 → 选择功能 → 功能处理 → 输出文件 → 检查输出文件');
     buf.writeln('**检查项**: 文件是否正常、编码是否正确、格式是否正常、功能是否正确运行、结果是否符合预期');
@@ -1361,7 +1594,9 @@ void main() {
     buf.writeln('## 通过');
     buf.writeln();
     for (final r in _results.where((r) => r.passed)) {
-      buf.writeln('- ✅ **${r.name}**${r.detail != null ? " — ${r.detail}" : ""}');
+      buf.writeln(
+        '- ✅ **${r.name}**${r.detail != null ? " — ${r.detail}" : ""}',
+      );
     }
     buf.writeln();
 

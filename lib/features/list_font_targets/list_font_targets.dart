@@ -14,8 +14,7 @@ class ListFontTargetsOperation {
   ListFontTargetsOperation._();
 
   static Future<String> execute({required String epubPath}) async {
-    final archive = await EpubImageHelper.readArchive(epubPath);
-    final targets = collectTargets(archive);
+    final targets = await scan(epubPath: epubPath);
 
     final log = StringBuffer();
     log.writeln('扫描 EPUB 字体目标...');
@@ -33,6 +32,12 @@ class ListFontTargetsOperation {
     return log.toString();
   }
 
+  /// 扫描并返回可供字体加密页面直接选择的结构化目标。
+  static Future<FontEncryptTargets> scan({required String epubPath}) async {
+    final archive = await EpubImageHelper.readArchive(epubPath);
+    return collectTargets(archive);
+  }
+
   static FontEncryptTargets collectTargets(Archive archive) {
     final names = archive.files
         .where((f) => f.name.isNotEmpty)
@@ -46,9 +51,8 @@ class ListFontTargetsOperation {
     final fontFileNames = names
         .where((name) {
           final lower = name.toLowerCase();
-          return lower.endsWith('.ttf') ||
-              lower.endsWith('.otf') ||
-              lower.endsWith('.woff');
+          // 字体加密器当前只支持包含 glyf 表的 TTF 文件。
+          return lower.endsWith('.ttf');
         })
         .map((name) => p.basename(name).toLowerCase())
         .toSet();

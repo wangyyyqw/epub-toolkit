@@ -19,11 +19,9 @@ class EpubToolMeta {
   });
 }
 
-/// 26 个 EPUB 工具，按分类分组
+/// 24 个 EPUB 工具，按分类分组
 class EpubToolCatalog {
   EpubToolCatalog._();
-
-  static const _base = Color(0xFF0EA5E9);
 
   static const List<
     ({String category, IconData catIcon, List<EpubToolMeta> tools})
@@ -33,14 +31,6 @@ class EpubToolCatalog {
       category: '基础工具',
       catIcon: Icons.build_outlined,
       tools: [
-        EpubToolMeta(
-          id: 'viewOpf',
-          label: '查看 OPF 元数据',
-          desc: '读取并格式化显示 EPUB 的 OPF 文件内容',
-          icon: Icons.code_outlined,
-          color: _base,
-          route: '/epub-tool/view-opf',
-        ),
         EpubToolMeta(
           id: 'replaceCover',
           label: '替换封面图片',
@@ -218,14 +208,6 @@ class EpubToolCatalog {
           icon: Icons.security_outlined,
           color: Color(0xFFBE123C),
           route: '/epub-tool/encrypt-font',
-        ),
-        EpubToolMeta(
-          id: 'listFontTargets',
-          label: '列出字体目标',
-          desc: '扫描 EPUB 中的字体族和 HTML 文件列表',
-          icon: Icons.font_download_outlined,
-          color: Color(0xFF9333EA),
-          route: '/epub-tool/list-font-targets',
         ),
       ],
     ),

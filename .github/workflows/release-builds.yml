@@ -11,6 +11,8 @@ permissions:
 
 env:
   FLUTTER_CHANNEL: stable
+  LIBWEBP_VERSION: 1.6.0
+  LIBWEBP_WINDOWS_X64_SHA256: 48886f506b21f62e4661f0f4cbfca19800897c385128e8902542d29a950c93f1
 
 jobs:
   version:
@@ -95,11 +97,23 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install WebP encoder
+        run: brew install webp
+
       - name: Build macOS
         run: >
           flutter build macos --release
           --build-name "${{ needs.version.outputs.app_version }}"
           --build-number "${{ needs.version.outputs.build_number }}"
+
+      - name: Bundle WebP encoder
+        shell: bash
+        run: |
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          test -n "$app_path"
+          tool/bundle_cwebp_macos.sh "$app_path"
+          "$app_path/Contents/Resources/bin/cwebp" -version
+          codesign --verify --deep --strict "$app_path"
 
       - name: Package macOS app
         shell: bash
@@ -138,18 +152,66 @@ jobs:
           --build-name "${{ needs.version.outputs.app_version }}"
           --build-number "${{ needs.version.outputs.build_number }}"
 
-      - name: Package Windows app
+      - name: Bundle WebP encoder
         shell: pwsh
         run: |
-          Compress-Archive `
-            -Path build\windows\x64\runner\Release\* `
-            -DestinationPath "epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}.zip"
+          $archive = Join-Path $env:RUNNER_TEMP 'libwebp-windows-x64.zip'
+          $extractDir = Join-Path $env:RUNNER_TEMP 'libwebp-windows-x64'
+          $url = "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$env:LIBWEBP_VERSION-windows-x64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
 
-      - name: Upload Windows app
+          $actualHash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:LIBWEBP_WINDOWS_X64_SHA256) {
+            throw "libwebp checksum mismatch: expected $env:LIBWEBP_WINDOWS_X64_SHA256, got $actualHash"
+          }
+
+          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
+          $sourceRoot = Join-Path $extractDir "libwebp-$env:LIBWEBP_VERSION-windows-x64"
+          $releaseDir = 'build\windows\x64\runner\Release'
+          $binDir = Join-Path $releaseDir 'bin'
+          $licenseDir = Join-Path $releaseDir 'licenses\libwebp'
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $licenseDir | Out-Null
+          Copy-Item (Join-Path $sourceRoot 'bin\cwebp.exe') (Join-Path $binDir 'cwebp.exe')
+          Copy-Item 'third_party\libwebp\COPYING' $licenseDir
+          Copy-Item 'third_party\libwebp\PATENTS' $licenseDir
+
+          & (Join-Path $binDir 'cwebp.exe') -version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Bundled cwebp.exe failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --yes
+
+      - name: Package Windows installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler not found: $iscc"
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $env:EPUB_TOOLKIT_VERSION = '${{ needs.version.outputs.app_version }}'
+          $env:EPUB_TOOLKIT_ARTIFACT_SUFFIX = '${{ needs.version.outputs.artifact_suffix }}'
+          & $iscc "windows\installer.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
+          $installer = Get-ChildItem 'dist\epub-toolkit-windows-*-setup.exe' |
+            Select-Object -First 1
+          if ($null -eq $installer) {
+            throw 'Windows installer was not generated'
+          }
+          Write-Host "Generated installer: $($installer.FullName)"
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}
-          path: epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}.zip
+          path: dist/epub-toolkit-windows-${{ needs.version.outputs.artifact_suffix }}-setup.exe
           if-no-files-found: error
 
   ios:
@@ -220,10 +282,12 @@ jobs:
             包含产物：
             - Android APK
             - macOS 应用压缩包
-            - Windows 应用压缩包
+            - Windows 安装程序 EXE
             - iOS 无签名应用压缩包
 
             iOS 产物未签名，不能直接上架或安装到普通设备；如需 TestFlight 或 App Store 发布，需要配置 Apple 证书和 provisioning profile。
+
+            Windows 安装程序暂未进行代码签名，首次运行时可能出现 SmartScreen 提示。
           files: release-assets/*
           fail_on_unmatched_files: true
           generate_release_notes: true

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 APP_PATH="${1:-build/macos/Build/Products/Release/EPUB 工具箱.app}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "App not found: $APP_PATH" >&2
@@ -26,7 +28,8 @@ fi
 RESOURCES="$APP_PATH/Contents/Resources"
 BIN_DIR="$RESOURCES/bin"
 LIB_DIR="$RESOURCES/lib"
-mkdir -p "$BIN_DIR" "$LIB_DIR"
+LICENSE_DIR="$RESOURCES/licenses/libwebp"
+mkdir -p "$BIN_DIR" "$LIB_DIR" "$LICENSE_DIR"
 
 BREW_PREFIX="${HOMEBREW_PREFIX:-}"
 if [[ -z "$BREW_PREFIX" ]]; then
@@ -57,6 +60,8 @@ copy_lib() {
 
 cp -f "$CWEBP" "$BIN_DIR/cwebp"
 chmod 755 "$BIN_DIR/cwebp"
+cp -f "$REPO_ROOT/third_party/libwebp/COPYING" "$LICENSE_DIR/COPYING"
+cp -f "$REPO_ROOT/third_party/libwebp/PATENTS" "$LICENSE_DIR/PATENTS"
 
 copy_lib "$BREW_PREFIX/opt/webp/lib/libwebpdemux.2.dylib" "libwebpdemux.2.dylib"
 copy_lib "$BREW_PREFIX/opt/webp/lib/libwebp.7.dylib" "libwebp.7.dylib"
@@ -87,4 +92,13 @@ done
 codesign --force --sign - "$LIB_DIR"/*.dylib "$BIN_DIR/cwebp" >/dev/null 2>&1 || true
 
 "$BIN_DIR/cwebp" -version >/dev/null
+
+if otool -L "$BIN_DIR/cwebp" "$LIB_DIR"/*.dylib | grep -E '/opt/homebrew|/usr/local/(Homebrew|opt)'; then
+  echo "Bundled cwebp still references Homebrew libraries" >&2
+  exit 1
+fi
+
+# 向已构建的 App 添加文件会改变签名封装，因此最后重新进行 ad-hoc 深度签名。
+codesign --force --deep --sign - "$APP_PATH" >/dev/null
+codesign --verify --deep --strict "$APP_PATH"
 echo "Bundled cwebp into $APP_PATH"
