@@ -14,6 +14,9 @@ import 'epub_image_helper.dart';
 class DownloadImagesOperation {
   DownloadImagesOperation._();
 
+  /// 避免大书逐张串行下载，同时不给图片源站施加过高压力。
+  static const _maxConcurrentDownloads = 6;
+
   /// 图片扩展名与 MIME 类型的映射
   static const _extMimeMap = {
     '.jpg': 'image/jpeg',
@@ -55,28 +58,34 @@ class DownloadImagesOperation {
     }
     final opfDir = EpubImageHelper.opfDir(opfPath);
 
-    // 推断 images 目录
-    String imagesDir = '${opfDir}images/';
-    // 检查 archive 中是否已有 images 目录
-    final hasImagesDir = archive.files.any(
-      (f) => f.name.contains('images/') || f.name.contains('image/'),
-    );
-    if (!hasImagesDir) {
-      imagesDir = 'images/';
-    }
+    // 优先复用书内已有图片目录，保留原目录的大小写（如 OEBPS/Images/）。
+    final imagesDir = _findImagesDir(archive, opfDir);
 
-    // 2. 扫描所有 HTML/XHTML 文件中的网络图片 URL
+    // 2. 扫描所有 HTML/XHTML/CSS 文件中的网络图片 URL。
     final htmlFiles = archive.files.where((f) {
       final lower = f.name.toLowerCase();
       return lower.endsWith('.html') ||
           lower.endsWith('.xhtml') ||
           lower.endsWith('.htm');
     }).toList();
+    final cssFiles = archive.files
+        .where((f) => f.name.toLowerCase().endsWith('.css'))
+        .toList();
 
     final urlSet = <String>{};
     for (final htmlFile in htmlFiles) {
-      final content = utf8.decode(htmlFile.content as List<int>);
+      final content = utf8.decode(
+        htmlFile.content as List<int>,
+        allowMalformed: true,
+      );
       urlSet.addAll(_extractWebImageUrls(content));
+    }
+    for (final cssFile in cssFiles) {
+      final content = utf8.decode(
+        cssFile.content as List<int>,
+        allowMalformed: true,
+      );
+      urlSet.addAll(_extractCssImageUrls(content));
     }
 
     if (urlSet.isEmpty) {
@@ -89,33 +98,57 @@ class DownloadImagesOperation {
     // 3. 下载图片
     final urlToLocal = <String, String>{}; // URL → 本地文件名
     final downloadedImages = <String, Uint8List>{}; // 本地文件名 → 数据
-    final usedNames = <String>{};
+    final usedNames = archive.files
+        .where((file) => file.name.startsWith(imagesDir))
+        .map((file) => p.basename(file.name))
+        .toSet();
 
     var downloadCount = 0;
     var failCount = 0;
 
-    for (final url in urlSet) {
-      try {
-        final data = await _downloadImage(url);
-        if (data == null) {
-          failCount++;
-          log.writeln('  失败: $url');
-          continue;
-        }
+    final client = http.Client();
+    try {
+      final urls = urlSet.toList(growable: false);
+      for (
+        var start = 0;
+        start < urls.length;
+        start += _maxConcurrentDownloads
+      ) {
+        final batch = urls.skip(start).take(_maxConcurrentDownloads);
+        await Future.wait(
+          batch.map((url) async {
+            try {
+              final data = await _downloadImage(client, url);
+              if (data == null) {
+                failCount++;
+                log.writeln('  失败: $url');
+                return;
+              }
 
-        final localName = _generateLocalFilename(url, data, usedNames);
-        urlToLocal[url] = localName;
-        downloadedImages[localName] = data;
-        usedNames.add(localName);
-        downloadCount++;
-        log.writeln(
-          '  下载: $url → $localName '
-          '(${EpubImageHelper.sizeStr(data.length)})',
+              final localName = _generateLocalFilename(url, data, usedNames);
+              urlToLocal[url] = localName;
+              downloadedImages[localName] = data;
+              usedNames.add(localName);
+              downloadCount++;
+              log.writeln(
+                '  下载: $url → $localName '
+                '(${EpubImageHelper.sizeStr(data.length)})',
+              );
+            } catch (e) {
+              failCount++;
+              log.writeln('  失败: $url - $e');
+            }
+          }),
         );
-      } catch (e) {
-        failCount++;
-        log.writeln('  失败: $url - $e');
+
+        final completed = (start + _maxConcurrentDownloads).clamp(
+          0,
+          urls.length,
+        );
+        log.writeln('  进度: $completed/${urls.length}');
       }
+    } finally {
+      client.close();
     }
 
     if (downloadCount == 0) {
@@ -125,12 +158,38 @@ class DownloadImagesOperation {
 
     // 4. 更新 HTML 引用和 OPF manifest
     for (final htmlFile in htmlFiles) {
-      final content = utf8.decode(htmlFile.content as List<int>);
-      final updated = _updateHtmlReferences(content, urlToLocal, imagesDir);
+      final content = utf8.decode(
+        htmlFile.content as List<int>,
+        allowMalformed: true,
+      );
+      final updated = _updateContentReferences(
+        content,
+        urlToLocal,
+        imagesDir,
+        htmlFile.name,
+      );
       if (updated != content) {
         EpubImageHelper.addOrReplaceFile(
           archive,
           ArchiveFile(htmlFile.name, updated.length, utf8.encode(updated)),
+        );
+      }
+    }
+    for (final cssFile in cssFiles) {
+      final content = utf8.decode(
+        cssFile.content as List<int>,
+        allowMalformed: true,
+      );
+      final updated = _updateContentReferences(
+        content,
+        urlToLocal,
+        imagesDir,
+        cssFile.name,
+      );
+      if (updated != content) {
+        EpubImageHelper.addOrReplaceFile(
+          archive,
+          ArchiveFile(cssFile.name, updated.length, utf8.encode(updated)),
         );
       }
     }
@@ -175,18 +234,18 @@ class DownloadImagesOperation {
   static Set<String> _extractWebImageUrls(String html) {
     final urls = <String>{};
 
-    // 匹配 <img src="http...">
+    // 匹配 img/source 的 src 与常见懒加载属性。
     final imgPattern = RegExp(
-      r"""<img\b[^>]*?\bsrc\s*=\s*["'](https?://[^"']+)["']""",
+      r"""<(?:img|source)\b[^>]*?\b(?:src|data-src|data-original|data-lazy-src)\s*=\s*["'](https?://[^"']+)["']""",
       caseSensitive: false,
     );
     for (final match in imgPattern.allMatches(html)) {
       urls.add(match.group(1)!);
     }
 
-    // 匹配 <image xlink:href="http...">
+    // 匹配 SVG <image href/xlink:href="http...">。
     final imagePattern = RegExp(
-      r"""<image\b[^>]*?\bxlink:href\s*=\s*["'](https?://[^"']+)["']""",
+      r"""<image\b[^>]*?\b(?:xlink:href|href)\s*=\s*["'](https?://[^"']+)["']""",
       caseSensitive: false,
     );
     for (final match in imagePattern.allMatches(html)) {
@@ -196,34 +255,99 @@ class DownloadImagesOperation {
     return urls;
   }
 
+  /// 提取样式表中的 background-image 等网络图片。
+  static Set<String> _extractCssImageUrls(String css) {
+    final urls = <String>{};
+    final pattern = RegExp(
+      r'''url\(\s*["']?(https?://[^\s'"\)]+)["']?\s*\)''',
+      caseSensitive: false,
+    );
+    for (final match in pattern.allMatches(css)) {
+      urls.add(match.group(1)!);
+    }
+    return urls;
+  }
+
   /// 下载图片
   ///
   /// 返回图片二进制数据，失败返回 null
-  static Future<Uint8List?> _downloadImage(String url) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse(url),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                  'AppleWebKit/537.36 (KHTML, like Gecko) '
-                  'Chrome/91.0.4472.124 Safari/537.36',
-            },
-          )
-          .timeout(const Duration(seconds: 30));
+  static Future<Uint8List?> _downloadImage(
+    http.Client client,
+    String url,
+  ) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final response = await client
+            .get(
+              Uri.parse(url),
+              headers: const {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/122.0.0.0 Safari/537.36',
+                'Accept':
+                    'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+              },
+            )
+            .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode != 200) {
-        return null;
+        final data = response.bodyBytes;
+        if (response.statusCode == 200 && _isImageResponse(response, data)) {
+          return data;
+        }
+
+        // 只对临时错误重试，404/403 等明确拒绝不反复请求。
+        if (response.statusCode != 429 && response.statusCode < 500) {
+          return null;
+        }
+      } catch (_) {
+        // 网络中断和超时可重试。
       }
 
-      final data = response.bodyBytes;
-      if (data.isEmpty) return null;
-
-      return data;
-    } catch (e) {
-      return null;
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+      }
     }
+    return null;
+  }
+
+  static bool _isImageResponse(http.Response response, Uint8List data) {
+    if (data.isEmpty) return false;
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    if (contentType.startsWith('image/')) return true;
+
+    // 一些图床会返回 application/octet-stream，使用文件头兜底校验。
+    if (data.length >= 8 &&
+        data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) {
+      return true;
+    }
+    if (data.length >= 3 &&
+        data[0] == 0xFF &&
+        data[1] == 0xD8 &&
+        data[2] == 0xFF) {
+      return true;
+    }
+    if (data.length >= 6 &&
+        ascii
+            .decode(data.sublist(0, 6), allowInvalid: true)
+            .startsWith('GIF')) {
+      return true;
+    }
+    if (data.length >= 12 &&
+        ascii.decode(data.sublist(8, 12), allowInvalid: true) == 'WEBP') {
+      return true;
+    }
+    final preview = ascii
+        .decode(
+          data.sublist(0, data.length.clamp(0, 256).toInt()),
+          allowInvalid: true,
+        )
+        .toLowerCase();
+    return preview.contains('<svg');
   }
 
   /// 生成本地文件名
@@ -272,25 +396,27 @@ class DownloadImagesOperation {
     return name;
   }
 
-  /// 更新 HTML 中的网络图片引用为本地路径
-  static String _updateHtmlReferences(
+  /// 更新 HTML/CSS 中的网络图片引用为相对于当前文件的本地路径。
+  static String _updateContentReferences(
     String content,
     Map<String, String> urlToLocal,
     String imagesDir,
+    String sourcePath,
   ) {
     var result = content;
-
-    // 计算相对路径（HTML 文件通常在 OEBPS/Text/ 下，images 在 OEBPS/images/ 下）
-    final relPath = '../images/';
 
     for (final entry in urlToLocal.entries) {
       final url = entry.key;
       final localName = entry.value;
-      final localPath = '$relPath$localName';
+      final targetPath = '$imagesDir$localName';
+      final localPath = p
+          .relative(targetPath, from: p.dirname(sourcePath))
+          .replaceAll('\\', '/');
 
       // 替换双引号和单引号引用
       result = result.replaceAll('"$url"', '"$localPath"');
       result = result.replaceAll("'$url'", "'$localPath'");
+      result = result.replaceAll('url($url)', 'url($localPath)');
 
       // URL 编码的情况
       final encoded = Uri.encodeComponent(url);
@@ -301,6 +427,16 @@ class DownloadImagesOperation {
     }
 
     return result;
+  }
+
+  static String _findImagesDir(Archive archive, String opfDir) {
+    for (final file in archive.files) {
+      final lower = file.name.toLowerCase();
+      if (!lower.contains('/images/') && !lower.contains('/image/')) continue;
+      final index = file.name.lastIndexOf('/');
+      if (index >= 0) return file.name.substring(0, index + 1);
+    }
+    return '${opfDir}Images/';
   }
 
   /// 更新 OPF manifest：在 manifest 闭合标签前插入新 item

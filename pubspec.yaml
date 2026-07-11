@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.0.5+5
+version: 1.0.6+6
 
 environment:
   sdk: ^3.12.0
@@ -65,6 +65,7 @@ dependencies:
 
   # 传统中文文本编码（GBK、Big5，纯 Dart、全平台）
   enough_convert: ^1.6.0
+  webview_flutter_windows: ^1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

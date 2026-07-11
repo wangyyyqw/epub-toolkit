@@ -310,10 +310,10 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
     }
   }
 
-  /// 打开应用内网页版 Send to Kindle
+  /// 打开网页推送。
   ///
-  /// 使用 WebView 在应用内加载 https://www.amazon.com/sendtokindle
-  /// 而不是跳转到外部浏览器。
+  /// 移动端、macOS 与 Windows 使用应用内网页；Windows 使用 Edge WebView2。
+  /// Linux 暂无受支持的内嵌实现。
   void _openWebSend() {
     context.go('/send-web');
   }
