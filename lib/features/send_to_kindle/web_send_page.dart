@@ -46,6 +46,9 @@ class _WebSendPageState extends State<WebSendPage> {
   String? _windowsError;
   bool _browserOpened = false;
   bool _browserLaunchFailed = false;
+  double _webViewportWidth = 0;
+  Timer? _webFitTimer;
+  Timer? _lateWebFitTimer;
 
   bool get _usesExternalBrowser =>
       widget.forceExternalBrowser ?? Platform.isLinux;
@@ -69,10 +72,15 @@ class _WebSendPageState extends State<WebSendPage> {
   Future<void> _initializeWindowsWebView() async {
     windows_webview.WebviewController? controller;
     try {
-      final runtimeVersion =
+      var runtimeVersion =
           await windows_webview.WebviewController.getWebViewVersion();
       if (runtimeVersion == null) {
-        throw StateError('未检测到 Microsoft Edge WebView2 Runtime');
+        await _installWindowsWebViewRuntime();
+        runtimeVersion =
+            await windows_webview.WebviewController.getWebViewVersion();
+      }
+      if (runtimeVersion == null) {
+        throw StateError('Microsoft Edge WebView2 Runtime 未能完成安装');
       }
 
       controller = windows_webview.WebviewController();
@@ -102,6 +110,7 @@ class _WebSendPageState extends State<WebSendPage> {
         _windowsReady = true;
         _isLoading = false;
       });
+      _scheduleWebContentFit();
     } catch (error) {
       if (controller != null && controller != _windowsController) {
         unawaited(controller.dispose());
@@ -112,6 +121,24 @@ class _WebSendPageState extends State<WebSendPage> {
           _windowsError = error.toString();
         });
       }
+    }
+  }
+
+  /// 正常安装会先静默安装 WebView2。此处覆盖旧版升级后的首次进入，
+  /// 让用户点击网页推送后直接完成环境准备并进入网页。
+  Future<void> _installWindowsWebViewRuntime() async {
+    final executable = File(Platform.resolvedExecutable);
+    final installer = File(
+      '${executable.parent.path}${Platform.pathSeparator}'
+      'MicrosoftEdgeWebView2Setup.exe',
+    );
+    if (!await installer.exists()) return;
+
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      await Process.run(installer.path, const ['/silent', '/install']);
+    } catch (error) {
+      debugPrint('WebView2 Runtime 安装失败: $error');
     }
   }
 
@@ -128,6 +155,7 @@ class _WebSendPageState extends State<WebSendPage> {
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _isLoading = false);
+            _scheduleWebContentFit();
           },
           onWebResourceError: (error) {
             debugPrint('WebView 错误: ${error.description}');
@@ -193,6 +221,8 @@ class _WebSendPageState extends State<WebSendPage> {
 
   @override
   void dispose() {
+    _webFitTimer?.cancel();
+    _lateWebFitTimer?.cancel();
     _windowsLoadingSubscription?.cancel();
     _windowsHistorySubscription?.cancel();
     final controller = _windowsController;
@@ -245,7 +275,14 @@ class _WebSendPageState extends State<WebSendPage> {
     return Column(
       children: [
         if (isMobile) _buildMobileBrowserBar(context),
-        Expanded(child: WebViewWidget(controller: controller)),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              _onWebViewportChanged(constraints.maxWidth);
+              return WebViewWidget(controller: controller);
+            },
+          ),
+        ),
         _buildLoginHint(context, compact: isMobile),
       ],
     );
@@ -256,73 +293,102 @@ class _WebSendPageState extends State<WebSendPage> {
     if (controller != null && _windowsReady) {
       return Column(
         children: [
-          Expanded(child: windows_webview.Webview(controller)),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _onWebViewportChanged(constraints.maxWidth);
+                return windows_webview.Webview(controller);
+              },
+            ),
+          ),
           _buildLoginHint(context, compact: false),
         ],
       );
     }
 
-    final error = _windowsError;
-    if (error == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: context.themeCard,
-              borderRadius: BorderRadius.circular(AppTheme.radiusL),
-              border: Border.all(color: context.themeDividerLight),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.browser_not_supported_outlined,
-                  size: 42,
-                  color: context.themeAccent,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '内置浏览器无法启动',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: context.themeTextPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '网页推送使用 Microsoft Edge WebView2。请安装或更新 WebView2 Runtime 后重新打开此页。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: context.themeTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _windowsError = null;
-                      _isLoading = true;
-                    });
-                    _initializeWindowsWebView();
-                  },
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('重新检测'),
-                ),
-              ],
-            ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
-        ),
+          const SizedBox(height: 14),
+          Text(
+            _windowsError == null ? '正在打开网页推送…' : '正在准备内置浏览器…',
+            style: TextStyle(fontSize: 13, color: context.themeTextSecondary),
+          ),
+        ],
       ),
     );
+  }
+
+  void _onWebViewportChanged(double width) {
+    if (width <= 0 || (width - _webViewportWidth).abs() < 2) return;
+    _webViewportWidth = width;
+    _scheduleWebContentFit();
+  }
+
+  /// Amazon 的桌面页有最小布局宽度。每次网页加载或 Flutter 窗口改变
+  /// 大小时，按可用宽度缩放网页正文，避免产生横向滚动条。
+  void _scheduleWebContentFit() {
+    if (_webViewportWidth <= 0) return;
+    _webFitTimer?.cancel();
+    _lateWebFitTimer?.cancel();
+    _webFitTimer = Timer(const Duration(milliseconds: 260), () {
+      unawaited(_fitWebContentToViewport());
+    });
+    // Amazon 页面会在初次加载后继续异步插入导航和图片，再校正一次。
+    _lateWebFitTimer = Timer(const Duration(milliseconds: 1200), () {
+      unawaited(_fitWebContentToViewport());
+    });
+  }
+
+  Future<void> _fitWebContentToViewport() async {
+    if (!mounted || _webViewportWidth <= 0) return;
+    final script =
+        '''
+      (() => {
+        const viewportWidth = ${_webViewportWidth.floor()};
+        const root = document.documentElement;
+        const body = document.body;
+        if (!body || viewportWidth <= 0) return;
+        root.style.overflowX = 'visible';
+        body.style.zoom = '1';
+        requestAnimationFrame(() => {
+          let contentWidth = Math.max(
+            root.scrollWidth || 0,
+            body.scrollWidth || 0,
+            root.offsetWidth || 0,
+            body.offsetWidth || 0,
+          );
+          // 部分 Amazon 导航元素在普通 scrollWidth 之外溢出；把其实际
+          // 右边界也纳入测量，防止右侧登录、购物车等内容被裁掉。
+          for (const element of body.querySelectorAll('*')) {
+            const rect = element.getBoundingClientRect();
+            contentWidth = Math.max(contentWidth, rect.right, rect.width);
+          }
+          const scale = Math.min(
+            1,
+            Math.max(0.1, (viewportWidth - 8) / Math.max(contentWidth, 1)),
+          );
+          body.style.zoom = String(scale);
+          root.style.overflowX = 'hidden';
+        });
+      })();
+    ''';
+    try {
+      final windowsController = _windowsController;
+      if (windowsController != null) {
+        await windowsController.executeScript(script);
+      } else {
+        await _controller?.runJavaScript(script);
+      }
+    } catch (error) {
+      debugPrint('网页自适应缩放失败: $error');
+    }
   }
 
   Widget _buildMobileBrowserBar(BuildContext context) {

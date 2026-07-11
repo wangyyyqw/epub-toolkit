@@ -186,6 +186,17 @@ jobs:
             throw "Bundled cwebp.exe failed with exit code $LASTEXITCODE"
           }
 
+      - name: Bundle WebView2 Runtime installer
+        shell: pwsh
+        run: |
+          $releaseDir = 'build\windows\x64\runner\Release'
+          $installer = Join-Path $releaseDir 'MicrosoftEdgeWebView2Setup.exe'
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid') {
+            throw "WebView2 installer signature is invalid: $($signature.Status)"
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
