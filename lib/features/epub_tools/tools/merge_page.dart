@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/file_service.dart';
 import '../epub_background_operation.dart';
 import '../../../shared/providers/toast_provider.dart';
+import '../../../shared/widgets/file_drop_target.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
 
@@ -218,71 +219,77 @@ class _MergePageState extends State<MergePage> {
                 ),
                 const SizedBox(height: 8),
                 // 文件列表
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: cs.outline),
-                  ),
-                  child: _mergeInputPaths.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              '请选择至少 2 个 EPUB 文件',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: cs.onSurfaceVariant.withValues(
-                                  alpha: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: _mergeInputPaths.length,
-                          itemBuilder: (context, index) {
-                            return ListTile(
-                              dense: true,
-                              leading: CircleAvatar(
-                                radius: 12,
-                                backgroundColor: cs.primary.withValues(
-                                  alpha: 0.12,
-                                ),
-                                child: Text(
-                                  '${index + 1}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: cs.primary,
-                                    fontWeight: FontWeight.bold,
+                FileDropTarget(
+                  onFilesDropped: (paths) {
+                    FileService.primeDroppedPaths(paths);
+                    _pickMergeFiles();
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: cs.outline),
+                    ),
+                    child: _mergeInputPaths.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                '请选择至少 2 个 EPUB 文件，或拖入多个 EPUB',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: cs.onSurfaceVariant.withValues(
+                                    alpha: 0.5,
                                   ),
                                 ),
                               ),
-                              title: Text(
-                                truncatePath(
-                                  _mergeInputPaths[index],
-                                  maxLen: 45,
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: _mergeInputPaths.length,
+                            itemBuilder: (context, index) {
+                              return ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: cs.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  child: Text(
+                                    '${index + 1}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
-                                style: const TextStyle(fontSize: 13),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                p.basenameWithoutExtension(
-                                  _mergeInputPaths[index],
+                                title: Text(
+                                  truncatePath(
+                                    _mergeInputPaths[index],
+                                    maxLen: 45,
+                                  ),
+                                  style: const TextStyle(fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: cs.outline,
+                                subtitle: Text(
+                                  p.basenameWithoutExtension(
+                                    _mergeInputPaths[index],
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.outline,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          },
-                        ),
+                              );
+                            },
+                          ),
+                  ),
                 ),
                 if (_mergeInputPaths.isNotEmpty)
                   Padding(

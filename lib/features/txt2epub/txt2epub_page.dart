@@ -12,6 +12,7 @@ import 'package:epub_gadget/features/txt2epub/services/output_naming.dart';
 import 'package:epub_gadget/features/txt2epub/services/text_cleaner.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 import 'package:epub_gadget/shared/widgets/base_button.dart';
+import 'package:epub_gadget/shared/widgets/file_drop_target.dart';
 import 'package:epub_gadget/shared/widgets/output_log.dart';
 
 /// 单个标题级别的配置
@@ -640,7 +641,13 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   }) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    return InkWell(
+    final defaultDropHandler = _shouldAcceptDroppedFiles(label)
+        ? (List<String> paths) {
+            FileService.primeDroppedPaths(paths);
+            onTap();
+          }
+        : null;
+    final row = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -692,6 +699,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         ),
       ),
     );
+    return FileDropTarget(onFilesDropped: defaultDropHandler, child: row);
   }
 
   Widget _buildSettingsCard({required Widget child}) {
@@ -1106,6 +1114,14 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         ],
       ),
     );
+  }
+
+  bool _shouldAcceptDroppedFiles(String label) {
+    if (label.contains('输出') || label.contains('保存')) return false;
+    return label.contains('文件') ||
+        label.contains('图片') ||
+        label.toUpperCase().contains('EPUB') ||
+        label.toUpperCase().contains('TXT');
   }
 
   Widget _buildChip(

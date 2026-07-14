@@ -18,6 +18,7 @@ import '../features/epub_tools/tools/span_to_footnote_page.dart';
 import '../features/epub_tools/tools/yuewei_page.dart';
 import '../features/epub_tools/tools/zhangyue_page.dart';
 import '../features/epub_tools/tools/img_compress_page.dart';
+import '../features/epub_tools/tools/image_watermark_page.dart';
 import '../features/epub_tools/tools/img_to_webp_page.dart';
 import '../features/epub_tools/tools/webp_to_img_page.dart';
 import '../features/epub_tools/tools/download_images_page.dart';
@@ -114,6 +115,10 @@ class AppRouter {
           GoRoute(
             path: '/epub-tool/img-to-webp',
             builder: (context, state) => const ImgToWebpPage(),
+          ),
+          GoRoute(
+            path: '/epub-tool/image-watermark',
+            builder: (context, state) => const ImageWatermarkPage(),
           ),
           GoRoute(
             path: '/epub-tool/webp-to-img',

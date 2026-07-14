@@ -50,6 +50,43 @@ class FileService {
   static bool get _isDesktop =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
+  static List<String>? _pendingDroppedPaths;
+
+  static void primeDroppedPaths(List<String> paths) {
+    _pendingDroppedPaths = paths
+        .where((path) => path.trim().isNotEmpty)
+        .toList();
+  }
+
+  static List<String>? _takePendingDroppedPaths() {
+    final paths = _pendingDroppedPaths;
+    _pendingDroppedPaths = null;
+    if (paths == null || paths.isEmpty) return null;
+    return paths;
+  }
+
+  static bool hasExtension(String path, List<String> extensions) {
+    final ext = p.extension(path).toLowerCase().replaceFirst('.', '');
+    return extensions
+        .map((e) => e.toLowerCase().replaceFirst('.', ''))
+        .contains(ext);
+  }
+
+  static List<String> filterPathsByExtensions(
+    List<String> paths,
+    List<String> extensions,
+  ) {
+    return paths.where((path) => hasExtension(path, extensions)).toList();
+  }
+
+  static String? firstPathByExtensions(
+    List<String> paths,
+    List<String> extensions,
+  ) {
+    final matches = filterPathsByExtensions(paths, extensions);
+    return matches.isEmpty ? null : matches.first;
+  }
+
   static Future<Directory> _existingOutputDirectory(
     String? directoryPath,
   ) async {
@@ -77,6 +114,16 @@ class FileService {
     List<String>? allowedExtensions,
     String title = '选择文件',
   }) async {
+    final dropped = _takePendingDroppedPaths();
+    if (dropped != null) {
+      final matches = _filterDroppedPaths(
+        dropped,
+        type: type,
+        allowedExtensions: allowedExtensions,
+      );
+      if (matches.isNotEmpty) return matches.first;
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: type,
       allowedExtensions: allowedExtensions,
@@ -94,6 +141,9 @@ class FileService {
     List<String> extensions, {
     String title = '选择文件',
   }) async {
+    final droppedPath = _takeFirstDroppedPathByExtensions(extensions);
+    if (droppedPath != null) return droppedPath;
+
     // 先用 custom 过滤；如 macOS 上 custom 过滤异常则降级到 any + 后置校验
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -129,6 +179,16 @@ class FileService {
     List<String>? allowedExtensions,
     String title = '选择文件（可多选）',
   }) async {
+    final dropped = _takePendingDroppedPaths();
+    if (dropped != null) {
+      final matches = _filterDroppedPaths(
+        dropped,
+        type: type,
+        allowedExtensions: allowedExtensions,
+      );
+      if (matches.isNotEmpty) return matches;
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: type,
       allowedExtensions: allowedExtensions,
@@ -149,6 +209,12 @@ class FileService {
   ///
   /// 返回文件路径列表，用户取消则返回 null
   static Future<List<String>?> pickMultipleEpubs() async {
+    final dropped = _takePendingDroppedPaths();
+    if (dropped != null) {
+      final matches = filterPathsByExtensions(dropped, ['epub']);
+      if (matches.isNotEmpty) return matches;
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['epub'],
@@ -167,6 +233,34 @@ class FileService {
   /// 选择 TXT 文件
   static Future<String?> pickTxt() async {
     return pickFileByExtensions(['txt'], title: '选择 TXT 文件');
+  }
+
+  static String? _takeFirstDroppedPathByExtensions(List<String> extensions) {
+    final dropped = _takePendingDroppedPaths();
+    if (dropped == null) return null;
+    return firstPathByExtensions(dropped, extensions);
+  }
+
+  static List<String> _filterDroppedPaths(
+    List<String> paths, {
+    required FileType type,
+    List<String>? allowedExtensions,
+  }) {
+    if (allowedExtensions != null && allowedExtensions.isNotEmpty) {
+      return filterPathsByExtensions(paths, allowedExtensions);
+    }
+    if (type == FileType.image) {
+      return filterPathsByExtensions(paths, [
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'bmp',
+        'gif',
+      ]);
+    }
+    if (type == FileType.custom) return const [];
+    return paths;
   }
 
   /// 保存文件对话框

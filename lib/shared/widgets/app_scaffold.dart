@@ -133,6 +133,11 @@ final List<NavItem> _navGroups = [
         route: '/epub-tool/img-to-webp',
       ),
       const NavItem(
+        label: '图片水印',
+        icon: Icons.fingerprint_outlined,
+        route: '/epub-tool/image-watermark',
+      ),
+      const NavItem(
         label: 'WebP 转图片',
         icon: Icons.image_search_outlined,
         route: '/epub-tool/webp-to-img',
@@ -519,7 +524,7 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(
-              'v1.0.8',
+              'v1.0.9',
               style: TextStyle(
                 fontSize: 11,
                 color: context.themeTextTertiary.withValues(alpha: 0.5),

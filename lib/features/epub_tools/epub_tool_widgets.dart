@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/file_service.dart';
 import '../../core/theme.dart';
+import '../../shared/widgets/file_drop_target.dart';
 
 /// EPUB 工具公共 UI 组件库（阅微风格）
 
@@ -244,8 +246,16 @@ Widget buildFilePickerRow(
   required String hint,
   required VoidCallback onTap,
   required bool isComplete,
+  FilesDroppedCallback? onFilesDropped,
+  bool dropEnabled = true,
 }) {
-  return InkWell(
+  final defaultDropHandler = _shouldAcceptDroppedFiles(label)
+      ? (List<String> paths) {
+          FileService.primeDroppedPaths(paths);
+          onTap();
+        }
+      : null;
+  final row = InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(8),
     child: Container(
@@ -308,6 +318,19 @@ Widget buildFilePickerRow(
       ),
     ),
   );
+  return FileDropTarget(
+    enabled: dropEnabled,
+    onFilesDropped: onFilesDropped ?? defaultDropHandler,
+    child: row,
+  );
+}
+
+bool _shouldAcceptDroppedFiles(String label) {
+  if (label.contains('输出') || label.contains('保存')) return false;
+  return label.contains('文件') ||
+      label.contains('图片') ||
+      label.toUpperCase().contains('EPUB') ||
+      label.toUpperCase().contains('TXT');
 }
 
 /// 紧凑文本输入框（带标签）

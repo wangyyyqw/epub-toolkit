@@ -72,6 +72,8 @@ class DashboardPage extends StatelessWidget {
             delegate: SliverChildListDelegate([
               _WelcomeCard(),
               const SizedBox(height: 24),
+              _ThanksCard(),
+              const SizedBox(height: 24),
               const _SectionHeading(
                 title: '推荐',
                 subtitle: '感谢这些优秀的阅读、制作与分享项目。',
@@ -85,8 +87,6 @@ class DashboardPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _PlatformGrid(items: _platforms),
-              const SizedBox(height: 24),
-              _ThanksCard(),
             ]),
           ),
         ),

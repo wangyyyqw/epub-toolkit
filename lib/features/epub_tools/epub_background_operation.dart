@@ -11,6 +11,7 @@ import '../encrypt_font/encrypt_font.dart';
 import '../epub_to_txt/epub_to_txt.dart';
 import '../font_subset/font_subset.dart';
 import '../footnote_to_comment/footnote_to_comment.dart';
+import '../image_watermark/image_watermark.dart';
 import '../img_compress/img_compress.dart';
 import '../list_font_targets/list_font_targets.dart';
 import '../list_split_targets/list_split_targets.dart';
@@ -34,6 +35,8 @@ enum EpubBackgroundOperation {
   epubToTxt,
   adClean,
   imgCompress,
+  embedImageWatermark,
+  inspectImageWatermark,
   webpToImg,
   downloadImages,
   phonetic,
@@ -110,6 +113,16 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
         outputPath: args['outputPath'] as String,
         jpegQuality: args['jpegQuality'] as int,
         pngToJpg: args['pngToJpg'] as bool,
+      );
+    case 'embedImageWatermark':
+      return ImageWatermarkOperation.embed(
+        epubPath: args['epubPath'] as String,
+        outputPath: args['outputPath'] as String,
+        watermarkText: args['watermarkText'] as String,
+      );
+    case 'inspectImageWatermark':
+      return ImageWatermarkOperation.inspect(
+        epubPath: args['epubPath'] as String,
       );
     case 'webpToImg':
       return WebpToImgOperation.execute(

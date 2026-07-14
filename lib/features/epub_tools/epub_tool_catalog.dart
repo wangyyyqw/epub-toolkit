@@ -19,7 +19,7 @@ class EpubToolMeta {
   });
 }
 
-/// 24 个 EPUB 工具，按分类分组
+/// EPUB 工具，按分类分组
 class EpubToolCatalog {
   EpubToolCatalog._();
 
@@ -162,6 +162,14 @@ class EpubToolCatalog {
           icon: Icons.image_outlined,
           color: Color(0xFF7C3AED),
           route: '/epub-tool/img-to-webp',
+        ),
+        EpubToolMeta(
+          id: 'imageWatermark',
+          label: '图片水印',
+          desc: '向 EPUB 图片写入或读取文本水印',
+          icon: Icons.fingerprint_outlined,
+          color: Color(0xFF0F766E),
+          route: '/epub-tool/image-watermark',
         ),
         EpubToolMeta(
           id: 'webpToImg',
