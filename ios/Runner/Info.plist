@@ -70,5 +70,12 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- WiFi 传书：本地网络权限描述 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>EPUB 工具箱需要使用本地网络，将书籍通过 WiFi 传输到 Kindle。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 </dict>
 </plist>

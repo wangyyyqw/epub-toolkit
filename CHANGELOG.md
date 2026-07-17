@@ -1,5 +1,25 @@
 # 更新日志
 
+## 1.1.0 - 2026-07-17
+
+### 新增
+
+- 新增“WiFi 局域网传书”工具，在本机启动 HTTP 服务，Kindle 浏览器访问局域网地址即可下载书库中的书籍，支持 iOS / Android / Windows / macOS。
+- 传书书库支持导入、重命名、删除与按书名、格式搜索；元数据持久化到本地，重启不丢失。
+- 下载文件名自动转纯 ASCII 短名，AZW3 伪装为 `.azw` 扩展名，MOBI / AZW 使用 `application/octet-stream`，规避 Kindle 实验性浏览器对中文名与 MIME 的限制。
+- 大文件采用流式传输，避免一次性读入内存；端口占用时自动递增重试。
+- 侧边栏“Kindle 推送”分类下新增“WiFi 传书”入口。
+- 新增单元测试覆盖书籍模型、Kindle 下载兼容层与书库导入、删除、重命名、过滤等操作（12 项）。
+
+### 权限
+
+- iOS 新增 `NSLocalNetworkUsageDescription` 与 `NSBonjourServices`（`_http._tcp`）本地网络权限描述。
+- macOS 新增 `com.apple.security.network.server` 权限，允许本地起 HTTP 服务。
+
+### 构建与发布
+
+- 全平台应用版本统一更新为 `1.1.0`，构建号为 `10`。
+
 ## 1.0.9 - 2026-07-14
 
 ### 新增

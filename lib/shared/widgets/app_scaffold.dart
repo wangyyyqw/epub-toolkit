@@ -206,6 +206,11 @@ final List<NavItem> _navGroups = [
         route: '/send-email',
       ),
       const NavItem(label: '网页推送', icon: Icons.language, route: '/send-web'),
+      const NavItem(
+        label: 'WiFi 传书',
+        icon: Icons.wifi_rounded,
+        route: '/wifi-transfer',
+      ),
     ],
   ),
   NavItem(

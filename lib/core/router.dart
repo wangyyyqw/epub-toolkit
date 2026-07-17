@@ -33,6 +33,7 @@ import '../features/metadata/metadata_page.dart';
 import '../features/send_to_kindle/send_to_kindle_page.dart';
 import '../features/send_to_kindle/web_send_page.dart';
 import '../features/tutorial/tutorial_page.dart';
+import '../features/wifi_transfer/wifi_transfer_page.dart';
 import '../shared/widgets/app_scaffold.dart';
 
 /// 路由配置：侧边栏 + 内容区的 ShellRoute 结构
@@ -171,6 +172,11 @@ class AppRouter {
             path: '/send-web',
             name: 'send_web',
             builder: (context, state) => const WebSendPage(),
+          ),
+          GoRoute(
+            path: '/wifi-transfer',
+            name: 'wifi_transfer',
+            builder: (context, state) => const WifiTransferPage(),
           ),
           GoRoute(
             path: '/tutorial',

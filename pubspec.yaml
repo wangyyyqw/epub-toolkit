@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.0.9+9
+version: 1.1.0+10
 
 environment:
   sdk: ^3.12.0
@@ -53,6 +53,9 @@ dependencies:
 
   # SMTP 邮件发送（Kindle 邮箱推送）
   mailer: ^6.2.0
+
+  # UUID 生成（WiFi 传书书库唯一 ID）
+  uuid: ^4.5.1
 
   # 打开网页版 Send to Kindle
   url_launcher: ^6.3.1
