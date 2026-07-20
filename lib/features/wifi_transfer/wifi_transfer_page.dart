@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/file_service.dart';
@@ -32,20 +33,28 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
 
   String _searchText = '';
   bool _initialized = false;
+  bool _initializing = true;
 
   @override
   void initState() {
     super.initState();
     _server = WifiHttpServer(_library);
     _server.addListener(_onServerChanged);
+    _library.addListener(_onLibraryChanged);
     _initLibrary();
   }
 
   /// 初始化书库并记录日志。
   Future<void> _initLibrary() async {
+    if (!_initializing && mounted) {
+      setState(() => _initializing = true);
+    }
     await _library.init();
     if (!mounted) return;
-    setState(() => _initialized = true);
+    setState(() {
+      _initialized = _library.isReady;
+      _initializing = false;
+    });
     if (_library.errorMessage != null) {
       _logController.append('ERROR: ${_library.errorMessage}');
     } else {
@@ -53,12 +62,22 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
     }
   }
 
+  /// 响应书库导入、删除、重命名与错误状态变化，立即刷新页面。
+  void _onLibraryChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// 响应 HTTP 服务生命周期变化并记录关键状态。
   void _onServerChanged() {
     if (!mounted) return;
     setState(() {});
     final status = _server.status;
     if (status == WifiServerStatus.running && _server.address != null) {
       _logController.append('服务已启动：${_server.address}');
+      for (final alternative in _server.addresses.skip(1)) {
+        _logController.append('备用地址：$alternative');
+      }
       _logController.append('在 Kindle 浏览器中打开上述地址即可下载');
     } else if (status == WifiServerStatus.error) {
       _logController.append('ERROR: ${_server.errorMessage}');
@@ -70,6 +89,7 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
   @override
   void dispose() {
     _server.removeListener(_onServerChanged);
+    _library.removeListener(_onLibraryChanged);
     _server.dispose();
     _library.dispose();
     _logController.dispose();
@@ -104,21 +124,30 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
 
   /// 启动或停止服务。
   Future<void> _toggleServer() async {
-    if (_server.isRunning) {
-      await _server.stop();
-    } else {
-      await _server.start();
+    try {
+      if (_server.isRunning) {
+        await _server.stop();
+      } else {
+        await _server.start();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _logController.append('ERROR: 服务操作失败：$e');
+      context.read<ToastProvider>().showError('服务操作失败');
     }
   }
 
-  /// 复制地址到剪贴板。
-  void _copyAddress() {
-    final addr = _server.address;
-    if (addr == null) return;
-    // 简单提示，不引入额外依赖
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('地址已显示，请在 Kindle 浏览器输入：$addr')),
-    );
+  /// 复制地址到系统剪贴板，并在成功后提示用户。
+  Future<void> _copyAddress(String address) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: address));
+      if (!mounted) return;
+      context.read<ToastProvider>().showSuccess('地址已复制');
+    } catch (e) {
+      if (!mounted) return;
+      _logController.append('ERROR: 复制地址失败：$e');
+      context.read<ToastProvider>().showError('复制地址失败');
+    }
   }
 
   @override
@@ -152,14 +181,33 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
   Widget _buildServerCard() {
     final isRunning = _server.isRunning;
     final isStarting = _server.status == WifiServerStatus.starting;
-    final addr = _server.address;
+    final statusLabel = switch (_server.status) {
+      WifiServerStatus.starting => '启动中',
+      WifiServerStatus.running => '运行中',
+      WifiServerStatus.error => '启动失败',
+      WifiServerStatus.stopped => '已停止',
+    };
+    final statusColor = switch (_server.status) {
+      WifiServerStatus.running => context.themeSuccess,
+      WifiServerStatus.error => context.themeError,
+      WifiServerStatus.starting => context.themeAccent,
+      WifiServerStatus.stopped => context.themeTextTertiary,
+    };
+    final statusIcon = switch (_server.status) {
+      WifiServerStatus.running => Icons.check_circle,
+      WifiServerStatus.error => Icons.error_outline,
+      WifiServerStatus.starting => Icons.pending_outlined,
+      WifiServerStatus.stopped => Icons.radio_button_unchecked,
+    };
     return BaseCard(
       title: '传书服务',
       trailing: BaseButton(
         label: isRunning ? '停止服务' : (isStarting ? '启动中…' : '启动服务'),
         icon: isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
         loading: isStarting,
-        variant: isRunning ? BaseButtonVariant.danger : BaseButtonVariant.primary,
+        variant: isRunning
+            ? BaseButtonVariant.danger
+            : BaseButtonVariant.primary,
         onPressed: _initialized && !isStarting ? _toggleServer : null,
       ),
       child: Column(
@@ -167,18 +215,14 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
         children: [
           Row(
             children: [
-              Icon(
-                isRunning ? Icons.check_circle : Icons.radio_button_unchecked,
-                size: 16,
-                color: isRunning ? context.themeSuccess : context.themeTextTertiary,
-              ),
+              Icon(statusIcon, size: 16, color: statusColor),
               const SizedBox(width: 6),
               Text(
-                isRunning ? '运行中' : '已停止',
+                statusLabel,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: isRunning ? context.themeSuccess : context.themeTextTertiary,
+                  color: statusColor,
                 ),
               ),
               const Spacer(),
@@ -191,42 +235,68 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
               ),
             ],
           ),
-          if (addr != null) ...[
+          if (_server.addresses.isNotEmpty) ...[
             const SizedBox(height: 10),
+            Text(
+              _server.addresses.length == 1 ? '访问地址' : '访问地址（首项为推荐地址）',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: context.themeTextSecondary,
+              ),
+            ),
+            const SizedBox(height: 6),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 color: context.themeAccentSoft,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SelectableText(
-                      addr,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'monospace',
-                        color: context.themeTextPrimary,
+              child: Column(
+                children: _server.addresses.indexed
+                    .map(
+                      (entry) => Column(
+                        children: [
+                          if (entry.$1 > 0)
+                            Divider(height: 1, color: context.themeDivider),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SelectableText(
+                                  entry.$2,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: entry.$1 == 0
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    fontFamily: 'monospace',
+                                    color: context.themeTextPrimary,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy_rounded, size: 18),
+                                tooltip: '复制地址',
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 32,
+                                  height: 40,
+                                ),
+                                padding: EdgeInsets.zero,
+                                onPressed: () => _copyAddress(entry.$2),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    tooltip: '复制地址',
-                    constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-                    padding: EdgeInsets.zero,
-                    onPressed: _copyAddress,
-                  ),
-                ],
+                    )
+                    .toList(growable: false),
               ),
             ),
             const SizedBox(height: 8),
             Text(
               '请确保手机/电脑与 Kindle 连接同一 Wi-Fi，'
-              '在 Kindle 的「实验性浏览器」中打开上述地址。',
+              '在 Kindle 的「实验性浏览器」中打开上述地址，并保持本应用运行。',
               style: TextStyle(
                 fontSize: 12,
                 height: 1.5,
@@ -238,7 +308,10 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
             const SizedBox(height: 8),
             Text(
               _server.errorMessage!,
-              style: TextStyle(fontSize: 12, color: context.themeError),
+              style: TextStyle(
+                fontSize: 12,
+                color: isRunning ? context.themeWarning : context.themeError,
+              ),
             ),
           ],
         ],
@@ -251,10 +324,13 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
     return BaseCard(
       title: '书库（${_library.books.length}）',
       trailing: BaseButton(
-        label: '导入书籍',
-        icon: Icons.add,
+        label: _initialized ? '导入书籍' : (_initializing ? '初始化中…' : '重试初始化'),
+        icon: _initialized ? Icons.add : Icons.refresh_rounded,
+        loading: _initializing,
         variant: BaseButtonVariant.secondary,
-        onPressed: _initialized ? _pickAndImport : null,
+        onPressed: _initializing
+            ? null
+            : (_initialized ? _pickAndImport : _initLibrary),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,10 +345,7 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
             ),
             const SizedBox(height: 8),
           ],
-          if (books.isEmpty)
-            _buildEmptyHint()
-          else
-            _buildBookList(books),
+          if (books.isEmpty) _buildEmptyHint() else _buildBookList(books),
           if (_library.errorMessage != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -300,10 +373,7 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
             const SizedBox(height: 8),
             Text(
               _library.books.isEmpty ? '书库为空，点击「导入书籍」添加' : '未找到匹配的书籍',
-              style: TextStyle(
-                fontSize: 13,
-                color: context.themeTextTertiary,
-              ),
+              style: TextStyle(fontSize: 13, color: context.themeTextTertiary),
             ),
           ],
         ),
@@ -314,11 +384,15 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
   /// 书籍列表。
   Widget _buildBookList(List<WifiBook> books) {
     return Column(
-      children: books.map((book) => _BookRow(
-        book: book,
-        onDelete: () => _confirmDelete(book),
-        onRename: () => _showRenameDialog(book),
-      )).toList(),
+      children: books
+          .map(
+            (book) => _BookRow(
+              book: book,
+              onDelete: () => _confirmDelete(book),
+              onRename: () => _showRenameDialog(book),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -343,10 +417,16 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
       ),
     );
     if (confirmed != true) return;
-    await _library.delete(book);
-    if (!mounted) return;
-    _logController.append('已删除：${book.title}');
-    context.read<ToastProvider>().showSuccess('已删除');
+    try {
+      await _library.delete(book);
+      if (!mounted) return;
+      _logController.append('已删除：${book.title}');
+      context.read<ToastProvider>().showSuccess('已删除');
+    } catch (e) {
+      if (!mounted) return;
+      _logController.append('ERROR: 删除失败：$e');
+      context.read<ToastProvider>().showError('删除失败，文件可能正在使用');
+    }
   }
 
   /// 重命名弹窗。
@@ -378,9 +458,15 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
     );
     controller.dispose();
     if (result == null || result.isEmpty) return;
-    await _library.rename(book, result);
-    if (!mounted) return;
-    _logController.append('已重命名：${book.title} → $result');
+    try {
+      await _library.rename(book, result);
+      if (!mounted) return;
+      _logController.append('已重命名：${book.title} → $result');
+    } catch (e) {
+      if (!mounted) return;
+      _logController.append('ERROR: 重命名失败：$e');
+      context.read<ToastProvider>().showError('重命名失败');
+    }
   }
 }
 
@@ -436,7 +522,11 @@ class _BookRow extends StatelessWidget {
             onPressed: onRename,
           ),
           IconButton(
-            icon: Icon(Icons.delete_outline, size: 18, color: context.themeError),
+            icon: Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: context.themeError,
+            ),
             tooltip: '删除',
             constraints: const BoxConstraints.tightFor(width: 32, height: 32),
             padding: EdgeInsets.zero,

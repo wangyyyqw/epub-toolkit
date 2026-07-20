@@ -61,14 +61,14 @@ class WifiBook {
 
   /// 序列化为 JSON。
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'originalFilename': originalFilename,
-        'storedFilename': storedFilename,
-        'format': format,
-        'byteCount': byteCount,
-        'importedAt': importedAt.toIso8601String(),
-      };
+    'id': id,
+    'title': title,
+    'originalFilename': originalFilename,
+    'storedFilename': storedFilename,
+    'format': format,
+    'byteCount': byteCount,
+    'importedAt': importedAt.toIso8601String(),
+  };
 
   /// 从 JSON 反序列化。
   factory WifiBook.fromJson(Map<String, dynamic> json) {
@@ -107,26 +107,30 @@ class KindleDownloadCompat {
   /// 生成 Kindle 友好的下载文件名（纯 ASCII）。
   static String filename(WifiBook book) {
     final ext = downloadExtension(book.format);
-    final shortId = book.id.replaceAll('-', '').toLowerCase();
-    return 'ebook-$shortId.$ext';
+    final shortId = book.id
+        .replaceAll(RegExp('[^A-Za-z0-9]'), '')
+        .toLowerCase();
+    return 'ebook-${shortId.isEmpty ? 'book' : shortId}.$ext';
   }
 
   /// AZW3 在部分固件上需伪装成 azw 扩展名才能被浏览器接受。
   static String downloadExtension(String format) {
-    switch (format.toUpperCase()) {
+    final normalized = format.trim().toUpperCase();
+    switch (normalized) {
       case 'AZW3':
         return 'azw';
       case 'HTM':
         return 'html';
       default:
-        return format.toLowerCase();
+        final extension = normalized.toLowerCase();
+        return kWifiBookExtensions.contains(extension) ? extension : 'bin';
     }
   }
 
   /// 按格式返回 Content-Type。
   /// MOBI/AZW 用 octet-stream，让 Kindle 按扩展名识别。
   static String contentType(String format) {
-    switch (format.toUpperCase()) {
+    switch (format.trim().toUpperCase()) {
       case 'PDF':
         return 'application/pdf';
       case 'TXT':
