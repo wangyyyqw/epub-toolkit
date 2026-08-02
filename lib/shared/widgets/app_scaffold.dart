@@ -993,9 +993,12 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
   @override
   void didUpdateWidget(covariant _ExpandableNavGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentPath != oldWidget.currentPath &&
-        _hasActiveChild()) {
-      _sidebarState(context).expand(widget.parent.label);
+    if (widget.currentPath != oldWidget.currentPath) {
+      if (_hasActiveChild()) {
+        _sidebarState(context).expand(widget.parent.label);
+      } else {
+        _sidebarState(context).collapse(widget.parent.label);
+      }
     }
   }
 

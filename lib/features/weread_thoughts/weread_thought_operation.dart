@@ -39,9 +39,6 @@ class WereadThoughtOperation {
   static String _generateCss() {
     return '''
 $cssMarker
-.reader-underline {
-    text-decoration: underline;
-}
 .reader {
     background-image: url($_notePngPath);
     background-repeat: no-repeat;
@@ -990,13 +987,19 @@ $cssMarker
       }
     }
 
+    // 过滤:只保留有想法的 mark,无想法的划线不标记
+    final thoughtMarks = marks
+        .where((m) => m.thought && thoughtTexts.containsKey(m.key))
+        .toList();
+    if (thoughtMarks.isEmpty) return (html, stats);
+
     // 渲染
     final out = <String>[];
     for (final token in tokens) {
       if (token.isTag) {
         out.add(token.raw);
       } else {
-        out.add(_renderTextToken(token, marks, thoughtTexts));
+        out.add(_renderTextToken(token, thoughtMarks, thoughtTexts));
       }
     }
 
@@ -1006,8 +1009,8 @@ $cssMarker
   /// 渲染文本 token:在 mark 位置包裹 span
   ///
   /// 移植自 annotations.lua render_text_token。
-  /// - 有想法的 mark: <span class="reader"> + 弹窗内容 + 文本 + </span>
-  /// - 无想法的 mark: <span class="reader-underline"> + 文本 + </span>
+  /// 只有有想法的 mark 才会包裹 <span class="reader"> + 弹窗内容 + </span>。
+  /// 无想法的划线不标记,输出纯文本。
   static String _renderTextToken(
     _Token token,
     List<_Mark> marks,
@@ -1043,27 +1046,19 @@ $cssMarker
 
         if (active != null) {
           final a = active!;
-          if (a.thought && thoughtTexts.containsKey(a.key)) {
-            // 有想法:note.png 图标 + 弹窗内容
-            final thoughtText = thoughtTexts[a.key]!;
-            // data-wr-footernote 属性:用 &#10; 换行(兼容阅微转多看工具)
-            final attrText = thoughtText
-                .replaceAll('<br/><br/>', '&#10;&#10;')
-                .replaceAll('<br/>', '&#10;');
+          // 有想法:note.png 图标 + 弹窗内容
+          final thoughtText = thoughtTexts[a.key]!;
+          // data-wr-footernote 属性:用 &#10; 换行(兼容阅微转多看工具)
+          final attrText = thoughtText
+              .replaceAll('<br/><br/>', '&#10;&#10;')
+              .replaceAll('<br/>', '&#10;');
 
-            out.add(
-              '<span class="reader" '
-              'data-wr-range="${a.key}" '
-              'data-wr-footernote="$attrText">'
-              '<span class="reader-note-content">$thoughtText</span>',
-            );
-          } else {
-            // 无想法:实线下划线
-            out.add(
-              '<span class="reader-underline" '
-              'data-wr-range="${a.key}">',
-            );
-          }
+          out.add(
+            '<span class="reader" '
+            'data-wr-range="${a.key}" '
+            'data-wr-footernote="$attrText">'
+            '<span class="reader-note-content">$thoughtText</span>',
+          );
         }
       }
 
@@ -1103,11 +1098,8 @@ $cssMarker
       if (seen.contains(key)) continue;
       seen.add(key);
 
-      // 格式化元信息: ▸ 作者 · 赞 N
-      var meta = '▸ $authorDisplay';
-      if (r.likes > 0) {
-        meta += '  ·  赞 ${r.likes}';
-      }
+      // 格式化元信息: ▸ 作者
+      final meta = '▸ $authorDisplay';
 
       // HTML 转义
       final escapedMeta = _escapeHtml(meta);
