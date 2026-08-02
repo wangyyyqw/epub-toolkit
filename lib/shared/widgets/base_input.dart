@@ -13,6 +13,7 @@ class BaseInput extends StatefulWidget {
   final bool readOnly;
   final IconData? prefixIcon;
   final Widget? suffix;
+  final String? errorText;
 
   const BaseInput({
     super.key,
@@ -26,6 +27,7 @@ class BaseInput extends StatefulWidget {
     this.readOnly = false,
     this.prefixIcon,
     this.suffix,
+    this.errorText,
   });
 
   @override
@@ -60,16 +62,25 @@ class _BaseInputState extends State<BaseInput> {
 
   @override
   Widget build(BuildContext context) {
+    final hasError =
+        widget.errorText != null && widget.errorText!.isNotEmpty;
+
     final OutlineInputBorder border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: context.themeDivider, width: 1),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+      borderSide: BorderSide(
+        color: hasError ? context.themeError : context.themeDividerLight,
+        width: 1,
+      ),
     );
     final OutlineInputBorder focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: context.themeDivider, width: 1.5),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+      borderSide: BorderSide(
+        color: hasError ? context.themeError : context.themeAccent,
+        width: 1.5,
+      ),
     );
     final OutlineInputBorder disabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
       borderSide: BorderSide(
         color: context.themeDividerLight.withValues(alpha: 0.5),
       ),
@@ -105,6 +116,7 @@ class _BaseInputState extends State<BaseInput> {
               fontSize: 13.5,
               color: context.themeTextTertiary,
             ),
+            errorText: widget.errorText,
             prefixIcon: widget.prefixIcon != null
                 ? Icon(
                     widget.prefixIcon,

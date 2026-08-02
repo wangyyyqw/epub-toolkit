@@ -155,7 +155,7 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
     final filtered = _library.filter(_searchText);
     return Scaffold(
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

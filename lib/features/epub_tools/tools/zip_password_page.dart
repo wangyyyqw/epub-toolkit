@@ -182,7 +182,7 @@ class _ZipPasswordPageState extends State<ZipPasswordPage> {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
                 SegmentedButton<_ZipPasswordMode>(
                   segments: const [

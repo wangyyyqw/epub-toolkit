@@ -387,7 +387,7 @@ Widget buildCompactField(
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeDivider, width: 1.5),
+              borderSide: BorderSide(color: context.themeAccent, width: 1.5),
             ),
           ),
           onChanged: onChanged,
@@ -455,7 +455,7 @@ Widget buildCompactSelect(
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeDivider, width: 1.5),
+              borderSide: BorderSide(color: context.themeAccent, width: 1.5),
             ),
           ),
           icon: Icon(
@@ -566,7 +566,7 @@ Widget buildBottomActionBar(
                 onPressed: onPressed,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.themeAccent,
-                  foregroundColor: const Color(0xFF202124),
+                  foregroundColor: Colors.white,
                   elevation: 0,
                   shadowColor: context.themeAccent.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
@@ -576,14 +576,14 @@ Widget buildBottomActionBar(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, size: 19, color: const Color(0xFF202124)),
+                    Icon(icon, size: 19, color: Colors.white),
                     const SizedBox(width: 10),
                     Text(
                       label,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF202124),
+                        color: Colors.white,
                       ),
                     ),
                   ],

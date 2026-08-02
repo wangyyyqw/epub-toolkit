@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import '../../core/theme.dart';
 
-/// 通用页头组件（紧凑版：只显示简短描述标签）
+/// 通用页头组件
+///
+/// 显示图标 + 标题 + 描述的紧凑行，用于工具页面顶部。
+/// 桌面端三元素水平排列；手机端描述隐藏（顶栏已显示标题）。
 class PageHeader extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String title;
   final String? description;
+  final bool showDescription;
 
   const PageHeader({
     super.key,
@@ -13,41 +18,64 @@ class PageHeader extends StatelessWidget {
     required this.iconColor,
     required this.title,
     this.description,
+    this.showDescription = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (description == null) return const SizedBox.shrink();
+    final isMobile = context.isMobile;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(6),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppTheme.radiusS),
+            ),
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: isMobile ? 18 : 20,
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: iconColor, size: 12),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
                   style: TextStyle(
-                    fontSize: 11,
-                    color: iconColor,
-                    fontWeight: FontWeight.w500,
+                    fontSize: isMobile ? 16 : 18,
+                    fontWeight: FontWeight.w700,
+                    color: context.themeTextPrimary,
                   ),
                 ),
-              ),
-            ],
+                if (showDescription &&
+                    description != null &&
+                    !isMobile) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.themeTextTertiary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -66,24 +94,30 @@ class PlaceholderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.construction, size: 64, color: theme.colorScheme.outline),
+          Icon(
+            Icons.construction,
+            size: 64,
+            color: context.themeTextTertiary,
+          ),
           const SizedBox(height: 16),
           Text(
             '$featureName · 开发中',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: context.themeTextSecondary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
+            style: TextStyle(
+              fontSize: 13,
+              color: context.themeTextTertiary,
             ),
           ),
         ],

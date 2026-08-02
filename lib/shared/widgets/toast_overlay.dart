@@ -263,28 +263,24 @@ class _ToastCard extends StatelessWidget {
 _ToastStyle _toastStyle(ToastType type, ColorScheme colorScheme) {
   switch (type) {
     case ToastType.success:
-      // 绿色
       return const _ToastStyle(
         icon: Icons.check_circle_outline,
-        color: Color(0xFF16A34A),
+        color: Color(0xFF5B9C6B),
       );
     case ToastType.warning:
-      // 橙色
       return const _ToastStyle(
         icon: Icons.warning_amber_rounded,
-        color: Color(0xFFEA8A0A),
+        color: Color(0xFFD49241),
       );
     case ToastType.error:
-      // 红色，使用 colorScheme 的错误色以适配主题
       return _ToastStyle(
         icon: Icons.error_outline,
         color: colorScheme.error,
       );
     case ToastType.info:
-      // 蓝色
       return const _ToastStyle(
         icon: Icons.info_outline,
-        color: Color(0xFF2563EB),
+        color: Color(0xFF3D7A6C),
       );
   }
 }

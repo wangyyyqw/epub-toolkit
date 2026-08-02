@@ -228,7 +228,7 @@ a.fn-ref { text-decoration: none; font-size: 0.75em; vertical-align: super; colo
           // 内容区
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
                 // EPUB 文件选择
                 buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),

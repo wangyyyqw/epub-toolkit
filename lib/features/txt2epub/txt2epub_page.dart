@@ -1981,15 +1981,15 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.accent.withValues(alpha: 0.12),
+                    color: context.themeAccent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.auto_stories,
-                        color: AppTheme.accent,
+                        color: context.themeAccent,
                         size: 12,
                       ),
                       SizedBox(width: 4),
@@ -1997,7 +1997,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                         '导入 TXT → 自动识别 → 检查分章 → 生成 EPUB',
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppTheme.accent,
+                          color: context.themeAccent,
                           fontWeight: FontWeight.w500,
                         ),
                       ),

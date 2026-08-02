@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -24,7 +26,8 @@ class NavItem {
 
 /// 侧边栏完整导航配置
 final List<NavItem> _navGroups = [
-  const NavItem(label: '仪表盘', icon: Icons.home_outlined, route: '/dashboard'),
+  const NavItem(
+      label: '仪表盘', icon: Icons.home_outlined, route: '/dashboard'),
   NavItem(
     label: '文件转换',
     icon: Icons.swap_horiz_outlined,
@@ -210,7 +213,8 @@ final List<NavItem> _navGroups = [
         icon: Icons.mail_outline,
         route: '/send-email',
       ),
-      const NavItem(label: '网页推送', icon: Icons.language, route: '/send-web'),
+      const NavItem(
+          label: '网页推送', icon: Icons.language, route: '/send-web'),
       const NavItem(
         label: 'WiFi 传书',
         icon: Icons.wifi_rounded,
@@ -231,7 +235,52 @@ final List<NavItem> _navGroups = [
   ),
 ];
 
-const double _sidebarWidth = 260;
+const double _sidebarWidthDesktop = 260;
+const double _sidebarWidthTablet = 240;
+
+/// 移动端底部导航栏配置（4 项 + 更多）
+const List<_BottomNavDef> _bottomNavDefs = [
+  _BottomNavDef(
+    icon: Icons.home_outlined,
+    activeIcon: Icons.home_rounded,
+    label: '仪表盘',
+    route: '/dashboard',
+  ),
+  _BottomNavDef(
+    icon: Icons.swap_horiz_outlined,
+    activeIcon: Icons.swap_horiz_rounded,
+    label: '转换',
+    route: '/txt2epub',
+  ),
+  _BottomNavDef(
+    icon: Icons.format_shapes_outlined,
+    activeIcon: Icons.format_shapes_rounded,
+    label: '格式',
+    route: '/metadata',
+  ),
+  _BottomNavDef(
+    icon: Icons.lock_outline,
+    activeIcon: Icons.lock_rounded,
+    label: '安全',
+    route: '/epub-tool/encrypt',
+  ),
+];
+
+class _BottomNavDef {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final String route;
+
+  const _BottomNavDef({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.route,
+  });
+}
+
+const String _brandName = 'EPUB 工具箱';
 
 // ==================== 应用整体布局 ====================
 
@@ -249,19 +298,20 @@ class AppScaffold extends StatelessWidget {
       value: overlay.copyWith(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: context.themeBg,
-        systemNavigationBarIconBrightness: context.isDarkMode
-            ? Brightness.light
-            : Brightness.dark,
+        systemNavigationBarIconBrightness:
+            context.isDarkMode ? Brightness.light : Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
       ),
       child: ChangeNotifierProvider(
         create: (_) => SidebarState(),
         child: Builder(
           builder: (context) {
-            final isWide = MediaQuery.of(context).size.width > 800;
-            return isWide
-                ? _DesktopLayout(child: child)
-                : _MobileLayout(child: child);
+            if (context.isDesktop) {
+              return _DesktopLayout(child: child);
+            } else if (context.isTablet) {
+              return _TabletLayout(child: child);
+            }
+            return _MobileLayout(child: child);
           },
         ),
       ),
@@ -269,7 +319,7 @@ class AppScaffold extends StatelessWidget {
   }
 }
 
-// ==================== 桌面端布局 ====================
+// ==================== 桌面端布局（≥1024px）====================
 
 class _DesktopLayout extends StatelessWidget {
   final Widget child;
@@ -279,8 +329,7 @@ class _DesktopLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     return Scaffold(
-      backgroundColor: Colors.transparent, // 让 PaperBackground 透出
-      // 沉浸式：内容延伸到状态栏/导航栏
+      backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -288,12 +337,19 @@ class _DesktopLayout extends StatelessWidget {
           const Positioned.fill(
             child: PaperBackground(child: SizedBox.shrink()),
           ),
-          // 内容层
           Row(
             children: [
-              _Sidebar(currentPath: location),
+              _Sidebar(
+                currentPath: location,
+                width: _sidebarWidthDesktop,
+              ),
               Expanded(
-                child: child, // 直接显示，背景透明
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: child,
+                  ),
+                ),
               ),
             ],
           ),
@@ -303,7 +359,40 @@ class _DesktopLayout extends StatelessWidget {
   }
 }
 
-// ==================== 移动端布局 ====================
+// ==================== 平板端布局（800–1023px）====================
+
+class _TabletLayout extends StatelessWidget {
+  final Widget child;
+  const _TabletLayout({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final location = GoRouterState.of(context).uri.toString();
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          const Positioned.fill(
+            child: PaperBackground(child: SizedBox.shrink()),
+          ),
+          Row(
+            children: [
+              _Sidebar(
+                currentPath: location,
+                width: _sidebarWidthTablet,
+              ),
+              Expanded(child: child),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== 移动端布局（<800px）====================
 
 class _MobileLayout extends StatefulWidget {
   final Widget child;
@@ -322,11 +411,13 @@ class _MobileLayoutState extends State<_MobileLayout> {
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final drawerWidth = (screenWidth * 0.82).clamp(240.0, 320.0);
     final location = GoRouterState.of(context).uri.toString();
+    final bottomNavIndex = _computeBottomNavIndex(location);
 
     return Scaffold(
-      backgroundColor: Colors.transparent, // 让 PaperBackground 透出
-      // 沉浸式：内容延伸到状态栏/导航栏
+      backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -334,37 +425,35 @@ class _MobileLayoutState extends State<_MobileLayout> {
           const Positioned.fill(
             child: PaperBackground(child: SizedBox.shrink()),
           ),
-          // 内容层
           Column(
             children: [
-              // 状态栏背景（透明，让系统时间等可见）
               Container(height: topPadding, color: Colors.transparent),
               _MobileTopBar(
                 onMenuTap: _toggleSidebar,
                 title: _currentTitle(location),
               ),
               Expanded(child: widget.child),
-              // 底部安全区由内容自身处理（buildBottomActionBar 已用 SafeArea）
             ],
           ),
-
           // 遮罩层
           if (_sidebarOpen)
             GestureDetector(
               onTap: _closeSidebar,
-              child: Container(color: Colors.black38),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.35),
+              ),
             ),
-
+          // 抽屉
           AnimatedPositioned(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
-            left: _sidebarOpen ? 0 : -_sidebarWidth,
+            left: _sidebarOpen ? 0 : -drawerWidth,
             top: 0,
             bottom: 0,
-            width: _sidebarWidth,
+            width: drawerWidth,
             child: Material(
               elevation: 10,
-              color: context.themeCard,
+              color: context.themeBg,
               borderRadius: const BorderRadius.only(
                 topRight: Radius.circular(AppTheme.radiusL),
                 bottomRight: Radius.circular(AppTheme.radiusL),
@@ -376,6 +465,7 @@ class _MobileLayoutState extends State<_MobileLayout> {
                 ),
                 child: _Sidebar(
                   currentPath: location,
+                  width: drawerWidth,
                   onNavigate: _closeSidebar,
                   topPadding: topPadding,
                 ),
@@ -384,6 +474,11 @@ class _MobileLayoutState extends State<_MobileLayout> {
           ),
         ],
       ),
+      bottomNavigationBar: _MobileBottomNav(
+        currentPath: location,
+        selectedIndex: bottomNavIndex,
+        onMoreTap: _toggleSidebar,
+      ),
     );
   }
 
@@ -391,18 +486,22 @@ class _MobileLayoutState extends State<_MobileLayout> {
     for (final nav in _navGroups) {
       if (nav.route == route) return _brandName;
       if (nav.children != null) {
-        for (final child in nav.children!) {
-          if (child.route == route) {
-            return child.label;
-          }
+        for (final c in nav.children!) {
+          if (c.route == route) return c.label;
         }
       }
     }
     return _brandName;
   }
 
-  /// 顶部栏品牌名（不重复内容区标题）
-  static const _brandName = 'EPUB 工具箱';
+  int _computeBottomNavIndex(String route) {
+    for (var i = 0; i < _bottomNavDefs.length; i++) {
+      if (_bottomNavDefs[i].route == route) return i;
+    }
+    // 分类首页匹配
+    if (route == '/dashboard') return 0;
+    return -1;
+  }
 }
 
 // ==================== 移动端顶部栏 ====================
@@ -415,33 +514,205 @@ class _MobileTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: context.themeBg.withValues(alpha: 0.96)),
-      child: Row(
-        children: [
-          // 菜单按钮 - 透明背景, 突出图标
-          IconButton(
-            onPressed: onMenuTap,
-            icon: Icon(Icons.menu, size: 24, color: context.themeTextPrimary),
-            tooltip: '显示菜单',
-            splashRadius: 22,
+    final showLogo = title == _brandName;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: context.themeBg.withValues(alpha: 0.88),
+            border: Border(
+              bottom: BorderSide(
+                color: context.themeDividerLight.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+            ),
           ),
-          const SizedBox(width: 2),
-          // 当前页面标题
-          Expanded(
-            child: title == 'EPUB 工具箱'
-                ? const SizedBox.shrink()
-                : Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: context.themeTextSecondary.withValues(alpha: 0.9),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: onMenuTap,
+                icon: Icon(
+                  Icons.menu,
+                  size: 24,
+                  color: context.themeAccent,
+                ),
+                tooltip: '显示菜单',
+                splashRadius: 22,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: showLogo
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.radiusXS,
+                              ),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  context.themeAccent,
+                                  context.themeAccentDark,
+                                ],
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.auto_stories_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _brandName,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: context.themeTextPrimary,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: context.themeTextPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              ),
+              const SizedBox(width: 44),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== 移动端底部导航栏 ====================
+
+class _MobileBottomNav extends StatelessWidget {
+  final String currentPath;
+  final int selectedIndex;
+  final VoidCallback onMoreTap;
+
+  const _MobileBottomNav({
+    required this.currentPath,
+    required this.selectedIndex,
+    required this.onMoreTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isMoreActive = selectedIndex < 0;
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.themeBg.withValues(alpha: 0.92),
+            border: Border(
+              top: BorderSide(
+                color: context.themeDividerLight.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 56,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _bottomNavDefs.length; i++)
+                    Expanded(
+                      child: _buildItem(
+                        context,
+                        _bottomNavDefs[i],
+                        selectedIndex == i,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
+                  Expanded(
+                    child: _buildMoreItem(context, isMoreActive),
                   ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItem(
+    BuildContext context,
+    _BottomNavDef item,
+    bool isActive,
+  ) {
+    return InkWell(
+      onTap: () => context.go(item.route),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isActive ? item.activeIcon : item.icon,
+            size: 22,
+            color: isActive
+                ? context.themeAccent
+                : context.themeTextTertiary,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            item.label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              color: isActive
+                  ? context.themeAccent
+                  : context.themeTextTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreItem(BuildContext context, bool isActive) {
+    return InkWell(
+      onTap: onMoreTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.apps_rounded,
+            size: 22,
+            color: isActive
+                ? context.themeAccent
+                : context.themeTextTertiary,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '更多',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              color: isActive
+                  ? context.themeAccent
+                  : context.themeTextTertiary,
+            ),
           ),
         ],
       ),
@@ -449,63 +720,81 @@ class _MobileTopBar extends StatelessWidget {
   }
 }
 
-// ==================== 侧边栏 ====================
+// ==================== 侧边栏状态管理 ====================
 
-/// 全局侧边栏状态管理：当前展开的分组
+/// 全局侧边栏状态管理：支持多分组同时展开
 class SidebarState extends ChangeNotifier {
-  /// 当前展开的分组名（只有一个为 null 时表示全部折叠；只允许一个展开）
-  String? _expandedGroup;
+  final Set<String> _expandedGroups = {};
 
-  String? get expandedGroup => _expandedGroup;
+  Set<String> get expandedGroups => Set.unmodifiable(_expandedGroups);
 
-  /// 切换分组（点击同一分组会折叠，点其它分组会切换）
+  bool isExpanded(String groupLabel) =>
+      _expandedGroups.contains(groupLabel);
+
   void toggle(String groupLabel) {
-    if (_expandedGroup == groupLabel) {
-      _expandedGroup = null;
+    if (_expandedGroups.contains(groupLabel)) {
+      _expandedGroups.remove(groupLabel);
     } else {
-      _expandedGroup = groupLabel;
+      _expandedGroups.add(groupLabel);
     }
     notifyListeners();
   }
 
-  /// 设置为指定分组（不切换）
+  void expand(String groupLabel) {
+    if (_expandedGroups.add(groupLabel)) notifyListeners();
+  }
+
+  void collapse(String groupLabel) {
+    if (_expandedGroups.remove(groupLabel)) notifyListeners();
+  }
+
+  // —— 向后兼容旧 API ——
+
+  String? get expandedGroup =>
+      _expandedGroups.isEmpty ? null : _expandedGroups.last;
+
   void setExpanded(String? groupLabel) {
-    if (_expandedGroup != groupLabel) {
-      _expandedGroup = groupLabel;
-      notifyListeners();
-    }
+    _expandedGroups.clear();
+    if (groupLabel != null) _expandedGroups.add(groupLabel);
+    notifyListeners();
   }
 }
 
+// ==================== 侧边栏 ====================
+
 class _Sidebar extends StatelessWidget {
   final String currentPath;
+  final double width;
   final VoidCallback? onNavigate;
   final double? topPadding;
 
-  const _Sidebar({required this.currentPath, this.onNavigate, this.topPadding});
+  const _Sidebar({
+    required this.currentPath,
+    required this.width,
+    this.onNavigate,
+    this.topPadding,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: _sidebarWidth,
-      color: context.themeCard,
+      width: width,
+      color: context.themeBg,
       child: Column(
         children: [
-          // 顶部品牌区
           if (topPadding != null) SizedBox(height: topPadding! + 8),
-          if (topPadding == null) const SizedBox(height: 14),
+          if (topPadding == null) const SizedBox(height: 16),
           _buildBrand(context),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Divider(height: 1, color: context.themeDivider),
           ),
-          const SizedBox(height: 4),
-
-          // 导航列表
+          const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               itemCount: _navGroups.length,
               itemBuilder: (context, index) {
                 final nav = _navGroups[index];
@@ -529,15 +818,14 @@ class _Sidebar extends StatelessWidget {
               },
             ),
           ),
-
-          // 底部版本
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(bottom: 16),
             child: Text(
               'v1.1.1',
               style: TextStyle(
                 fontSize: 11,
-                color: context.themeTextTertiary.withValues(alpha: 0.5),
+                color: context.themeTextTertiary.withValues(alpha: 0.6),
+                letterSpacing: 0.3,
               ),
             ),
           ),
@@ -552,44 +840,53 @@ class _Sidebar extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: context.themeAccent,
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              boxShadow: AppTheme.glow(context.themeAccent, alpha: 0.16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  context.themeAccent,
+                  context.themeAccentDark,
+                ],
+              ),
+              boxShadow: AppTheme.glow(context.themeAccent, alpha: 0.20),
             ),
             child: const Center(
               child: Icon(
                 Icons.auto_stories_rounded,
                 color: Colors.white,
-                size: 20,
+                size: 22,
               ),
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'EPUB 工具箱',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: context.themeTextPrimary,
-                  letterSpacing: 0.2,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _brandName,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: context.themeTextPrimary,
+                    letterSpacing: 0.2,
+                  ),
                 ),
-              ),
-              Text(
-                '本地电子书处理',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  color: context.themeTextTertiary,
-                  letterSpacing: 0.3,
+                Text(
+                  '本地电子书处理',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: context.themeTextTertiary,
+                    letterSpacing: 0.3,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -628,10 +925,11 @@ class _LeafNavTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: isActive ? context.themeAccentLight : Colors.transparent,
             borderRadius: BorderRadius.circular(AppTheme.radiusS),
-            border: Border.all(
-              color: isActive
-                  ? context.themeAccent.withValues(alpha: 0.22)
-                  : Colors.transparent,
+            border: Border(
+              left: BorderSide(
+                color: isActive ? context.themeAccent : Colors.transparent,
+                width: 3,
+              ),
             ),
           ),
           child: Row(
@@ -654,17 +952,6 @@ class _LeafNavTile extends StatelessWidget {
                       : context.themeTextSecondary,
                 ),
               ),
-              if (isActive) ...[
-                const Spacer(),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: context.themeAccent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -692,57 +979,44 @@ class _ExpandableNavGroup extends StatefulWidget {
 
 class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
     with SingleTickerProviderStateMixin {
-  late bool _expanded;
-
   @override
   void initState() {
     super.initState();
-    // 当前路径在分组中 → 展开
-    // 否则跟随全局 SidebarState
-    final sidebar = _sidebarState(context);
+    // 当前路径在分组中 → 自动展开
     if (_hasActiveChild()) {
-      _expanded = true;
-      sidebar.setExpanded(widget.parent.label);
-    } else {
-      _expanded = sidebar.expandedGroup == widget.parent.label;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sidebarState(context).expand(widget.parent.label);
+      });
     }
   }
 
   @override
   void didUpdateWidget(covariant _ExpandableNavGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentPath != oldWidget.currentPath && _hasActiveChild()) {
-      // 路由切换到本分组的子项 → 自动展开本分组
-      _sidebarState(context).setExpanded(widget.parent.label);
+    if (widget.currentPath != oldWidget.currentPath &&
+        _hasActiveChild()) {
+      _sidebarState(context).expand(widget.parent.label);
     }
   }
 
   bool _hasActiveChild() {
     if (widget.parent.children == null) return false;
-    return widget.parent.children!.any((c) => c.route == widget.currentPath);
+    return widget.parent.children!
+        .any((c) => c.route == widget.currentPath);
   }
 
-  /// 获取全局侧边栏状态
   SidebarState _sidebarState(BuildContext context) {
     return Provider.of<SidebarState>(context, listen: false);
   }
 
   void _toggle() {
-    final sidebar = _sidebarState(context);
-    if (_expanded) {
-      // 当前已展开 → 折叠
-      sidebar.setExpanded(null);
-    } else {
-      // 当前折叠 → 展开本分组（自动折叠其它）
-      sidebar.setExpanded(widget.parent.label);
-    }
+    _sidebarState(context).toggle(widget.parent.label);
   }
 
   @override
   Widget build(BuildContext context) {
-    // 监听全局 SidebarState 变化
     final sidebar = context.watch<SidebarState>();
-    _expanded = sidebar.expandedGroup == widget.parent.label;
+    final isExpanded = sidebar.isExpanded(widget.parent.label);
     final hasActiveChild = _hasActiveChild();
 
     return Column(
@@ -753,16 +1027,20 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
           borderRadius: BorderRadius.circular(AppTheme.radiusS),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
               color: hasActiveChild
                   ? context.themeAccentLight
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              border: Border.all(
-                color: hasActiveChild
-                    ? context.themeAccent.withValues(alpha: 0.22)
-                    : Colors.transparent,
+              border: Border(
+                left: BorderSide(
+                  color: hasActiveChild
+                      ? context.themeAccent.withValues(alpha: 0.4)
+                      : Colors.transparent,
+                  width: 3,
+                ),
               ),
             ),
             child: Row(
@@ -790,7 +1068,7 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
                   ),
                 ),
                 AnimatedRotation(
-                  turns: _expanded ? 0.25 : 0,
+                  turns: isExpanded ? 0.25 : 0,
                   duration: const Duration(milliseconds: 200),
                   child: Icon(
                     Icons.chevron_right,
@@ -804,24 +1082,26 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
             ),
           ),
         ),
-
         // 子菜单
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          child: _expanded && widget.parent.children != null
+          child: isExpanded && widget.parent.children != null
               ? Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 2, bottom: 4),
+                  padding:
+                      const EdgeInsets.only(left: 8, top: 2, bottom: 4),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: widget.parent.children!.map((child) {
-                      final isActive = child.route == widget.currentPath;
+                      final isActive =
+                          child.route == widget.currentPath;
                       return InkWell(
                         onTap: () {
                           context.go(child.route!);
                           widget.onNavigate?.call();
                         },
-                        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusS),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -834,6 +1114,14 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
                             borderRadius: BorderRadius.circular(
                               AppTheme.radiusS,
                             ),
+                            border: Border(
+                              left: BorderSide(
+                                color: isActive
+                                    ? context.themeAccent
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                            ),
                           ),
                           child: Row(
                             children: [
@@ -842,9 +1130,8 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
                                 size: 16,
                                 color: isActive
                                     ? context.themeAccent
-                                    : context.themeTextTertiary.withValues(
-                                        alpha: 0.7,
-                                      ),
+                                    : context.themeTextTertiary
+                                        .withValues(alpha: 0.7),
                               ),
                               const SizedBox(width: 10),
                               Text(
@@ -859,17 +1146,6 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
                                       : context.themeTextSecondary,
                                 ),
                               ),
-                              if (isActive) ...[
-                                const Spacer(),
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  decoration: BoxDecoration(
-                                    color: context.themeAccent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                         ),

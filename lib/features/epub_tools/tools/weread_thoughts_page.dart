@@ -1147,7 +1147,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: context.themeAccent,
-                      foregroundColor: const Color(0xFF202124),
+                      foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.zero,
@@ -1311,7 +1311,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                   onPressed: _searching || _loading ? null : _search,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.themeAccent,
-                    foregroundColor: const Color(0xFF202124),
+                    foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.zero,
@@ -1323,7 +1323,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Color(0xFF202124),
+                            color: Colors.white,
                           ),
                         )
                       : const Text('搜索', style: TextStyle(fontSize: 13)),

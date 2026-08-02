@@ -23,12 +23,12 @@ class BaseSelect extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final OutlineInputBorder border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: context.themeDivider, width: 1),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+      borderSide: BorderSide(color: context.themeDividerLight, width: 1),
     );
     final OutlineInputBorder focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: context.themeDivider, width: 1.5),
+      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+      borderSide: BorderSide(color: context.themeAccent, width: 1.5),
     );
 
     return Column(
