@@ -67,6 +67,7 @@ $cssMarker
     text-indent: 0em;
     max-width: 90vw;
     white-space: pre-line;
+    text-align: left;
 }
 ''';
   }
