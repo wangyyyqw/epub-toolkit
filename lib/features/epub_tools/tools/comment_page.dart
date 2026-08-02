@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
@@ -34,8 +36,25 @@ class _CommentPageState extends State<CommentPage> {
   /// 批注提取正则表达式，默认匹配 [内容] 格式批注
   String _regexPattern = r'\[(.*?)\]';
 
+  /// note.png 图标字节（从 assets 加载，用于注入批注图标）
+  Uint8List? _notePngBytes;
+
   /// 日志控制器
   final OutputLogController _logController = OutputLogController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotePng();
+  }
+
+  /// 从 assets 加载 note.png 图标字节
+  Future<void> _loadNotePng() async {
+    try {
+      final data = await rootBundle.load('assets/note.png');
+      _notePngBytes = data.buffer.asUint8List();
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -113,6 +132,7 @@ class _CommentPageState extends State<CommentPage> {
           'epubPath': _epubPath,
           'outputPath': _outputPath,
           'regexPattern': _regexPattern,
+          'notePngBytes': _notePngBytes,
         },
       );
       _logAppendLines(result);

@@ -4,7 +4,7 @@ import 'duokan_base.dart';
 
 /// 阅微转多看操作（B13）
 ///
-/// 将阅微（微信读书/阅微书城）格式的脚注 span 转换为标准多看格式。
+/// 将阅微（阅微书城）格式的脚注 span 转换为标准多看格式。
 ///
 /// 阅微格式：正文中散落 `<span class="reader js_readerFooterNote"
 /// data-wr-footernote="脚注内容"></span>` 弹窗注释。

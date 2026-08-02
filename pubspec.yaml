@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.1.1+11
+version: 1.2.0+12
 
 environment:
   sdk: ^3.12.0
@@ -70,6 +70,9 @@ dependencies:
   enough_convert: ^1.6.0
   webview_flutter_windows: ^1.0.0
   desktop_drop: ^0.7.1
+
+  # QR 码生成(微信读书扫码登录)
+  qr_flutter: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

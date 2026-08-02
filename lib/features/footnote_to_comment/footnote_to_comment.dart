@@ -53,6 +53,10 @@ class FootnoteToCommentOperation {
       }
     }
 
+    // 计算 note.png 在 EPUB 中的绝对路径(放在 OPF 同级目录下)
+    final opfDir = opfPath != null ? p.posix.dirname(opfPath) : '.';
+    final noteAbsPath = opfDir == '.' ? 'Images/note.png' : '$opfDir/Images/note.png';
+
     for (final file in inputArchive.files) {
       if (file.name.isEmpty) continue;
       final lowerName = file.name.toLowerCase();
@@ -71,13 +75,20 @@ class FootnoteToCommentOperation {
         );
       } else if (lowerName.endsWith('.css')) {
         final css = utf8.decode(bytes, allowMalformed: true);
-        final newCss = css.contains(CommentOperation.cssMarker)
-            ? css
-            : '$css\n${CommentOperation.commentCss}';
-        final newBytes = Uint8List.fromList(utf8.encode(newCss));
-        outputArchive.addFile(
-          ArchiveFile(file.name, newBytes.length, newBytes),
-        );
+        if (css.contains(CommentOperation.cssMarker)) {
+          outputArchive.addFile(
+            ArchiveFile(file.name, bytes.length, bytes),
+          );
+        } else {
+          // 计算 note.png 相对于当前 CSS 文件所在目录的路径
+          final cssDir = p.posix.dirname(file.name);
+          final noteRel = p.posix.relative(noteAbsPath, from: cssDir);
+          final newCss = '$css\n${CommentOperation.buildCommentCss(noteRel)}';
+          final newBytes = Uint8List.fromList(utf8.encode(newCss));
+          outputArchive.addFile(
+            ArchiveFile(file.name, newBytes.length, newBytes),
+          );
+        }
       } else if (lowerName.endsWith('.opf') && notePngBytes != null) {
         final opf = utf8.decode(bytes, allowMalformed: true);
         final newOpf = _injectNoteManifest(opf);
@@ -90,14 +101,10 @@ class FootnoteToCommentOperation {
       }
     }
 
-    if (notePngBytes != null && opfPath != null) {
-      final opfDir = p.posix.dirname(opfPath);
-      final notePath = opfDir == '.'
-          ? 'Images/note.png'
-          : '$opfDir/Images/note.png';
-      if (!outputArchive.files.any((f) => f.name == notePath)) {
+    if (notePngBytes != null) {
+      if (!outputArchive.files.any((f) => f.name == noteAbsPath)) {
         outputArchive.addFile(
-          ArchiveFile(notePath, notePngBytes.length, notePngBytes),
+          ArchiveFile(noteAbsPath, notePngBytes.length, notePngBytes),
         );
       }
     }

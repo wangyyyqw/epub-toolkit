@@ -158,6 +158,11 @@ final List<NavItem> _navGroups = [
         icon: Icons.cleaning_services_outlined,
         route: '/epub-tool/ad-clean',
       ),
+      const NavItem(
+        label: '读书想法',
+        icon: Icons.psychology_outlined,
+        route: '/epub-tool/weread-thoughts',
+      ),
     ],
   ),
   NavItem(

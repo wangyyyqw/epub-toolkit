@@ -220,6 +220,7 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
         epubPath: args['epubPath'] as String,
         outputPath: args['outputPath'] as String,
         regexPattern: args['regexPattern'] as String,
+        notePngBytes: args['notePngBytes'] as Uint8List?,
       );
     case 'footnoteToComment':
       return FootnoteToCommentOperation.execute(

@@ -410,7 +410,11 @@ class _ThanksCard extends StatelessWidget {
       'fontObfuscator',
       'https://github.com/solarhell/fontObfuscator',
     ),
-    _Acknowledgement('未响应', 'https://github.com/cnwxi'),
+    _Acknowledgement('epub_tool', 'https://github.com/cnwxi'),
+    _Acknowledgement(
+      'pickthought.koplugin',
+      'https://github.com/Mr54233/pickthought.koplugin',
+    ),
   ];
 
   Future<void> _openLink(BuildContext context, String url) async {

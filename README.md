@@ -11,7 +11,8 @@
 - [遥遥心航](https://tieba.baidu.com/home/main?id=tb.1.7f262ae1.5_dXQ2Jp0F0MH9YJtgM2Ew)
 - [lgernier](https://github.com/lgernier)
 - [fontObfuscator](https://github.com/solarhell/fontObfuscator)
-- [未响应](https://github.com/cnwxi)
+- [epub_tool](https://github.com/cnwxi)
+- [pickthought.koplugin](https://github.com/Mr54233/pickthought.koplugin)
 
 ## 注意
 

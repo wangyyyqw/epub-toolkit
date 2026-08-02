@@ -141,6 +141,14 @@ class EpubToolCatalog {
           color: Color(0xFF0891B2),
           route: '/epub-tool/zhangyue',
         ),
+        EpubToolMeta(
+          id: 'wereadThoughts',
+          label: '读书想法',
+          desc: '拉取热门划线想法注入到本地 EPUB',
+          icon: Icons.psychology_outlined,
+          color: Color(0xFF3B82F6),
+          route: '/epub-tool/weread-thoughts',
+        ),
       ],
     ),
     (

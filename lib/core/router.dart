@@ -29,6 +29,7 @@ import '../features/epub_tools/tools/merge_page.dart';
 import '../features/epub_tools/tools/split_page.dart';
 import '../features/epub_tools/tools/list_split_targets_page.dart';
 import '../features/epub_tools/tools/font_subset_page.dart';
+import '../features/epub_tools/tools/weread_thoughts_page.dart';
 import '../features/metadata/metadata_page.dart';
 import '../features/send_to_kindle/send_to_kindle_page.dart';
 import '../features/send_to_kindle/web_send_page.dart';
@@ -156,6 +157,10 @@ class AppRouter {
           GoRoute(
             path: '/epub-tool/font-subset',
             builder: (context, state) => const FontSubsetPage(),
+          ),
+          GoRoute(
+            path: '/epub-tool/weread-thoughts',
+            builder: (context, state) => const WereadThoughtsPage(),
           ),
           GoRoute(
             path: '/metadata',
