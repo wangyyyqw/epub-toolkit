@@ -36,21 +36,23 @@ class WereadThoughtOperation {
   ///
   /// CSS 文件和 note.png 都放在 OPF 目录下,两者同级,
   /// 因此 CSS 中引用 note.png 用相对路径 `url(weread-note.png)`。
+  /// 使用 content: attr(data-wr-footernote) 显示注释内容,
+  /// 配合 white-space: pre-line 将 &#10; 渲染为换行。
   static String _generateCss() {
     return '''
 $cssMarker
 .reader {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
     background-image: url($_notePngPath);
+    background-size: 100%;
     background-repeat: no-repeat;
-    background-position: right center;
-    background-size: 1em 1em;
-    padding-right: 1.2em;
+    vertical-align: middle;
     cursor: pointer;
 }
-.reader .reader-note-content {
-    display: none;
-}
-.reader:hover .reader-note-content {
+.reader:hover:after {
+    content: attr(data-wr-footernote);
     display: block;
     position: fixed;
     left: 0;
@@ -64,6 +66,7 @@ $cssMarker
     z-index: 10;
     text-indent: 0em;
     max-width: 90vw;
+    white-space: pre-line;
 }
 ''';
   }
@@ -1006,11 +1009,10 @@ $cssMarker
     return (out.join(), stats);
   }
 
-  /// 渲染文本 token:在 mark 位置包裹 span
+  /// 渲染文本 token:在划线末尾插入空注释 span
   ///
-  /// 移植自 annotations.lua render_text_token。
-  /// 只有有想法的 mark 才会包裹 <span class="reader"> + 弹窗内容 + </span>。
-  /// 无想法的划线不标记,输出纯文本。
+  /// 不包裹原文,只在每个 mark 的结束位置插入
+  /// <span class="reader js_readerFooterNote" data-wr-footernote="..."></span>
   static String _renderTextToken(
     _Token token,
     List<_Mark> marks,
@@ -1020,57 +1022,35 @@ $cssMarker
       return token.raw;
     }
 
-    final out = <String>[];
-    var pos = token.start;
-    _Mark? active;
-
-    void closeActive() {
-      if (active == null) return;
-      out.add('</span>');
-      active = null;
+    // 构建"结束位置 → marks"映射,用于在划线末尾插入注释图标
+    final endMarks = <int, List<_Mark>>{};
+    for (final mark in marks) {
+      if (thoughtTexts.containsKey(mark.key)) {
+        endMarks.putIfAbsent(mark.b, () => []).add(mark);
+      }
     }
 
+    final out = <String>[];
+    var pos = token.start;
+
     for (final unit in token.units!) {
-      // 查找当前位置是否在某个 mark 内
-      _Mark? mark;
-      for (final it in marks) {
-        if (pos >= it.a && pos < it.b) {
-          mark = it;
-          break;
-        }
-      }
-
-      if (mark != active) {
-        closeActive();
-        active = mark;
-
-        if (active != null) {
-          final a = active!;
-          // 有想法:note.png 图标 + 弹窗内容
-          final thoughtText = thoughtTexts[a.key]!;
-          // data-wr-footernote 属性:用 &#10; 换行(兼容阅微转多看工具)
-          final attrText = thoughtText
-              .replaceAll('<br/><br/>', '&#10;&#10;')
-              .replaceAll('<br/>', '&#10;');
-
-          out.add(
-            '<span class="reader" '
-            'data-wr-range="${a.key}" '
-            'data-wr-footernote="$attrText">'
-            '<span class="reader-note-content">$thoughtText</span>',
-          );
-        }
-      }
-
       out.add(unit);
       pos++;
 
-      if (active != null && pos >= active!.b) {
-        closeActive();
+      // 在 mark 末尾插入空注释 span
+      final ending = endMarks[pos];
+      if (ending != null) {
+        for (final mark in ending) {
+          final thoughtText = thoughtTexts[mark.key]!;
+          final attrText = thoughtText.replaceAll('\n', '&#10;');
+          out.add(
+            '<span class="reader js_readerFooterNote" '
+            'data-wr-footernote="$attrText"></span>',
+          );
+        }
       }
     }
 
-    closeActive();
     return out.join();
   }
 
@@ -1079,7 +1059,7 @@ $cssMarker
   /// 格式化想法列表为弹窗 HTML 文本
   ///
   /// 移植自 thoughts.lua popup_text。
-  /// 每条想法格式: ▸ 作者 · 赞 N<br/>　　内容(内容前缩进 2em)
+  /// 每条想法格式: ▸ 内容
   /// 条目间用 <br/><br/> 分隔。
   /// 内容中的 HTML 特殊字符会先转义。
   static String _formatThoughts(List<ReviewInput> reviews) {
@@ -1090,27 +1070,17 @@ $cssMarker
       final content = _cleanThoughtText(r.content);
       if (content.isEmpty) continue;
 
-      final author = _cleanThoughtText(r.author);
-      final authorDisplay = author.isEmpty ? '微信读书用户' : author;
-
-      // 去重(按作者+内容)
-      final key = '$authorDisplay\0$content';
-      if (seen.contains(key)) continue;
-      seen.add(key);
-
-      // 格式化元信息: ▸ 作者
-      final meta = '▸ $authorDisplay';
+      // 去重(按内容)
+      if (seen.contains(content)) continue;
+      seen.add(content);
 
       // HTML 转义
-      final escapedMeta = _escapeHtml(meta);
       final escapedContent = _escapeHtml(content);
 
-      // 评论内容前缩进 2em:用两个全角空格(U+3000)实现,
-      // 每个 U+3000 在 CJK 字体中宽度为 1em,兼容所有阅读器(无需 CSS)
-      parts.add('$escapedMeta<br/>\u3000\u3000$escapedContent');
+      parts.add('\u25B8 $escapedContent');
     }
 
-    return parts.join('<br/><br/>');
+    return parts.join('\n\n');
   }
 
   /// 清理想法文本:替换控制字符、折叠空白、trim
