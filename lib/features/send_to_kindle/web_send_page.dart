@@ -18,6 +18,7 @@ class WebSendPage extends StatefulWidget {
     super.key,
     this.openExternalBrowserOnStart = true,
     this.forceExternalBrowser,
+    this.simulateWindowsInitFailed,
   });
 
   /// 测试场景下可关闭外部浏览器自动唤起。
@@ -25,6 +26,9 @@ class WebSendPage extends StatefulWidget {
 
   /// 仅用于测试平台回退界面。
   final bool? forceExternalBrowser;
+
+  /// 仅用于测试：模拟 Windows 内置浏览器初始化失败的回退页。
+  final String? simulateWindowsInitFailed;
 
   @override
   State<WebSendPage> createState() => _WebSendPageState();
@@ -38,17 +42,29 @@ class _WebSendPageState extends State<WebSendPage> {
   StreamSubscription<windows_webview.LoadingState>? _windowsLoadingSubscription;
   StreamSubscription<windows_webview.HistoryChanged>?
   _windowsHistorySubscription;
+  StreamSubscription<windows_webview.WebErrorStatus>?
+  _windowsLoadErrorSubscription;
   double _progress = 0;
   bool _isLoading = true;
   bool _windowsReady = false;
   bool _windowsCanGoBack = false;
   bool _windowsCanGoForward = false;
+  bool _windowsFailed = false;
   String? _windowsError;
+  String? _installHint;
+  String? _webLoadError;
+  Timer? _loadTimeout;
   bool _browserOpened = false;
   bool _browserLaunchFailed = false;
   double _webViewportWidth = 0;
   Timer? _webFitTimer;
   Timer? _lateWebFitTimer;
+
+  /// 页面加载超时（秒）：超过后提示用户检查网络
+  static const _pageLoadTimeout = Duration(seconds: 60);
+
+  /// WebView2 Runtime 安装超时（秒）
+  static const _installTimeout = Duration(seconds: 180);
 
   bool get _usesExternalBrowser =>
       widget.forceExternalBrowser ?? Platform.isLinux;
@@ -56,7 +72,12 @@ class _WebSendPageState extends State<WebSendPage> {
   @override
   void initState() {
     super.initState();
-    if (_usesExternalBrowser) {
+    final simulatedFailure = widget.simulateWindowsInitFailed;
+    if (simulatedFailure != null) {
+      _windowsFailed = true;
+      _windowsError = simulatedFailure;
+      _isLoading = false;
+    } else if (_usesExternalBrowser) {
       if (widget.openExternalBrowserOnStart) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _openInBrowser());
       } else {
@@ -72,15 +93,29 @@ class _WebSendPageState extends State<WebSendPage> {
   Future<void> _initializeWindowsWebView() async {
     windows_webview.WebviewController? controller;
     try {
+      if (mounted) {
+        setState(() {
+          _windowsError = null;
+          _installHint = null;
+          _webLoadError = null;
+        });
+      }
+
       var runtimeVersion =
           await windows_webview.WebviewController.getWebViewVersion();
       if (runtimeVersion == null) {
-        await _installWindowsWebViewRuntime();
+        final installError = await _installWindowsWebViewRuntime();
+        if (installError != null) {
+          _handleWindowsInitFailure(installError);
+          return;
+        }
         runtimeVersion =
             await windows_webview.WebviewController.getWebViewVersion();
       }
       if (runtimeVersion == null) {
-        throw StateError('Microsoft Edge WebView2 Runtime 未能完成安装');
+        throw StateError(
+          'WebView2 Runtime 安装完成后仍无法检测到，请重启应用后重试',
+        );
       }
 
       controller = windows_webview.WebviewController();
@@ -88,7 +123,13 @@ class _WebSendPageState extends State<WebSendPage> {
         if (!mounted) return;
         setState(() {
           _isLoading = state == windows_webview.LoadingState.loading;
-          if (!_isLoading) _progress = 1;
+          if (!_isLoading) {
+            _progress = 1;
+            _loadTimeout?.cancel();
+            if (state == windows_webview.LoadingState.navigationCompleted) {
+              _webLoadError = null;
+            }
+          }
         });
       });
       _windowsHistorySubscription = controller.historyChanged.listen((history) {
@@ -98,6 +139,13 @@ class _WebSendPageState extends State<WebSendPage> {
             _windowsCanGoForward = history.canGoForward;
           });
         }
+      });
+      _windowsLoadErrorSubscription = controller.onLoadError.listen((status) {
+        // 仅首次加载（主导航）期间报错时提示，避免页面内子资源错误误报
+        if (!mounted || !_isLoading) return;
+        setState(() {
+          _webLoadError = '网页加载失败（${status.name}），请检查网络连接后点击刷新';
+        });
       });
       await controller.initialize();
       await controller.loadUrl(_sendToKindleUrl);
@@ -109,8 +157,10 @@ class _WebSendPageState extends State<WebSendPage> {
         _windowsController = controller;
         _windowsReady = true;
         _isLoading = false;
+        _installHint = null;
       });
       _scheduleWebContentFit();
+      _startLoadTimeout();
     } catch (error) {
       if (controller != null && controller != _windowsController) {
         unawaited(controller.dispose());
@@ -118,28 +168,87 @@ class _WebSendPageState extends State<WebSendPage> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _windowsError = error.toString();
+          _installHint = null;
         });
       }
+      _handleWindowsInitFailure(error.toString());
     }
   }
 
-  /// 正常安装会先静默安装 WebView2。此处覆盖旧版升级后的首次进入，
-  /// 让用户点击网页推送后直接完成环境准备并进入网页。
-  Future<void> _installWindowsWebViewRuntime() async {
+  /// 安装 WebView2 Runtime。
+  ///
+  /// 成功返回 null；失败返回用户可读的错误描述。
+  /// 安装可能触发系统 UAC 提权提示，且安装过程有 [_installTimeout] 超时。
+  Future<String?> _installWindowsWebViewRuntime() async {
     final executable = File(Platform.resolvedExecutable);
     final installer = File(
       '${executable.parent.path}${Platform.pathSeparator}'
       'MicrosoftEdgeWebView2Setup.exe',
     );
-    if (!await installer.exists()) return;
-
-    if (mounted) setState(() => _isLoading = true);
-    try {
-      await Process.run(installer.path, const ['/silent', '/install']);
-    } catch (error) {
-      debugPrint('WebView2 Runtime 安装失败: $error');
+    if (!await installer.exists()) {
+      return '应用内未找到 WebView2 安装程序（MicrosoftEdgeWebView2Setup.exe）。'
+          '请重新安装 EPUB 工具箱后再试，或改用浏览器完成推送。';
     }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _installHint = '正在安装网页组件（WebView2 Runtime），可能需要几分钟…\n'
+            '若弹出「用户账户控制」窗口，请点击「是」以完成安装。';
+      });
+    }
+    try {
+      final result = await Process.run(
+        installer.path,
+        const ['/silent', '/install'],
+      ).timeout(_installTimeout);
+      if (result.exitCode != 0) {
+        return 'WebView2 安装失败（退出码 ${result.exitCode}）。'
+            '若 UAC 提示被取消，请重新打开本功能重试，或改用浏览器推送。';
+      }
+      return null;
+    } on TimeoutException {
+      return 'WebView2 安装超时（超过 180 秒）。'
+          '请改用「在浏览器中打开」完成推送，或手动安装 WebView2 Runtime。';
+    } catch (error) {
+      return 'WebView2 安装失败：$error';
+    }
+  }
+
+  /// Windows 内置浏览器初始化失败：切换到外部浏览器回退页，并自动打开默认浏览器。
+  void _handleWindowsInitFailure(String error) {
+    if (!mounted) return;
+    setState(() {
+      _windowsFailed = true;
+      _windowsError = error;
+      _isLoading = false;
+      _installHint = null;
+    });
+    // 自动回退：在默认浏览器中打开 Send to Kindle（与 Linux 行为一致）
+    if (widget.openExternalBrowserOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openInBrowser());
+    }
+  }
+
+  /// 从失败回退页重试内置浏览器
+  Future<void> _retryWindowsWebView() async {
+    _windowsLoadingSubscription?.cancel();
+    _windowsHistorySubscription?.cancel();
+    _windowsLoadErrorSubscription?.cancel();
+    _windowsLoadingSubscription = null;
+    _windowsHistorySubscription = null;
+    _windowsLoadErrorSubscription = null;
+    if (mounted) {
+      setState(() {
+        _windowsFailed = false;
+        _windowsError = null;
+        _webLoadError = null;
+        _browserOpened = false;
+        _browserLaunchFailed = false;
+        _isLoading = true;
+      });
+    }
+    await _initializeWindowsWebView();
   }
 
   void _initializeWebView() {
@@ -154,15 +263,48 @@ class _WebSendPageState extends State<WebSendPage> {
             if (mounted) setState(() => _isLoading = true);
           },
           onPageFinished: (_) {
-            if (mounted) setState(() => _isLoading = false);
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _webLoadError = null;
+              });
+            }
+            _loadTimeout?.cancel();
             _scheduleWebContentFit();
           },
           onWebResourceError: (error) {
-            debugPrint('WebView 错误: ${error.description}');
+            // 仅主框架加载失败时提示，避免页面内子资源错误误报
+            if (error.isForMainFrame != true) return;
+            if (!mounted) return;
+            setState(() {
+              _webLoadError = '网页加载失败：${error.description}，请检查网络连接后点击刷新';
+            });
           },
         ),
       )
       ..loadRequest(Uri.parse(_sendToKindleUrl));
+    _startLoadTimeout();
+  }
+
+  /// 页面加载超时检测：加载超过 [_pageLoadTimeout] 仍未完成时提示网络问题
+  void _startLoadTimeout() {
+    _loadTimeout?.cancel();
+    _loadTimeout = Timer(_pageLoadTimeout, () {
+      if (!mounted || !_isLoading) return;
+      setState(() {
+        _webLoadError = '网页加载超时，请检查网络连接后点击刷新';
+      });
+    });
+  }
+
+  void _reloadPage() {
+    setState(() => _webLoadError = null);
+    final windowsController = _windowsController;
+    if (windowsController != null) {
+      windowsController.reload();
+      return;
+    }
+    _controller?.reload();
   }
 
   Future<void> _openInBrowser() async {
@@ -223,8 +365,10 @@ class _WebSendPageState extends State<WebSendPage> {
   void dispose() {
     _webFitTimer?.cancel();
     _lateWebFitTimer?.cancel();
+    _loadTimeout?.cancel();
     _windowsLoadingSubscription?.cancel();
     _windowsHistorySubscription?.cancel();
+    _windowsLoadErrorSubscription?.cancel();
     final controller = _windowsController;
     if (controller != null) unawaited(controller.dispose());
     super.dispose();
@@ -235,8 +379,10 @@ class _WebSendPageState extends State<WebSendPage> {
     final isMobile = MediaQuery.sizeOf(context).width <= 800;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: isMobile || _usesExternalBrowser ? null : _buildDesktopAppBar(),
-      body: _usesExternalBrowser
+      appBar: isMobile || _usesExternalBrowser || _windowsFailed
+          ? null
+          : _buildDesktopAppBar(),
+      body: _usesExternalBrowser || _windowsFailed
           ? _buildExternalBrowserPage(context)
           : Platform.isWindows
           ? _buildWindowsWebViewPage(context)
@@ -275,6 +421,7 @@ class _WebSendPageState extends State<WebSendPage> {
     return Column(
       children: [
         if (isMobile) _buildMobileBrowserBar(context),
+        _buildWebErrorBanner(context),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -293,6 +440,7 @@ class _WebSendPageState extends State<WebSendPage> {
     if (controller != null && _windowsReady) {
       return Column(
         children: [
+          _buildWebErrorBanner(context),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -316,9 +464,51 @@ class _WebSendPageState extends State<WebSendPage> {
             child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
           const SizedBox(height: 14),
-          Text(
-            _windowsError == null ? '正在打开网页推送…' : '正在准备内置浏览器…',
-            style: TextStyle(fontSize: 13, color: context.themeTextSecondary),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _installHint ?? '正在打开网页推送…',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: context.themeTextSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 网络加载失败提示条（主框架加载失败或加载超时）
+  Widget _buildWebErrorBanner(BuildContext context) {
+    final message = _webLoadError;
+    if (message == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: context.themeError.withValues(alpha: 0.08),
+        border: Border(bottom: BorderSide(color: context.themeError.withValues(alpha: 0.2))),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.wifi_off_rounded, size: 15, color: context.themeError),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 12, height: 1.35, color: context.themeError),
+            ),
+          ),
+          TextButton(
+            onPressed: _reloadPage,
+            style: TextButton.styleFrom(
+              foregroundColor: context.themeError,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('刷新'),
           ),
         ],
       ),
@@ -526,6 +716,7 @@ class _WebSendPageState extends State<WebSendPage> {
   }
 
   Widget _buildExternalBrowserPage(BuildContext context) {
+    final isWindowsFallback = _windowsFailed;
     final platformName = Platform.isWindows ? 'Windows' : '当前桌面平台';
     return Center(
       child: SingleChildScrollView(
@@ -556,7 +747,11 @@ class _WebSendPageState extends State<WebSendPage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _browserOpened ? '已在浏览器中打开网页推送' : '使用浏览器完成网页推送',
+                  _browserOpened
+                      ? '已在浏览器中打开网页推送'
+                      : isWindowsFallback
+                      ? '内置浏览器不可用'
+                      : '使用浏览器完成网页推送',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 17,
@@ -566,7 +761,9 @@ class _WebSendPageState extends State<WebSendPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$platformName 暂不支持内嵌网页推送。默认浏览器可正常登录、上传文件并保留亚马逊登录状态。',
+                  isWindowsFallback
+                      ? '内置浏览器初始化失败，已改用默认浏览器。可正常登录、上传文件并保留亚马逊登录状态。'
+                      : '$platformName 暂不支持内嵌网页推送。默认浏览器可正常登录、上传文件并保留亚马逊登录状态。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
@@ -574,6 +771,29 @@ class _WebSendPageState extends State<WebSendPage> {
                     color: context.themeTextSecondary,
                   ),
                 ),
+                if (_windowsError != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: context.themeError.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: context.themeError.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      '错误详情：$_windowsError',
+                      textAlign: TextAlign.start,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: context.themeError,
+                      ),
+                    ),
+                  ),
+                ],
                 if (_browserLaunchFailed) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -583,20 +803,50 @@ class _WebSendPageState extends State<WebSendPage> {
                   ),
                 ],
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _openInBrowser,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 17,
-                            height: 17,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: Text(_browserOpened ? '再次打开浏览器' : '在默认浏览器中打开'),
-                  ),
+                Row(
+                  children: [
+                    if (isWindowsFallback) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isLoading ? null : _retryWindowsWebView,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.themeAccent,
+                            side: BorderSide(
+                              color: context.themeAccent.withValues(alpha: 0.4),
+                            ),
+                            minimumSize: const Size.fromHeight(46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.radiusL,
+                              ),
+                            ),
+                          ),
+                          child: const Text('重试内置浏览器'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      child: SizedBox(
+                        height: 46,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _openInBrowser,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.open_in_new_rounded, size: 18),
+                          label: Text(
+                            _browserOpened ? '再次打开浏览器' : '在默认浏览器中打开',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
