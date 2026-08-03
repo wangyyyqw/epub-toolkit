@@ -176,7 +176,6 @@ class _ZipPasswordPageState extends State<ZipPasswordPage> {
           buildToolHeader(
             context,
             icon: Icons.password_outlined,
-            iconColor: const Color(0xFF9F1239),
             title: 'EPUB ZIP 密码',
             subtitle: '解包 EPUB 内容，再使用密码重新打包',
           ),

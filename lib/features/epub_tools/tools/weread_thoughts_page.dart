@@ -13,6 +13,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/file_service.dart';
 import '../../../core/theme.dart';
 import '../../../shared/providers/toast_provider.dart';
+import '../../../shared/widgets/base_button.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
 import '../../weread_thoughts/weread_api.dart';
@@ -870,7 +871,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
           buildToolHeader(
             context,
             icon: Icons.psychology_outlined,
-            iconColor: const Color(0xFF3B82F6),
             title: '读书想法',
             subtitle: '拉取热门划线想法注入到本地 EPUB',
           ),
@@ -996,7 +996,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
           decoration: BoxDecoration(
             border: Border.all(
               color: _isLoggedIn
-                  ? const Color(0xFF22C55E).withValues(alpha: 0.3)
+                  ? context.themeSuccess.withValues(alpha: 0.3)
                   : context.themeDividerLight,
             ),
           ),
@@ -1006,7 +1006,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                 _isLoggedIn ? Icons.check_circle : Icons.circle_outlined,
                 size: 14,
                 color: _isLoggedIn
-                    ? const Color(0xFF22C55E)
+                    ? context.themeSuccess
                     : context.themeTextTertiary,
               ),
               const SizedBox(width: 6),
@@ -1019,25 +1019,17 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: _isLoggedIn
-                        ? const Color(0xFF22C55E)
+                        ? context.themeSuccess
                         : context.themeTextTertiary,
                   ),
                 ),
               ),
               if (_isLoggedIn)
-                TextButton(
+                BaseButton(
+                  label: '退出',
+                  size: BaseButtonSize.sm,
+                  variant: BaseButtonVariant.danger,
                   onPressed: _loading ? null : _clearLogin,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: const Size(0, 24),
-                  ),
-                  child: Text(
-                    '退出',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: context.themeTextTertiary,
-                    ),
-                  ),
                 ),
             ],
           ),
@@ -1114,18 +1106,11 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  TextButton(
+                  BaseButton(
+                    label: '取消',
+                    size: BaseButtonSize.sm,
+                    variant: BaseButtonVariant.secondary,
                     onPressed: _cancelQrLogin,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(0, 24),
-                    ),
-                    child: Text(
-                      '取消',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: context.themeTextTertiary,
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -1135,41 +1120,20 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton.icon(
+                  child: BaseButton(
+                    label: '扫码登录',
+                    icon: Icons.qr_code_scanner,
+                    size: BaseButtonSize.sm,
                     onPressed: _loading ? null : _startQrLogin,
-                    icon: const Icon(Icons.qr_code_scanner, size: 16),
-                    label: const Text(
-                      '扫码登录',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.themeAccent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero,
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                TextButton.icon(
+                BaseButton(
+                  label: '使用说明',
+                  icon: Icons.help_outline,
+                  size: BaseButtonSize.sm,
+                  variant: BaseButtonVariant.secondary,
                   onPressed: _showFeatureHelp,
-                  icon: Icon(
-                    Icons.help_outline,
-                    size: 16,
-                    color: context.themeTextTertiary,
-                  ),
-                  label: Text(
-                    '使用说明',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.themeTextTertiary,
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -1307,26 +1271,11 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
               const SizedBox(width: 6),
               SizedBox(
                 height: 42,
-                child: ElevatedButton(
+                child: BaseButton(
+                  label: '搜索',
+                  size: BaseButtonSize.sm,
+                  loading: _searching,
                   onPressed: _searching || _loading ? null : _search,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.themeAccent,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                  ),
-                  child: _searching
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('搜索', style: TextStyle(fontSize: 13)),
                 ),
               ),
             ],
@@ -1500,7 +1449,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                 isComplete ? Icons.check_circle : Icons.sync,
                 size: 18,
                 color: isComplete
-                    ? const Color(0xFF22C55E)
+                    ? context.themeSuccess
                     : context.themeAccent,
               ),
               const SizedBox(width: 8),

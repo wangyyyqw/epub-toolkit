@@ -1,9 +1,8 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/theme.dart';
 
@@ -27,263 +26,230 @@ class NavItem {
 /// 侧边栏完整导航配置
 final List<NavItem> _navGroups = [
   const NavItem(
-      label: '仪表盘', icon: Icons.home_outlined, route: '/dashboard'),
+      label: '仪表盘', icon: TDIcons.dashboard, route: '/dashboard'),
   NavItem(
     label: '文件转换',
-    icon: Icons.swap_horiz_outlined,
+    icon: TDIcons.swap,
     children: [
       const NavItem(
         label: 'TXT → EPUB',
-        icon: Icons.menu_book_outlined,
+        icon: TDIcons.book_open,
         route: '/txt2epub',
       ),
       const NavItem(
         label: '版本转换',
-        icon: Icons.swap_vert_outlined,
+        icon: TDIcons.swap,
         route: '/epub-tool/convert-version',
       ),
       const NavItem(
         label: '简体转繁体',
-        icon: Icons.translate,
+        icon: TDIcons.translate,
         route: '/epub-tool/s2t',
       ),
       const NavItem(
         label: '繁体转简体',
-        icon: Icons.translate_outlined,
+        icon: TDIcons.translate,
         route: '/epub-tool/t2s',
       ),
     ],
   ),
   NavItem(
     label: '格式处理',
-    icon: Icons.format_shapes_outlined,
+    icon: TDIcons.article,
     children: [
       const NavItem(
         label: '元数据编辑',
-        icon: Icons.edit_note_outlined,
+        icon: TDIcons.edit_1,
         route: '/metadata',
       ),
       const NavItem(
         label: 'EPUB → TXT',
-        icon: Icons.article_outlined,
+        icon: TDIcons.article,
         route: '/epub-tool/epub-to-txt',
       ),
       const NavItem(
         label: '更换封面',
-        icon: Icons.image_outlined,
+        icon: TDIcons.image,
         route: '/epub-tool/replace-cover',
       ),
       const NavItem(
         label: '合并 EPUB',
-        icon: Icons.call_merge_outlined,
+        icon: TDIcons.merge_cells,
         route: '/epub-tool/merge',
       ),
       const NavItem(
         label: '拆分 EPUB',
-        icon: Icons.call_split_outlined,
+        icon: TDIcons.cut,
         route: '/epub-tool/split',
       ),
       const NavItem(
         label: '列出拆分目标',
-        icon: Icons.list_alt_outlined,
+        icon: TDIcons.list,
         route: '/epub-tool/list-split-targets',
       ),
       const NavItem(
         label: '字体子集化',
-        icon: Icons.font_download_outlined,
+        icon: TDIcons.pen_quill,
         route: '/epub-tool/font-subset',
       ),
       const NavItem(
         label: '重新格式化',
-        icon: Icons.auto_fix_high_outlined,
+        icon: TDIcons.layers,
         route: '/epub-tool/reformat',
       ),
     ],
   ),
   NavItem(
     label: '安全加密',
-    icon: Icons.lock_outline,
+    icon: TDIcons.lock_on,
     children: [
       const NavItem(
         label: '名称混淆加密',
-        icon: Icons.enhanced_encryption_outlined,
+        icon: TDIcons.lock_on,
         route: '/epub-tool/encrypt',
       ),
       const NavItem(
         label: '名称混淆解密',
-        icon: Icons.no_encryption_outlined,
+        icon: TDIcons.lock_off,
         route: '/epub-tool/decrypt',
       ),
       const NavItem(
         label: '字体加密',
-        icon: Icons.security_outlined,
+        icon: TDIcons.key,
         route: '/epub-tool/encrypt-font',
       ),
     ],
   ),
   NavItem(
     label: '图片处理',
-    icon: Icons.photo_library_outlined,
+    icon: TDIcons.image,
     children: [
       const NavItem(
         label: '图片压缩',
-        icon: Icons.compress_outlined,
+        icon: TDIcons.image_edit,
         route: '/epub-tool/img-compress',
       ),
       const NavItem(
         label: '图片转 WebP',
-        icon: Icons.image_outlined,
+        icon: TDIcons.image,
         route: '/epub-tool/img-to-webp',
       ),
       const NavItem(
         label: '图片水印',
-        icon: Icons.fingerprint_outlined,
+        icon: TDIcons.pen_mark,
         route: '/epub-tool/image-watermark',
       ),
       const NavItem(
         label: 'WebP 转图片',
-        icon: Icons.image_search_outlined,
+        icon: TDIcons.image_search,
         route: '/epub-tool/webp-to-img',
       ),
       const NavItem(
         label: '下载网络图片',
-        icon: Icons.download_outlined,
+        icon: TDIcons.download,
         route: '/epub-tool/download-images',
       ),
     ],
   ),
   NavItem(
     label: '文本处理',
-    icon: Icons.text_snippet_outlined,
+    icon: TDIcons.file_code,
     children: [
       const NavItem(
         label: '广告清理',
-        icon: Icons.cleaning_services_outlined,
+        icon: TDIcons.filter_2,
         route: '/epub-tool/ad-clean',
       ),
       const NavItem(
         label: '读书想法',
-        icon: Icons.psychology_outlined,
+        icon: TDIcons.chat_heart,
         route: '/epub-tool/weread-thoughts',
       ),
     ],
   ),
   NavItem(
     label: '注释 / 注音',
-    icon: Icons.comment_outlined,
+    icon: TDIcons.chat_bubble,
     children: [
       const NavItem(
         label: '拼音标注',
-        icon: Icons.record_voice_over_outlined,
+        icon: TDIcons.sound,
         route: '/epub-tool/phonetic',
       ),
       const NavItem(
         label: '批注提取',
-        icon: Icons.comment_bank_outlined,
+        icon: TDIcons.chat_bubble,
         route: '/epub-tool/comment',
       ),
       const NavItem(
         label: '脚注转弹窗',
-        icon: Icons.question_answer_outlined,
+        icon: TDIcons.chat_bubble_add,
         route: '/epub-tool/footnote-to-comment',
       ),
       const NavItem(
         label: '弹窗转脚注',
-        icon: Icons.format_quote_outlined,
+        icon: TDIcons.file_code,
         route: '/epub-tool/span-to-footnote',
       ),
       const NavItem(
         label: '阅微转多看',
-        icon: Icons.sync_alt_outlined,
+        icon: TDIcons.swap,
         route: '/epub-tool/yuewei',
       ),
       const NavItem(
         label: '得到转多看',
-        icon: Icons.swap_horiz_outlined,
+        icon: TDIcons.swap,
         route: '/epub-tool/zhangyue',
       ),
     ],
   ),
   NavItem(
     label: 'Kindle 推送',
-    icon: Icons.send_outlined,
+    icon: TDIcons.send,
     children: [
       const NavItem(
         label: '邮箱推送',
-        icon: Icons.mail_outline,
+        icon: TDIcons.mail,
         route: '/send-email',
       ),
       const NavItem(
-          label: '网页推送', icon: Icons.language, route: '/send-web'),
+          label: '网页推送', icon: TDIcons.internet, route: '/send-web'),
       const NavItem(
         label: 'WiFi 传书',
-        icon: Icons.wifi_rounded,
+        icon: TDIcons.wifi,
         route: '/wifi-transfer',
       ),
     ],
   ),
   NavItem(
     label: '使用教程',
-    icon: Icons.school_outlined,
+    icon: TDIcons.education,
     children: [
       const NavItem(
         label: '传书教程',
-        icon: Icons.menu_book_outlined,
+        icon: TDIcons.book_open,
         route: '/tutorial',
       ),
     ],
   ),
 ];
 
-const double _sidebarWidthDesktop = 260;
-const double _sidebarWidthTablet = 240;
+const double _sidebarWidthDesktop = 240;
+const double _sidebarWidthMobile = 208;
+const double _sidebarWidthCollapsed = 64;
 
-/// 移动端底部导航栏配置（4 项 + 更多）
-const List<_BottomNavDef> _bottomNavDefs = [
-  _BottomNavDef(
-    icon: Icons.home_outlined,
-    activeIcon: Icons.home_rounded,
-    label: '仪表盘',
-    route: '/dashboard',
-  ),
-  _BottomNavDef(
-    icon: Icons.swap_horiz_outlined,
-    activeIcon: Icons.swap_horiz_rounded,
-    label: '转换',
-    route: '/txt2epub',
-  ),
-  _BottomNavDef(
-    icon: Icons.format_shapes_outlined,
-    activeIcon: Icons.format_shapes_rounded,
-    label: '格式',
-    route: '/metadata',
-  ),
-  _BottomNavDef(
-    icon: Icons.lock_outline,
-    activeIcon: Icons.lock_rounded,
-    label: '安全',
-    route: '/epub-tool/encrypt',
-  ),
-];
-
-class _BottomNavDef {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final String route;
-
-  const _BottomNavDef({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.route,
-  });
-}
+/// 窗口宽度低于该值时代理侧边栏默认收起
+const double _autoCollapseBreakpoint = 1150;
 
 const String _brandName = 'EPUB 工具箱';
 
 // ==================== 应用整体布局 ====================
 
+/// 应用外壳：所有平台统一使用侧边栏布局。
+///
+/// 桌面端侧边栏稍宽；窄窗口（<1150px）自动收起为图标栏，
+/// 品牌区按钮可手动展开/收起（手动选择后不再自动干预）。
+/// 当前路径所在分组自动展开（由 [SidebarState] 管理）。
 class AppScaffold extends StatelessWidget {
   final Widget child;
 
@@ -306,12 +272,36 @@ class AppScaffold extends StatelessWidget {
         create: (_) => SidebarState(),
         child: Builder(
           builder: (context) {
-            if (context.isDesktop) {
-              return _DesktopLayout(child: child);
-            } else if (context.isTablet) {
-              return _TabletLayout(child: child);
-            }
-            return _MobileLayout(child: child);
+            final location = GoRouterState.of(context).uri.toString();
+            final width = context.isDesktop
+                ? _sidebarWidthDesktop
+                : _sidebarWidthMobile;
+            return Scaffold(
+              backgroundColor: context.themeBg,
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  // 窗口宽度变化时应用默认收起策略（用户手动选择后跳过）
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    context.read<SidebarState>().applyWindowWidth(
+                          constraints.maxWidth < _autoCollapseBreakpoint,
+                        );
+                  });
+                  return Row(
+                    children: [
+                      _Sidebar(currentPath: location, width: width),
+                      Expanded(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1200),
+                            child: _SafeContent(child: child),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
           },
         ),
       ),
@@ -319,429 +309,104 @@ class AppScaffold extends StatelessWidget {
   }
 }
 
-// ==================== 桌面端布局（≥1024px）====================
-
-class _DesktopLayout extends StatelessWidget {
+/// 内容区安全边距：移动端顶部留出状态栏空间
+class _SafeContent extends StatelessWidget {
   final Widget child;
-  const _DesktopLayout({required this.child});
 
-  @override
-  Widget build(BuildContext context) {
-    final location = GoRouterState.of(context).uri.toString();
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          const Positioned.fill(
-            child: PaperBackground(child: SizedBox.shrink()),
-          ),
-          Row(
-            children: [
-              _Sidebar(
-                currentPath: location,
-                width: _sidebarWidthDesktop,
-              ),
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1200),
-                    child: child,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================== 平板端布局（800–1023px）====================
-
-class _TabletLayout extends StatelessWidget {
-  final Widget child;
-  const _TabletLayout({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final location = GoRouterState.of(context).uri.toString();
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          const Positioned.fill(
-            child: PaperBackground(child: SizedBox.shrink()),
-          ),
-          Row(
-            children: [
-              _Sidebar(
-                currentPath: location,
-                width: _sidebarWidthTablet,
-              ),
-              Expanded(child: child),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================== 移动端布局（<800px）====================
-
-class _MobileLayout extends StatefulWidget {
-  final Widget child;
-  const _MobileLayout({required this.child});
-
-  @override
-  State<_MobileLayout> createState() => _MobileLayoutState();
-}
-
-class _MobileLayoutState extends State<_MobileLayout> {
-  bool _sidebarOpen = false;
-
-  void _toggleSidebar() => setState(() => _sidebarOpen = !_sidebarOpen);
-  void _closeSidebar() => setState(() => _sidebarOpen = false);
+  const _SafeContent({required this.child});
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final drawerWidth = (screenWidth * 0.82).clamp(240.0, 320.0);
-    final location = GoRouterState.of(context).uri.toString();
-    final bottomNavIndex = _computeBottomNavIndex(location);
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          const Positioned.fill(
-            child: PaperBackground(child: SizedBox.shrink()),
-          ),
-          Column(
-            children: [
-              Container(height: topPadding, color: Colors.transparent),
-              _MobileTopBar(
-                onMenuTap: _toggleSidebar,
-                title: _currentTitle(location),
-              ),
-              Expanded(child: widget.child),
-            ],
-          ),
-          // 遮罩层
-          if (_sidebarOpen)
-            GestureDetector(
-              onTap: _closeSidebar,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.35),
-              ),
-            ),
-          // 抽屉
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            left: _sidebarOpen ? 0 : -drawerWidth,
-            top: 0,
-            bottom: 0,
-            width: drawerWidth,
-            child: Material(
-              elevation: 10,
-              color: context.themeBg,
-              borderRadius: const BorderRadius.only(
-                topRight: Radius.circular(AppTheme.radiusL),
-                bottomRight: Radius.circular(AppTheme.radiusL),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topRight: Radius.circular(AppTheme.radiusL),
-                  bottomRight: Radius.circular(AppTheme.radiusL),
-                ),
-                child: _Sidebar(
-                  currentPath: location,
-                  width: drawerWidth,
-                  onNavigate: _closeSidebar,
-                  topPadding: topPadding,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: _MobileBottomNav(
-        currentPath: location,
-        selectedIndex: bottomNavIndex,
-        onMoreTap: _toggleSidebar,
-      ),
-    );
-  }
-
-  String _currentTitle(String route) {
-    for (final nav in _navGroups) {
-      if (nav.route == route) return _brandName;
-      if (nav.children != null) {
-        for (final c in nav.children!) {
-          if (c.route == route) return c.label;
-        }
-      }
-    }
-    return _brandName;
-  }
-
-  int _computeBottomNavIndex(String route) {
-    for (var i = 0; i < _bottomNavDefs.length; i++) {
-      if (_bottomNavDefs[i].route == route) return i;
-    }
-    // 分类首页匹配
-    if (route == '/dashboard') return 0;
-    return -1;
-  }
-}
-
-// ==================== 移动端顶部栏 ====================
-
-class _MobileTopBar extends StatelessWidget {
-  final VoidCallback onMenuTap;
-  final String title;
-
-  const _MobileTopBar({required this.onMenuTap, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final showLogo = title == _brandName;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: context.themeBg.withValues(alpha: 0.88),
-            border: Border(
-              bottom: BorderSide(
-                color: context.themeDividerLight.withValues(alpha: 0.5),
-                width: 0.5,
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: onMenuTap,
-                icon: Icon(
-                  Icons.menu,
-                  size: 24,
-                  color: context.themeAccent,
-                ),
-                tooltip: '显示菜单',
-                splashRadius: 22,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: showLogo
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 26,
-                            height: 26,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                AppTheme.radiusXS,
-                              ),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  context.themeAccent,
-                                  context.themeAccentDark,
-                                ],
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.auto_stories_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _brandName,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: context.themeTextPrimary,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: context.themeTextPrimary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-              ),
-              const SizedBox(width: 44),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ==================== 移动端底部导航栏 ====================
-
-class _MobileBottomNav extends StatelessWidget {
-  final String currentPath;
-  final int selectedIndex;
-  final VoidCallback onMoreTap;
-
-  const _MobileBottomNav({
-    required this.currentPath,
-    required this.selectedIndex,
-    required this.onMoreTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isMoreActive = selectedIndex < 0;
-
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.themeBg.withValues(alpha: 0.92),
-            border: Border(
-              top: BorderSide(
-                color: context.themeDividerLight.withValues(alpha: 0.5),
-                width: 0.5,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  for (var i = 0; i < _bottomNavDefs.length; i++)
-                    Expanded(
-                      child: _buildItem(
-                        context,
-                        _bottomNavDefs[i],
-                        selectedIndex == i,
-                      ),
-                    ),
-                  Expanded(
-                    child: _buildMoreItem(context, isMoreActive),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildItem(
-    BuildContext context,
-    _BottomNavDef item,
-    bool isActive,
-  ) {
-    return InkWell(
-      onTap: () => context.go(item.route),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            isActive ? item.activeIcon : item.icon,
-            size: 22,
-            color: isActive
-                ? context.themeAccent
-                : context.themeTextTertiary,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            item.label,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-              color: isActive
-                  ? context.themeAccent
-                  : context.themeTextTertiary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMoreItem(BuildContext context, bool isActive) {
-    return InkWell(
-      onTap: onMoreTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.apps_rounded,
-            size: 22,
-            color: isActive
-                ? context.themeAccent
-                : context.themeTextTertiary,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '更多',
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-              color: isActive
-                  ? context.themeAccent
-                  : context.themeTextTertiary,
-            ),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: EdgeInsets.only(top: topPadding, bottom: 8),
+      child: child,
     );
   }
 }
 
 // ==================== 侧边栏状态管理 ====================
 
-/// 全局侧边栏状态管理：支持多分组同时展开
+/// 全局侧边栏状态管理：支持多分组同时展开 + 折叠/展开切换
 class SidebarState extends ChangeNotifier {
   final Set<String> _expandedGroups = {};
 
+  bool _collapsed = false;
+  bool _userCollapsed = false;
+
+  /// 由折叠态点击分组展开侧边栏后，选择功能会自动收起
+  bool _autoCollapseAfterNav = false;
+
   Set<String> get expandedGroups => Set.unmodifiable(_expandedGroups);
 
-  bool isExpanded(String groupLabel) =>
-      _expandedGroups.contains(groupLabel);
+  /// 侧边栏是否处于折叠（图标栏）状态
+  bool get collapsed => _collapsed;
+
+  /// 用户是否手动选择过折叠状态（自动策略不再干预）
+  bool get userCollapsed => _userCollapsed;
+
+  bool isExpanded(String groupLabel) => _expandedGroups.contains(groupLabel);
+
+  /// 手动切换折叠/展开
+  void toggleCollapsed() {
+    _userCollapsed = true;
+    _collapsed = !_collapsed;
+    if (!_collapsed) _autoCollapseAfterNav = false;
+    notifyListeners();
+  }
+
+  /// 窗口宽度变化时应用默认收起策略；用户手动选择后不再自动干预
+  void applyWindowWidth(bool narrow) {
+    if (_userCollapsed) return;
+    if (_collapsed != narrow) {
+      _collapsed = narrow;
+      notifyListeners();
+    }
+  }
+
+  /// 折叠态点击分组：展开侧边栏并展开该分组（收起其他分组）
+  ///
+  /// 随后通过侧边栏选择功能时，[navFromSidebar] 会自动收起。
+  void expandAndOpen(String groupLabel) {
+    _userCollapsed = true;
+    _collapsed = false;
+    _autoCollapseAfterNav = true;
+    _expandedGroups
+      ..clear()
+      ..add(groupLabel);
+    notifyListeners();
+  }
+
+  /// 通过侧边栏导航后调用：若此前由折叠态展开，则自动收起
+  void navFromSidebar() {
+    if (!_autoCollapseAfterNav) return;
+    _autoCollapseAfterNav = false;
+    _collapsed = true;
+    notifyListeners();
+  }
 
   void toggle(String groupLabel) {
     if (_expandedGroups.contains(groupLabel)) {
       _expandedGroups.remove(groupLabel);
     } else {
-      _expandedGroups.add(groupLabel);
+      // 手风琴模式：展开当前分组，同时收起其他分组
+      _expandedGroups
+        ..clear()
+        ..add(groupLabel);
     }
     notifyListeners();
   }
 
   void expand(String groupLabel) {
-    if (_expandedGroups.add(groupLabel)) notifyListeners();
+    if (_expandedGroups.length == 1 &&
+        _expandedGroups.contains(groupLabel)) {
+      return;
+    }
+    // 手风琴模式：只保留当前分组展开
+    _expandedGroups
+      ..clear()
+      ..add(groupLabel);
+    notifyListeners();
   }
 
   void collapse(String groupLabel) {
@@ -765,130 +430,158 @@ class SidebarState extends ChangeNotifier {
 class _Sidebar extends StatelessWidget {
   final String currentPath;
   final double width;
-  final VoidCallback? onNavigate;
-  final double? topPadding;
 
-  const _Sidebar({
-    required this.currentPath,
-    required this.width,
-    this.onNavigate,
-    this.topPadding,
-  });
+  const _Sidebar({required this.currentPath, required this.width});
 
   @override
   Widget build(BuildContext context) {
+    final sidebar = context.watch<SidebarState>();
+    final collapsed = sidebar.collapsed;
+
     return Container(
-      width: width,
-      color: context.themeBg,
-      child: Column(
-        children: [
-          if (topPadding != null) SizedBox(height: topPadding! + 8),
-          if (topPadding == null) const SizedBox(height: 16),
-          _buildBrand(context),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 1, color: context.themeDivider),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              itemCount: _navGroups.length,
-              itemBuilder: (context, index) {
-                final nav = _navGroups[index];
-                if (nav.isLeaf) {
-                  return _LeafNavTile(
-                    icon: nav.icon,
-                    label: nav.label,
-                    route: nav.route!,
-                    currentPath: currentPath,
-                    onTap: () {
-                      context.go(nav.route!);
-                      onNavigate?.call();
-                    },
-                  );
-                }
-                return _ExpandableNavGroup(
-                  parent: nav,
-                  currentPath: currentPath,
-                  onNavigate: onNavigate,
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Text(
-              'v1.1.1',
-              style: TextStyle(
-                fontSize: 11,
-                color: context.themeTextTertiary.withValues(alpha: 0.6),
-                letterSpacing: 0.3,
+      width: collapsed ? _sidebarWidthCollapsed : width,
+      decoration: BoxDecoration(
+        color: context.themeCard,
+        border: Border(
+          right: BorderSide(color: context.themeDividerLight, width: 1),
+        ),
+      ),
+      child: SafeArea(
+        right: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 14),
+            _buildBrand(context, collapsed),
+            const SizedBox(height: 10),
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: collapsed ? 12 : 14,
               ),
+              child: Divider(height: 1, color: context.themeDivider),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.symmetric(
+                  horizontal: collapsed ? 0 : 8,
+                  vertical: 4,
+                ),
+                itemCount: _navGroups.length,
+                  itemBuilder: (context, index) {
+                    final nav = _navGroups[index];
+                    if (nav.isLeaf) {
+                      return _LeafNavTile(
+                        icon: nav.icon,
+                        label: nav.label,
+                        route: nav.route!,
+                        currentPath: currentPath,
+                        collapsed: collapsed,
+                        onTap: () {
+                          context.go(nav.route!);
+                          context.read<SidebarState>().navFromSidebar();
+                        },
+                      );
+                    }
+                    return _ExpandableNavGroup(
+                      parent: nav,
+                      currentPath: currentPath,
+                      collapsed: collapsed,
+                    );
+                  },
+                ),
+            ),
+            if (!collapsed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'v1.2.1',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.themeTextTertiary.withValues(alpha: 0.6),
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            // 底部折叠/展开按钮
+            if (collapsed)
+              IconButton(
+                onPressed: () => context.read<SidebarState>().toggleCollapsed(),
+                tooltip: '展开侧边栏',
+                icon: Icon(
+                  Icons.menu_rounded,
+                  size: 20,
+                  color: context.themeTextTertiary,
+                ),
+              )
+            else
+              IconButton(
+                onPressed: () => context.read<SidebarState>().toggleCollapsed(),
+                tooltip: '收起侧边栏',
+                icon: Icon(
+                  Icons.menu_open_rounded,
+                  size: 19,
+                  color: context.themeTextTertiary,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBrand(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  context.themeAccent,
-                  context.themeAccentDark,
+  Widget _buildBrand(BuildContext context, bool collapsed) {
+    final logo = Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: context.themeAccentLight,
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+      ),
+      child: Icon(
+        Icons.auto_stories_rounded,
+        color: context.themeAccent,
+        size: 18,
+      ),
+    );
+
+    if (collapsed) {
+      return Center(child: logo);
+    }
+
+    return ClipRect(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
+        child: Row(
+          children: [
+            logo,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _brandName,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextPrimary,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  Text(
+                    '本地电子书处理',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: context.themeTextTertiary,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
                 ],
               ),
-              boxShadow: AppTheme.glow(context.themeAccent, alpha: 0.20),
             ),
-            child: const Center(
-              child: Icon(
-                Icons.auto_stories_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _brandName,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: context.themeTextPrimary,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                Text(
-                  '本地电子书处理',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: context.themeTextTertiary,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -901,6 +594,7 @@ class _LeafNavTile extends StatelessWidget {
   final String label;
   final String route;
   final String currentPath;
+  final bool collapsed;
   final VoidCallback onTap;
 
   const _LeafNavTile({
@@ -908,51 +602,86 @@ class _LeafNavTile extends StatelessWidget {
     required this.label,
     required this.route,
     required this.currentPath,
+    required this.collapsed,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isActive = currentPath == route;
+
+    if (collapsed) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Tooltip(
+          message: label,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppTheme.radiusS),
+            hoverColor: context.themeAccentLight,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? context.themeWarmLight
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              ),
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: isActive
+                      ? context.themeAccent
+                      : context.themeTextTertiary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTheme.radiusS),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        hoverColor: context.themeAccentLight,
+        child: Container(
           decoration: BoxDecoration(
-            color: isActive ? context.themeAccentLight : Colors.transparent,
+            color: isActive ? context.themeWarmLight : Colors.transparent,
             borderRadius: BorderRadius.circular(AppTheme.radiusS),
-            border: Border(
-              left: BorderSide(
-                color: isActive ? context.themeAccent : Colors.transparent,
-                width: 3,
-              ),
-            ),
           ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isActive
-                    ? context.themeAccent
-                    : context.themeTextTertiary,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 17,
                   color: isActive
                       ? context.themeAccent
-                      : context.themeTextSecondary,
+                      : context.themeTextTertiary,
                 ),
-              ),
-            ],
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                      color: isActive
+                          ? context.themeTextPrimary
+                          : context.themeTextSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -965,20 +694,19 @@ class _LeafNavTile extends StatelessWidget {
 class _ExpandableNavGroup extends StatefulWidget {
   final NavItem parent;
   final String currentPath;
-  final VoidCallback? onNavigate;
+  final bool collapsed;
 
   const _ExpandableNavGroup({
     required this.parent,
     required this.currentPath,
-    this.onNavigate,
+    required this.collapsed,
   });
 
   @override
   State<_ExpandableNavGroup> createState() => _ExpandableNavGroupState();
 }
 
-class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
-    with SingleTickerProviderStateMixin {
+class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
   @override
   void initState() {
     super.initState();
@@ -993,19 +721,22 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
   @override
   void didUpdateWidget(covariant _ExpandableNavGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 延迟到帧结束后再通知，避免 build 阶段 markNeedsBuild 异常
     if (widget.currentPath != oldWidget.currentPath) {
-      if (_hasActiveChild()) {
-        _sidebarState(context).expand(widget.parent.label);
-      } else {
-        _sidebarState(context).collapse(widget.parent.label);
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_hasActiveChild()) {
+          _sidebarState(context).expand(widget.parent.label);
+        } else {
+          _sidebarState(context).collapse(widget.parent.label);
+        }
+      });
     }
   }
 
   bool _hasActiveChild() {
     if (widget.parent.children == null) return false;
-    return widget.parent.children!
-        .any((c) => c.route == widget.currentPath);
+    return widget.parent.children!.any((c) => c.route == widget.currentPath);
   }
 
   SidebarState _sidebarState(BuildContext context) {
@@ -1021,6 +752,40 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
     final sidebar = context.watch<SidebarState>();
     final isExpanded = sidebar.isExpanded(widget.parent.label);
     final hasActiveChild = _hasActiveChild();
+    final collapsed = widget.collapsed;
+
+    // 折叠态：仅分组图标，点击展开侧边栏并展开该分组
+    if (collapsed) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Tooltip(
+          message: widget.parent.label,
+          child: InkWell(
+            onTap: () => sidebar.expandAndOpen(widget.parent.label),
+            borderRadius: BorderRadius.circular(AppTheme.radiusS),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: hasActiveChild
+                    ? context.themeWarmLight
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              ),
+              child: Center(
+                child: Icon(
+                  widget.parent.icon,
+                  size: 18,
+                  color: hasActiveChild
+                      ? context.themeAccent
+                      : context.themeTextTertiary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1028,60 +793,53 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
         InkWell(
           onTap: _toggle,
           borderRadius: BorderRadius.circular(AppTheme.radiusS),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          hoverColor: context.themeAccentLight,
+          child: Container(
             decoration: BoxDecoration(
               color: hasActiveChild
-                  ? context.themeAccentLight
+                  ? context.themeWarmLight
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              border: Border(
-                left: BorderSide(
-                  color: hasActiveChild
-                      ? context.themeAccent.withValues(alpha: 0.4)
-                      : Colors.transparent,
-                  width: 3,
-                ),
-              ),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  widget.parent.icon,
-                  size: 18,
-                  color: hasActiveChild
-                      ? context.themeAccent
-                      : context.themeTextTertiary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.parent.label,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: hasActiveChild
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                      color: hasActiveChild
-                          ? context.themeAccent
-                          : context.themeTextSecondary,
-                    ),
-                  ),
-                ),
-                AnimatedRotation(
-                  turns: isExpanded ? 0.25 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    Icons.chevron_right,
-                    size: 16,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.parent.icon,
+                    size: 17,
                     color: hasActiveChild
                         ? context.themeAccent
                         : context.themeTextTertiary,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      widget.parent.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: hasActiveChild
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: hasActiveChild
+                            ? context.themeTextPrimary
+                            : context.themeTextSecondary,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.chevron_right,
+                      size: 15,
+                      color: context.themeTextTertiary,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1092,51 +850,41 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
           child: isExpanded && widget.parent.children != null
               ? Padding(
                   padding:
-                      const EdgeInsets.only(left: 8, top: 2, bottom: 4),
+                      const EdgeInsets.only(left: 6, top: 2, bottom: 4),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: widget.parent.children!.map((child) {
-                      final isActive =
-                          child.route == widget.currentPath;
+                      final isActive = child.route == widget.currentPath;
                       return InkWell(
                         onTap: () {
                           context.go(child.route!);
-                          widget.onNavigate?.call();
+                          sidebar.navFromSidebar();
                         },
-                        borderRadius:
-                            BorderRadius.circular(AppTheme.radiusS),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                        hoverColor: context.themeAccentLight,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 7,
+                            horizontal: 10,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
                             color: isActive
-                                ? context.themeAccentLight
+                                ? context.themeWarmLight
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(
-                              AppTheme.radiusS,
-                            ),
-                            border: Border(
-                              left: BorderSide(
-                                color: isActive
-                                    ? context.themeAccent
-                                    : Colors.transparent,
-                                width: 3,
-                              ),
-                            ),
+                            borderRadius:
+                                BorderRadius.circular(AppTheme.radiusS),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 child.icon,
-                                size: 16,
+                                size: 15,
                                 color: isActive
                                     ? context.themeAccent
                                     : context.themeTextTertiary
                                         .withValues(alpha: 0.7),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 9),
                               Text(
                                 child.label,
                                 style: TextStyle(
@@ -1145,7 +893,7 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup>
                                       ? FontWeight.w600
                                       : FontWeight.w400,
                                   color: isActive
-                                      ? context.themeAccent
+                                      ? context.themeTextPrimary
                                       : context.themeTextSecondary,
                                 ),
                               ),

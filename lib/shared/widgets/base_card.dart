@@ -17,7 +17,7 @@ enum CardElevation {
 ///
 /// [elevation] 控制卡片层次：
 /// - flat: 仅描边，无投影（内嵌卡片）
-/// - normal: 柔和投影 + 弱描边（默认）
+/// - normal: 极轻投影 + 弱描边（默认）
 /// - raised: 投影 + 无描边（浮层卡片）
 class BaseCard extends StatelessWidget {
   final Widget child;
@@ -74,7 +74,7 @@ class BaseCard extends StatelessWidget {
                             title!,
                             style: TextStyle(
                               fontSize: 15,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: context.themeTextPrimary,
                             ),
                           ),

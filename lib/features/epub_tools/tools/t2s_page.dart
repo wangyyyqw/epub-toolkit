@@ -163,7 +163,6 @@ class _T2sPageState extends State<T2sPage> {
           buildToolHeader(
             context,
             icon: Icons.translate_outlined,
-            iconColor: const Color(0xFF6366F1),
             title: '繁体转简体',
             subtitle: '将 EPUB 中的繁体中文转换为简体中文',
           ),

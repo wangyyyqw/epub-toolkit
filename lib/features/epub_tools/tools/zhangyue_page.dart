@@ -237,7 +237,6 @@ class _ZhangyuePageState extends State<ZhangyuePage> {
           buildToolHeader(
             context,
             icon: Icons.swap_horiz_outlined,
-            iconColor: const Color(0xFF0891B2),
             title: '得到转多看',
             subtitle: '将得到格式脚注转为多看标准格式',
           ),

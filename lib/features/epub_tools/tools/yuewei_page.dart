@@ -232,7 +232,6 @@ class _YueweiPageState extends State<YueweiPage> {
           buildToolHeader(
             context,
             icon: Icons.sync_alt_outlined,
-            iconColor: const Color(0xFF0D9488),
             title: '阅微转多看',
             subtitle: '将阅微格式脚注转为多看标准格式',
           ),

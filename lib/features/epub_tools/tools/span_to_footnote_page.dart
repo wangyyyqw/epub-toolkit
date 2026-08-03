@@ -220,7 +220,6 @@ a.fn-ref { text-decoration: none; font-size: 0.75em; vertical-align: super; colo
           buildToolHeader(
             context,
             icon: Icons.format_quote_outlined,
-            iconColor: const Color(0xFF6D28D9),
             title: '弹窗转脚注',
             subtitle: '将阅微弹窗注释转换为 EPUB3 末尾脚注',
           ),

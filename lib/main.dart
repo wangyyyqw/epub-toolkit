@@ -8,6 +8,7 @@ import 'shared/widgets/toast_overlay.dart';
 
 /// 应用入口
 void main() {
+  initTDesignTheme();
   runApp(
     MultiProvider(
       providers: [

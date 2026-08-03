@@ -3,7 +3,7 @@
 // 验证：
 // 1. 应用启动后能进入 dashboard
 // 2. 侧边栏可以导航到 txt2epub
-// 3. 侧边栏可以导航到 epub-tools 并显示 26+ 个操作
+// 3. 侧边栏可以导航到 epub 工具页（替换封面）
 // 4. 侧边栏可以导航到 send-to-kindle
 // 5. 各页面没有明显异常（toast、加载等）
 
@@ -14,7 +14,6 @@ import 'package:provider/provider.dart';
 
 import 'package:epub_gadget/main.dart';
 import 'package:epub_gadget/core/router.dart';
-import 'package:epub_gadget/features/epub_tools/epub_tools_page.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 
 /// 构造带 Provider 包裹的应用根 widget（与真实 main() 一致）
@@ -54,17 +53,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('侧边栏导航到 epub-tools 页面并显示操作列表', (tester) async {
+  testWidgets('侧边栏导航到 epub 工具页（替换封面）', (tester) async {
     await tester.pumpWidget(_buildApp());
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 直接通过 GoRouter 跳转（更可靠）
-    AppRouter.config.go('/epub-tools');
+    AppRouter.config.go('/epub-tool/replace-cover');
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // 验证 EpubToolOp 至少一个标签可见（如「查看 OPF 元数据」）
-    final anyOpLabel = EpubToolOp.viewOpf.label;
-    expect(find.text(anyOpLabel), findsWidgets);
+    // 验证替换封面页面元素可见
+    expect(find.text('EPUB 文件'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

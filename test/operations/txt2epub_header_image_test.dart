@@ -24,64 +24,6 @@ void main() {
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
-  test('阅微头图写入 Images、manifest、每章标题前和样式表', () async {
-    final outputPath = '${tempDir.path}/yuewei-header.epub';
-    final (log, _) = await EpubGenerator.generate(
-      outputPath: outputPath,
-      title: '头图测试',
-      author: '作者',
-      chapters: const [
-        Chapter(title: '第1章 开始', content: '正文一'),
-        Chapter(title: '第2章 继续', content: '正文二', level: 2),
-      ],
-      headerImagePath: headerPngPath,
-      headerImageStyle: ChapterHeaderImageStyle.yuewei,
-    );
-
-    final archive = _readArchive(outputPath);
-    expect(log, contains('阅微章节头图'));
-    expect(archive.findFile('OEBPS/Images/logo.png'), isNotNull);
-
-    final opf = _text(archive, 'OEBPS/content.opf');
-    expect(
-      opf,
-      contains(
-        'id="chapter-header-image" href="Images/logo.png" media-type="image/png"',
-      ),
-    );
-
-    final css = _text(archive, 'OEBPS/style.css');
-    _expectNoInjectedBodyStyle(css);
-    expect(css, contains('duokan-text-indent: 0;'));
-    expect(css, contains('duokan-bleed: lefttopright;'));
-    expect(css, contains('.logo .responsive-image {\n  width: 100%;'));
-    expect(css, isNot(contains('width: 122%;')));
-
-    final chapters = archive.files
-        .where(
-          (file) =>
-              file.isFile &&
-              file.name.startsWith('OEBPS/Chapter') &&
-              file.name.endsWith('.xhtml'),
-        )
-        .toList();
-    expect(chapters, hasLength(2));
-    for (final file in chapters) {
-      final xhtml = utf8.decode(file.content as List<int>);
-      expect(
-        xhtml,
-        contains(
-          '<div class="logo">\n'
-          '    <img class="responsive-image" alt="logo" src="Images/logo.png"/>\n'
-          '  </div>',
-        ),
-      );
-      final heading = RegExp(r'<h[1-6]>').firstMatch(xhtml);
-      expect(heading, isNotNull);
-      expect(xhtml.indexOf('<div class="logo">'), lessThan(heading!.start));
-    }
-  });
-
   test('Kindle 头图使用越过页边距的响应式样式', () async {
     final jpgPath = '${tempDir.path}/header.jpeg';
     await File(jpgPath).writeAsBytes(const [0xff, 0xd8, 0xff, 0xd9]);
@@ -285,26 +227,198 @@ void main() {
     );
   });
 
-  test('全屏首页拒绝与模板不匹配的封面尺寸', () async {
+  test('全屏首页接受与模板不匹配的封面尺寸（尺寸仅为推荐）', () async {
     final coverPath = await _writePng(tempDir, 'wrong-size.png', 100, 200);
 
-    await expectLater(
-      EpubGenerator.generate(
-        outputPath: '${tempDir.path}/wrong-size.epub',
-        title: '尺寸测试',
+    // 非模板尺寸不再被拒绝，按原尺寸生成
+    await EpubGenerator.generate(
+      outputPath: '${tempDir.path}/wrong-size.epub',
+      title: '尺寸测试',
+      author: '作者',
+      chapters: const [Chapter(title: '第一章', content: '正文')],
+      fullScreenCoverImagePath: coverPath,
+      fullScreenCoverStyle: FullScreenCoverStyle.yuewei,
+    );
+
+    final archive = _readArchive('${tempDir.path}/wrong-size.epub');
+    final cover = archive.findFile('cover~slim.png');
+    expect(cover, isNotNull);
+  });
+
+  test('排版样式：正文字体/字号/行距/缩进与标题样式写入 CSS', () async {
+    final outputPath = '${tempDir.path}/styles.epub';
+    await EpubGenerator.generate(
+      outputPath: outputPath,
+      title: '样式测试',
+      author: '作者',
+      chapters: const [Chapter(title: '第一章', content: '正文')],
+      bodyFont: BodyFontFamily.sans,
+      bodyFontSize: BodyFontSize.large,
+      lineSpacing: LineSpacing.loose,
+      paragraphIndent: ParagraphIndent.none,
+      titleAlign: TitleAlign.left,
+      titleDecoration: TitleDecoration.divider,
+    );
+
+    final archive = _readArchive(outputPath);
+    final css = _text(archive, 'OEBPS/style.css');
+
+    // 非默认值 → 注入 body 全局样式
+    expect(css, contains('body {'));
+    expect(css, contains('font-family:'));
+    expect(css, contains('font-size: 1.1em;'));
+    expect(css, contains('line-height: 2.1;'));
+    // 无缩进
+    expect(css, contains('text-indent: 0;'));
+    // 标题左对齐 + 分隔线
+    expect(css, contains('text-align: left;'));
+    expect(css, contains('border-bottom: 1px solid #d0d0d0;'));
+  });
+
+  test('排版样式：默认值保持原有 CSS 输出（不注入 body）', () async {
+    final outputPath = '${tempDir.path}/default-styles.epub';
+    await EpubGenerator.generate(
+      outputPath: outputPath,
+      title: '默认样式测试',
+      author: '作者',
+      chapters: const [Chapter(title: '第一章', content: '正文')],
+    );
+
+    final archive = _readArchive(outputPath);
+    final css = _text(archive, 'OEBPS/style.css');
+    // 默认参数不注入 body 样式（保持阅读器默认排版）
+    expect(css, isNot(contains('body {')));
+    expect(css, contains('text-indent: 2em;'));
+    expect(css, contains('text-align: center;'));
+  });
+
+  test('新增头图模板：居中圆角 / 顶部通栏 / 小图配标题生成对应 CSS', () async {
+    final cases = <ChapterHeaderImageStyle, String>{
+      ChapterHeaderImageStyle.center: 'border-radius: 12px',
+      ChapterHeaderImageStyle.banner: 'width: 100%',
+      ChapterHeaderImageStyle.small: 'max-width: 120px',
+    };
+    for (final entry in cases.entries) {
+      final outputPath = '${tempDir.path}/header-${entry.key.name}.epub';
+      await EpubGenerator.generate(
+        outputPath: outputPath,
+        title: '头图模板测试',
         author: '作者',
         chapters: const [Chapter(title: '第一章', content: '正文')],
-        fullScreenCoverImagePath: coverPath,
-        fullScreenCoverStyle: FullScreenCoverStyle.yuewei,
-      ),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          contains('必须为 1080×2400'),
-        ),
-      ),
+        headerImagePath: headerPngPath,
+        headerImageStyle: entry.key,
+      );
+      final archive = _readArchive(outputPath);
+      final css = _text(archive, 'OEBPS/style.css');
+      expect(
+        css,
+        contains(entry.value),
+        reason: '${entry.key.name} 模板应包含 ${entry.value}',
+      );
+    }
+  });
+
+  test('微信读书头图：三重出血声明 + logo-div 结构', () async {
+    final outputPath = '${tempDir.path}/weread.epub';
+    await EpubGenerator.generate(
+      outputPath: outputPath,
+      title: '微信读书头图测试',
+      author: '作者',
+      chapters: const [Chapter(title: '第一章', content: '正文')],
+      headerImagePath: headerPngPath,
+      headerImageStyle: ChapterHeaderImageStyle.weread,
     );
+    final archive = _readArchive(outputPath);
+    final css = _text(archive, 'OEBPS/style.css');
+    expect(css, contains('duokan-bleed: lefttopright;'));
+    expect(css, contains('qrbleed: left top right;'));
+    expect(css, contains('bleed: left top right;'));
+    expect(css, contains('div.logo-div'));
+    final chapter = _text(archive, 'OEBPS/Chapter0001.xhtml');
+    expect(chapter, contains('<div class="logo-div">'));
+    expect(chapter, contains('<img class="logo"'));
+  });
+
+  test('标题装饰：左竖线 / 标签色块 / 橙右竖线 / 上下边框', () async {
+    final cases = <TitleDecoration, List<String>>{
+      TitleDecoration.leftBar: ['border-left: 4px solid #AB2524'],
+      TitleDecoration.boxed: ['background-color: #2F2F2F', 'color: #fff'],
+      TitleDecoration.orangeRight: [
+        'border-right: 6px solid #FE9803',
+        'text-shadow',
+      ],
+      TitleDecoration.topBottomLine: [
+        'border-top: 1px solid #2F4F4F',
+        'border-bottom: 1px solid #2F4F4F',
+      ],
+    };
+    for (final entry in cases.entries) {
+      final outputPath = '${tempDir.path}/dec-${entry.key.name}.epub';
+      await EpubGenerator.generate(
+        outputPath: outputPath,
+        title: '装饰测试',
+        author: '作者',
+        chapters: const [Chapter(title: '第一章', content: '正文')],
+        titleDecoration: entry.key,
+      );
+      final archive = _readArchive(outputPath);
+      final css = _text(archive, 'OEBPS/style.css');
+      for (final expected in entry.value) {
+        expect(
+          css,
+          contains(expected),
+          reason: '${entry.key.name} 装饰应包含 $expected',
+        );
+      }
+    }
+  });
+
+  test('楷体正文字体写入 CSS', () async {
+    final outputPath = '${tempDir.path}/kaiti.epub';
+    await EpubGenerator.generate(
+      outputPath: outputPath,
+      title: '楷体测试',
+      author: '作者',
+      chapters: const [Chapter(title: '第一章', content: '正文')],
+      bodyFont: BodyFontFamily.kaiti,
+    );
+    final archive = _readArchive(outputPath);
+    final css = _text(archive, 'OEBPS/style.css');
+    expect(css, contains('KaiTi'));
+    expect(css, contains('DK-KAITI'));
+  });
+
+  test('双行红章：序号暗灰 + 名称红色，XHTML 拆分标题', () async {
+    final outputPath = '${tempDir.path}/split.epub';
+    await EpubGenerator.generate(
+      outputPath: outputPath,
+      title: '红章测试',
+      author: '作者',
+      chapters: const [
+        Chapter(title: '第一章 初入江湖', content: '正文一'),
+        Chapter(title: '第二章 再续前缘', content: '正文二'),
+        Chapter(title: '前言', content: '前言正文'),
+      ],
+      titleLayout: TitleLayout.split,
+    );
+    final archive = _readArchive(outputPath);
+    final css = _text(archive, 'OEBPS/style.css');
+    expect(css, contains('.chapter-number'));
+    expect(css, contains('.chapter-name'));
+    expect(css, contains('#C2181E'));
+
+    final chapter1 = _text(archive, 'OEBPS/Chapter0001.xhtml');
+    expect(
+      chapter1,
+      contains('<span class="chapter-number">第一章</span>'),
+    );
+    expect(
+      chapter1,
+      contains('<span class="chapter-name">初入江湖</span>'),
+    );
+    // 不匹配"第X章"格式的标题回退单行
+    final chapter3 = _text(archive, 'OEBPS/Chapter0003.xhtml');
+    expect(chapter3, contains('<h1>前言</h1>'));
   });
 }
 

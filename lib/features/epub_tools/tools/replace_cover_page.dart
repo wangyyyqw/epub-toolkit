@@ -27,7 +27,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
   static const _title = '替换封面图片';
   static const _subtitle = '将 EPUB 的封面图片替换为新图片';
   static const _icon = Icons.image_outlined;
-  static const _iconColor = Color(0xFFEC4899);
 
   bool get _returnsText => false;
   String get _resultTitle => '提取的文本';
@@ -267,7 +266,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
           buildToolHeader(
             context,
             icon: _icon,
-            iconColor: _iconColor,
             title: _title,
             subtitle: _subtitle,
           ),

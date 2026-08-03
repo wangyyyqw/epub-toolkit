@@ -27,7 +27,6 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
   static const _title = 'EPUB 转 TXT';
   static const _subtitle = '将 EPUB 电子书转换为纯文本';
   static const _icon = Icons.article_outlined;
-  static const _iconColor = Color(0xFFF59E0B);
 
   bool get _returnsText => true;
   String get _resultTitle => '提取的文本';
@@ -236,7 +235,6 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
           buildToolHeader(
             context,
             icon: _icon,
-            iconColor: _iconColor,
             title: _title,
             subtitle: _subtitle,
           ),

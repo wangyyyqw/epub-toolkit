@@ -27,7 +27,6 @@ class _ReformatPageState extends State<ReformatPage> {
   static const _title = '重新格式化';
   static const _subtitle = '规范化 EPUB 内部结构，清理冗余文件';
   static const _icon = Icons.auto_fix_high_outlined;
-  static const _iconColor = Color(0xFF8B5CF6);
 
   bool get _returnsText => false;
   String get _resultTitle => '提取的文本';
@@ -243,7 +242,6 @@ class _ReformatPageState extends State<ReformatPage> {
           buildToolHeader(
             context,
             icon: _icon,
-            iconColor: _iconColor,
             title: _title,
             subtitle: _subtitle,
           ),

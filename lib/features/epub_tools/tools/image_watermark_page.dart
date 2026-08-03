@@ -159,7 +159,6 @@ class _ImageWatermarkPageState extends State<ImageWatermarkPage> {
           buildToolHeader(
             context,
             icon: Icons.fingerprint_outlined,
-            iconColor: const Color(0xFF0F766E),
             title: '图片水印',
             subtitle: '将文本写入 EPUB 图片低位，并读取已写入信息',
           ),
@@ -217,7 +216,6 @@ class _ImageWatermarkPageState extends State<ImageWatermarkPage> {
                     enabled: !_loading,
                     decoration: const InputDecoration(
                       hintText: '输入需要写入所有可处理图片的文本',
-                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),

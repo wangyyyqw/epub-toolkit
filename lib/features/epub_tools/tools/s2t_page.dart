@@ -163,7 +163,6 @@ class _S2tPageState extends State<S2tPage> {
           buildToolHeader(
             context,
             icon: Icons.translate,
-            iconColor: const Color(0xFF3B82F6),
             title: '简体转繁体',
             subtitle: '将 EPUB 中的简体中文转换为繁体中文',
           ),

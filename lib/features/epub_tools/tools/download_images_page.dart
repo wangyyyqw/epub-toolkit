@@ -144,7 +144,6 @@ class _DownloadImagesPageState extends State<DownloadImagesPage> {
           buildToolHeader(
             context,
             icon: Icons.download_outlined,
-            iconColor: const Color(0xFF2563EB),
             title: '下载网络图片',
             subtitle: '下载 EPUB 中引用的网络图片到本地',
           ),

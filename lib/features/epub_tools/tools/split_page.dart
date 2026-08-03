@@ -123,7 +123,6 @@ class _SplitPageState extends State<SplitPage> {
           buildToolHeader(
             context,
             icon: Icons.call_split,
-            iconColor: const Color(0xFFCA8A04),
             title: '拆分 EPUB',
             subtitle: '按章节拆分点将 EPUB 拆分为多个',
           ),

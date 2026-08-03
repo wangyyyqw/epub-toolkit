@@ -5,8 +5,10 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../../core/file_service.dart';
+import '../../../core/theme.dart';
 import '../epub_background_operation.dart';
 import '../../../shared/providers/toast_provider.dart';
+import '../../../shared/widgets/base_button.dart';
 import '../../../shared/widgets/file_drop_target.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
@@ -181,7 +183,6 @@ class _MergePageState extends State<MergePage> {
           buildToolHeader(
             context,
             icon: Icons.call_merge_outlined,
-            iconColor: const Color(0xFF16A34A),
             title: '合并 EPUB',
             subtitle: '将多个 EPUB 合并为一个',
           ),
@@ -195,25 +196,19 @@ class _MergePageState extends State<MergePage> {
                 Row(
                   children: [
                     Expanded(
-                      child: ElevatedButton.icon(
+                      child: BaseButton(
+                        label: '选择文件',
+                        icon: Icons.add,
                         onPressed: _loading ? null : _pickMergeFiles,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('选择文件'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: cs.primary,
-                          foregroundColor: cs.onPrimary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     if (_mergeInputPaths.isNotEmpty)
-                      TextButton.icon(
+                      BaseButton(
+                        label: '清空',
+                        icon: Icons.clear_all,
+                        variant: BaseButtonVariant.danger,
                         onPressed: _loading ? null : _clearMergeFiles,
-                        icon: Icon(Icons.clear_all, size: 18, color: cs.error),
-                        label: Text('清空', style: TextStyle(color: cs.error)),
                       ),
                   ],
                 ),
@@ -254,15 +249,13 @@ class _MergePageState extends State<MergePage> {
                                 dense: true,
                                 leading: CircleAvatar(
                                   radius: 12,
-                                  backgroundColor: cs.primary.withValues(
-                                    alpha: 0.12,
-                                  ),
+                                  backgroundColor: context.themeAccentLight,
                                   child: Text(
                                     '${index + 1}',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: cs.primary,
-                                      fontWeight: FontWeight.bold,
+                                      color: context.themeAccent,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),

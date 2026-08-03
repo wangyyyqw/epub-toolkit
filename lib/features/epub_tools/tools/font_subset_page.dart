@@ -145,7 +145,6 @@ class _FontSubsetPageState extends State<FontSubsetPage> {
           buildToolHeader(
             context,
             icon: Icons.font_download_outlined,
-            iconColor: const Color(0xFF7C3AED),
             title: '字体子集化',
             subtitle: '子集化 EPUB 中的字体文件以减小体积',
           ),

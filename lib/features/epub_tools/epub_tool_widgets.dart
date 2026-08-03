@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/file_service.dart';
 import '../../core/theme.dart';
 import '../../shared/widgets/file_drop_target.dart';
 
-/// EPUB 工具公共 UI 组件库（阅微风格）
+/// EPUB 工具公共 UI 组件库（TDesign 风格）
 
 /// 路径中间截断
 String truncatePath(String path, {int maxLen = 35}) {
@@ -20,14 +21,6 @@ String truncatePath(String path, {int maxLen = 35}) {
   return '${dir.substring(0, keep)}.../$base';
 }
 
-Color _mutedIconColor(Color color, bool isDark) {
-  final hsl = HSLColor.fromColor(color);
-  return hsl
-      .withLightness((hsl.lightness * (isDark ? 0.72 : 0.62)).clamp(0.18, 0.62))
-      .withSaturation((hsl.saturation * 0.82).clamp(0.0, 1.0))
-      .toColor();
-}
-
 /// 区块标签（图标 + 文字）
 Widget buildSectionLabel(BuildContext context, IconData icon, String text) {
   return Row(
@@ -38,7 +31,7 @@ Widget buildSectionLabel(BuildContext context, IconData icon, String text) {
         text,
         style: TextStyle(
           fontSize: 15,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           color: context.themeTextPrimary,
         ),
       ),
@@ -261,11 +254,11 @@ Widget buildFilePickerRow(
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.themeBgWarm,
+        color: context.themeCard,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isComplete
-              ? context.themeAccent.withValues(alpha: 0.32)
+              ? context.themeWarm.withValues(alpha: 0.55)
               : context.themeDividerLight,
         ),
       ),
@@ -274,7 +267,7 @@ Widget buildFilePickerRow(
           Icon(
             icon,
             size: 20,
-            color: isComplete ? context.themeAccent : context.themeTextTertiary,
+            color: isComplete ? context.themeWarm : context.themeTextTertiary,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -471,47 +464,60 @@ Widget buildCompactSelect(
 }
 
 /// 工具页页头（参考设置页的大标题风格）
+///
+/// 采用统一的墨色中性风格，保证全篇不出现第二处彩色。
 Widget buildToolHeader(
   BuildContext context, {
   required IconData icon,
-  required Color iconColor,
   required String title,
   required String subtitle,
 }) {
-  final mutedIconColor = _mutedIconColor(iconColor, context.isDarkMode);
   return Padding(
-    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: mutedIconColor.withValues(
-            alpha: context.isDarkMode ? 0.18 : 0.1,
+    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: context.themeAccentLight,
+            borderRadius: BorderRadius.circular(AppTheme.radiusS),
           ),
-          borderRadius: BorderRadius.circular(6),
+          child: Icon(icon, color: context.themeAccent, size: 18),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: mutedIconColor, size: 12),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: context.themeTextPrimary,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
                 subtitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
-                  color: mutedIconColor,
-                  fontWeight: FontWeight.w600,
-                  height: 1.25,
+                  fontSize: 12,
+                  height: 1.4,
+                  color: context.themeTextTertiary,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
     ),
   );
 }
@@ -568,9 +574,8 @@ Widget buildBottomActionBar(
                   backgroundColor: context.themeAccent,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shadowColor: context.themeAccent.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusL),
                   ),
                 ),
                 child: Row(
@@ -582,7 +587,7 @@ Widget buildBottomActionBar(
                       label,
                       style: const TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
                     ),
@@ -599,79 +604,153 @@ Widget buildLogPanel(BuildContext context, Widget logController) {
   return logController;
 }
 
-/// 设置项行（用于设置页面风格）
+/// 设置项行（TDesign TDCell 风格：左图标 + 标签 + 右值 + 右箭头，全行可点）
 Widget buildSettingRow({
   required BuildContext context,
   required IconData icon,
   required String title,
   String? value,
+  Color? valueColor,
   Widget? trailing,
   VoidCallback? onTap,
   bool showDivider = true,
 }) {
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: context.themeTextSecondary),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: context.themeTextPrimary,
-                  ),
-                ),
-              ),
-              if (value != null)
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.themeTextTertiary,
-                  ),
-                ),
-              ?trailing,
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: context.themeTextTertiary.withValues(alpha: 0.5),
-                ),
-            ],
-          ),
-        ),
-      ),
-      if (showDivider)
-        Divider(indent: 50, height: 1, color: context.themeDividerLight),
-    ],
+  final showArrow = onTap != null;
+  final style = TDCellStyle(
+    context: context,
+    leftIconColor: context.themeTextTertiary,
+    titleStyle: TextStyle(
+      fontSize: 14.5,
+      color: context.themeTextPrimary,
+    ),
+    noteStyle: TextStyle(
+      fontSize: 13.5,
+      color: valueColor ?? context.themeTextTertiary,
+    ),
+    arrowColor: context.themeTextTertiary.withValues(alpha: 0.35),
+    borderedColor: context.themeDividerLight,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+  );
+
+  return TDCell(
+    leftIcon: icon,
+    title: title,
+    note: value,
+    rightIconWidget: trailing,
+    arrow: showArrow,
+    showBottomBorder: showDivider,
+    onClick: showArrow ? (cell) => onTap!() : null,
+    style: style,
   );
 }
 
-/// 分组卡片容器
+/// 开关设置行（TDesign TDSwitch：标题 + 副标题 + 右侧开关）
+class SettingSwitchRow extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const SettingSwitchRow({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: context.themeTextPrimary,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.themeTextTertiary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          TDSwitch(
+            isOn: value,
+            onChanged: onChanged == null
+                ? null
+                : (v) {
+                    onChanged!(v);
+                    return true;
+                  },
+            trackOnColor: context.themeWarm,
+            trackOffColor: context.themeDividerLight,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 分组设置卡片（阅微设置页风格）
+///
+/// 圆角白卡；[title] 为卡片上方的分组小标题（浅灰小字）。
+/// [children] 中直接放 [buildSettingRow] 即可形成分组列表，
+/// 行间分割线自动由各行自绘。
 Widget buildGroupCard({
   required BuildContext context,
   required List<Widget> children,
-  EdgeInsets padding = const EdgeInsets.all(12),
+  String? title,
+  EdgeInsets padding = const EdgeInsets.fromLTRB(16, 8, 16, 8),
+  double titleSpacing = 10,
 }) {
-  return Container(
-    decoration: BoxDecoration(
-      color: context.themeCard,
-      borderRadius: BorderRadius.circular(AppTheme.radiusL),
-      border: Border.all(color: context.themeDividerLight),
-    ),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(AppTheme.radiusL),
-      child: Padding(
-        padding: padding,
-        child: Column(mainAxisSize: MainAxisSize.min, children: children),
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (title != null) ...[
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              color: context.themeTextTertiary,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ),
+        SizedBox(height: titleSpacing),
+      ],
+      Container(
+        decoration: BoxDecoration(
+          color: context.themeCard,
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+          border: Border.all(color: context.themeDividerLight),
+          boxShadow: context.themeCardShadowLight,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+          child: Padding(
+            padding: padding,
+            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+          ),
+        ),
       ),
-    ),
+    ],
   );
 }

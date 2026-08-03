@@ -1,10 +1,18 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'package:epub_gadget/core/encoding_detector.dart';
 import 'package:epub_gadget/core/theme.dart';
 import 'package:epub_gadget/core/file_service.dart';
+import 'package:epub_gadget/features/epub_tools/epub_tool_widgets.dart';
 import 'package:epub_gadget/features/txt2epub/models/chapter.dart';
 import 'package:epub_gadget/features/txt2epub/services/chapter_splitter.dart';
 import 'package:epub_gadget/features/txt2epub/services/epub_generator.dart';
@@ -74,17 +82,37 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   String _coverPath = '';
   String _headerImagePath = '';
   String _fullScreenCoverImagePath = '';
-  ChapterHeaderImageStyle _headerImageStyle = ChapterHeaderImageStyle.yuewei;
+  ChapterHeaderImageStyle _headerImageStyle = ChapterHeaderImageStyle.banner;
   bool _addFullScreenCover = false;
   FullScreenCoverStyle _fullScreenCoverStyle = FullScreenCoverStyle.yuewei;
+
+  /// 正文样式
+  BodyFontFamily _bodyFont = BodyFontFamily.serif;
+  BodyFontSize _bodyFontSize = BodyFontSize.standard;
+  LineSpacing _lineSpacing = LineSpacing.standard;
+  ParagraphIndent _paragraphIndent = ParagraphIndent.twoChars;
+
+  /// 去除空行（并入排版样式）
+  bool _removeEmptyLines = true;
+
+  /// 标题样式
+  TitleAlign _titleAlign = TitleAlign.center;
+  TitleDecoration _titleDecoration = TitleDecoration.none;
+  TitleLayout _titleLayout = TitleLayout.single;
+  TitleImageSpacing _titleImageSpacing = TitleImageSpacing.standard;
+
+  /// 装饰颜色（分隔线/竖线/色块，留空用默认色）
+  String _titleAccentColor = '';
+
+  /// 双行红章颜色（序号 / 名称）
+  String _chapterNumberColor = '#413245';
+  String _chapterNameColor = '#C2181E';
 
   /// 多级标题配置（至少 1 条，最多 15 条）
   final List<LevelConfig> _levels = [
     LevelConfig.fromPreset(presetPatterns.first),
   ];
 
-  bool _removeEmptyLines = true;
-  bool _fixIndent = true;
   bool _loading = false;
   bool _scanning = false;
   List<Chapter> _chapters = [];
@@ -94,6 +122,9 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   final Map<int, Set<int>> _disabledRuleLines = {};
   List<Map<String, dynamic>> _scanResults = [];
   final OutputLogController _logController = OutputLogController();
+
+  /// 设置页滚动控制器（预览区域滚轮事件转发给页面滚动）
+  final ScrollController _settingsScrollController = ScrollController();
 
   late final List<String> _presetNames = presetPatterns
       .map((pat) => pat.name)
@@ -109,6 +140,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   void dispose() {
     _tabController.dispose();
     _logController.dispose();
+    _settingsScrollController.dispose();
     for (final level in _levels) {
       level.dispose();
     }
@@ -267,7 +299,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       final rawText = EncodingDetector.readFile(_txtPath, encoding);
       final cleaner = TextCleaner(
         removeEmptyLines: _removeEmptyLines,
-        fixIndent: _fixIndent,
+        fixIndent: _paragraphIndent == ParagraphIndent.twoChars,
       );
       final cleanText = cleaner.clean(rawText);
       final splitter = ChapterSplitter();
@@ -380,7 +412,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     final rawText = EncodingDetector.readFile(_txtPath, encoding);
     return TextCleaner(
       removeEmptyLines: _removeEmptyLines,
-      fixIndent: _fixIndent,
+      fixIndent: _paragraphIndent == ParagraphIndent.twoChars,
     ).clean(rawText);
   }
 
@@ -546,7 +578,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       _logController.append('正在清洗文本...');
       final cleaner = TextCleaner(
         removeEmptyLines: _removeEmptyLines,
-        fixIndent: _fixIndent,
+        fixIndent: _paragraphIndent == ParagraphIndent.twoChars,
       );
       final cleanText = cleaner.clean(rawText);
       _logController.append('文本清洗完成');
@@ -610,6 +642,17 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         fullScreenCoverStyle: _addFullScreenCover
             ? _fullScreenCoverStyle
             : null,
+        bodyFont: _bodyFont,
+        bodyFontSize: _bodyFontSize,
+        lineSpacing: _lineSpacing,
+        paragraphIndent: _paragraphIndent,
+        titleAlign: _titleAlign,
+        titleDecoration: _titleDecoration,
+        titleLayout: _titleLayout,
+        titleImageSpacing: _titleImageSpacing,
+        titleAccentColor: _titleAccentColor,
+        chapterNumberColor: _chapterNumberColor,
+        chapterNameColor: _chapterNameColor,
       );
 
       outputPath = userVisiblePath;
@@ -653,10 +696,12 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
+          color: context.themeCard,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isComplete ? cs.primary.withValues(alpha: 0.3) : cs.outline,
+            color: isComplete
+                ? context.themeWarm.withValues(alpha: 0.55)
+                : context.themeDividerLight,
           ),
         ),
         child: Row(
@@ -664,7 +709,9 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             Icon(
               icon,
               size: 20,
-              color: isComplete ? cs.primary : cs.onSurfaceVariant,
+              color: isComplete
+                  ? context.themeWarm
+                  : context.themeTextTertiary,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -780,13 +827,17 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           height: 34,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: value ? cs.primaryContainer : cs.surfaceContainerHighest,
+            color: value
+                ? context.themeWarmLight
+                : context.themeAccentLight,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
             icon,
             size: 18,
-            color: value ? cs.primary : cs.onSurfaceVariant,
+            color: value
+                ? context.themeAccent
+                : context.themeTextTertiary,
           ),
         ),
         const SizedBox(width: 10),
@@ -796,23 +847,33 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
+                  color: context.themeTextPrimary,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.themeTextTertiary,
+                ),
               ),
             ],
           ),
         ),
-        Switch(
-          value: value,
-          onChanged: _loading ? null : onChanged,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        TDSwitch(
+          isOn: value,
+          onChanged: _loading
+              ? null
+              : (v) {
+                  onChanged(v);
+                  return true;
+                },
+          trackOnColor: context.themeWarm,
+          trackOffColor: context.themeDividerLight,
         ),
       ],
     );
@@ -1139,6 +1200,37 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     );
   }
 
+  /// 样式选项行：左侧小标签 + 右侧 chips（独立一行）
+  Widget _buildStyleRow(String label, List<Widget> children) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 44,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionLabel(
     ThemeData theme,
     ColorScheme cs,
@@ -1147,13 +1239,14 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
   ) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: cs.primary),
+        Icon(icon, size: 16, color: context.themeAccent),
         const SizedBox(width: 6),
         Text(
           text,
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
             fontSize: 15,
+            color: context.themeTextPrimary,
           ),
         ),
       ],
@@ -1265,6 +1358,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     final cs = theme.colorScheme;
 
     return ListView(
+      controller: _settingsScrollController,
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 100),
       children: [
         // ---- 文件信息区 ----
@@ -1348,8 +1442,8 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                         path: _fullScreenCoverImagePath,
                         hint:
                             _fullScreenCoverStyle == FullScreenCoverStyle.yuewei
-                            ? '1080×2400 · PNG/JPG'
-                            : '1536×2048 · PNG/JPG',
+                            ? '推荐 1080×2400 · 任意尺寸均可 · PNG/JPG'
+                            : '推荐 1536×2048 · 任意尺寸均可 · PNG/JPG',
                         onPick: _pickFullScreenCoverImage,
                         onClear: () =>
                             setState(() => _fullScreenCoverImagePath = ''),
@@ -1361,7 +1455,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            '模板',
+                            '模板（仅推荐，不强制）',
                             style: TextStyle(
                               fontSize: 11,
                               color: cs.onSurfaceVariant,
@@ -1446,47 +1540,402 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                     _buildImagePickerWithClear(
                       label: '头图图片',
                       path: _headerImagePath,
-                      hint: '选择 PNG/JPG 图片',
+                      hint: '选择 PNG/JPG 图片，模板在「排版样式」中预览',
                       onPick: _pickHeaderImage,
                       onClear: () => setState(() => _headerImagePath = ''),
                     ),
-                    if (_headerImagePath.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            '样式',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          _buildChip(
-                            '阅微通栏',
-                            _headerImageStyle == ChapterHeaderImageStyle.yuewei,
-                            (_) => setState(
-                              () => _headerImageStyle =
-                                  ChapterHeaderImageStyle.yuewei,
-                            ),
-                          ),
-                          _buildChip(
-                            'Kindle 越界',
-                            _headerImageStyle == ChapterHeaderImageStyle.kindle,
-                            (_) => setState(
-                              () => _headerImageStyle =
-                                  ChapterHeaderImageStyle.kindle,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
             ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // ---- 正文与标题样式 ----
+        _buildSectionLabel(theme, cs, Icons.text_format, '排版样式'),
+        const SizedBox(height: 8),
+        _buildSettingsCard(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // PC/平板：左侧预览、右侧样式选项；窄屏纵向排列
+              final wide = constraints.maxWidth >= 560;
+
+              final preview = _TypographyPreview(
+                font: _bodyFont,
+                fontSize: _bodyFontSize,
+                lineSpacing: _lineSpacing,
+                indent: _paragraphIndent,
+                titleAlign: _titleAlign,
+                titleDecoration: _titleDecoration,
+                titleLayout: _titleLayout,
+                titleImageSpacing: _titleImageSpacing,
+                titleAccentColor: _titleAccentColor,
+                chapterNumberColor: _chapterNumberColor,
+                chapterNameColor: _chapterNameColor,
+                headerImagePath: _headerImagePath,
+                headerImageStyle: _headerImageStyle,
+                wheelScrollController: _settingsScrollController,
+              );
+
+              final options = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 头图模板选择（真实图片缩略）
+                  if (_headerImagePath.isNotEmpty) ...[
+                    Text(
+                      '头图模板',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: context.themeTextSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const spacing = 8.0;
+                        const cardWidth = 104.0;
+                        final columns = (constraints.maxWidth + spacing) ~/
+                            (cardWidth + spacing);
+                        final count = columns < 1 ? 1 : columns;
+                        return Wrap(
+                          spacing: spacing,
+                          runSpacing: 8,
+                          children: [
+                            for (final entry in _headerStyleTemplates.entries)
+                              SizedBox(
+                                width: cardWidth,
+                                child: _HeaderStylePreviewCard(
+                                  label: entry.value,
+                                  style: entry.key,
+                                  imagePath: _headerImagePath,
+                                  selected: _headerImageStyle == entry.key,
+                                  onTap: () => setState(
+                                    () => _headerImageStyle = entry.key,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  Text(
+                    '正文',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _buildStyleRow('字体', [
+                    _buildChip(
+                      '宋体（衬线）',
+                      _bodyFont == BodyFontFamily.serif,
+                      (_) => setState(() => _bodyFont = BodyFontFamily.serif),
+                    ),
+                    _buildChip(
+                      '黑体（无衬线）',
+                      _bodyFont == BodyFontFamily.sans,
+                      (_) => setState(() => _bodyFont = BodyFontFamily.sans),
+                    ),
+                    _buildChip(
+                      '楷体',
+                      _bodyFont == BodyFontFamily.kaiti,
+                      (_) => setState(() => _bodyFont = BodyFontFamily.kaiti),
+                    ),
+                  ]),
+                  _buildStyleRow('字号', [
+                    _buildChip(
+                      '小',
+                      _bodyFontSize == BodyFontSize.small,
+                      (_) => setState(() => _bodyFontSize = BodyFontSize.small),
+                    ),
+                    _buildChip(
+                      '标准',
+                      _bodyFontSize == BodyFontSize.standard,
+                      (_) => setState(
+                        () => _bodyFontSize = BodyFontSize.standard,
+                      ),
+                    ),
+                    _buildChip(
+                      '大',
+                      _bodyFontSize == BodyFontSize.large,
+                      (_) => setState(() => _bodyFontSize = BodyFontSize.large),
+                    ),
+                  ]),
+                  _buildStyleRow('行距', [
+                    _buildChip(
+                      '紧凑',
+                      _lineSpacing == LineSpacing.compact,
+                      (_) => setState(() => _lineSpacing = LineSpacing.compact),
+                    ),
+                    _buildChip(
+                      '标准',
+                      _lineSpacing == LineSpacing.standard,
+                      (_) => setState(() => _lineSpacing = LineSpacing.standard),
+                    ),
+                    _buildChip(
+                      '宽松',
+                      _lineSpacing == LineSpacing.loose,
+                      (_) => setState(() => _lineSpacing = LineSpacing.loose),
+                    ),
+                  ]),
+                  _buildStyleRow('缩进', [
+                    _buildChip(
+                      '段首缩进',
+                      _paragraphIndent == ParagraphIndent.twoChars,
+                      (_) => setState(
+                        () => _paragraphIndent = ParagraphIndent.twoChars,
+                      ),
+                    ),
+                    _buildChip(
+                      '无缩进',
+                      _paragraphIndent == ParagraphIndent.none,
+                      (_) => setState(
+                        () => _paragraphIndent = ParagraphIndent.none,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '去除空行',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: context.themeTextPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '合并连续空行，段落之间不留空行',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.themeTextTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TDSwitch(
+                        isOn: _removeEmptyLines,
+                        onChanged: (v) {
+                          setState(() => _removeEmptyLines = v);
+                          _invalidateAnalysis();
+                          return true;
+                        },
+                        trackOnColor: context.themeWarm,
+                        trackOffColor: context.themeDividerLight,
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Text(
+                    '标题',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _buildStyleRow('对齐', [
+                    _buildChip(
+                      '居中',
+                      _titleAlign == TitleAlign.center,
+                      (_) => setState(() => _titleAlign = TitleAlign.center),
+                    ),
+                    _buildChip(
+                      '左对齐',
+                      _titleAlign == TitleAlign.left,
+                      (_) => setState(() => _titleAlign = TitleAlign.left),
+                    ),
+                    _buildChip(
+                      '右对齐',
+                      _titleAlign == TitleAlign.right,
+                      (_) => setState(() => _titleAlign = TitleAlign.right),
+                    ),
+                  ]),
+                  _buildStyleRow('装饰', [
+                    _buildChip(
+                      '无',
+                      _titleDecoration == TitleDecoration.none,
+                      (_) => setState(
+                        () => _titleDecoration = TitleDecoration.none,
+                      ),
+                    ),
+                    _buildChip(
+                      '分隔线',
+                      _titleDecoration == TitleDecoration.divider,
+                      (_) => setState(
+                        () => _titleDecoration = TitleDecoration.divider,
+                      ),
+                    ),
+                    _buildChip(
+                      '左竖线',
+                      _titleDecoration == TitleDecoration.leftBar,
+                      (_) => setState(
+                        () => _titleDecoration = TitleDecoration.leftBar,
+                      ),
+                    ),
+                    _buildChip(
+                      '标签色块',
+                      _titleDecoration == TitleDecoration.boxed,
+                      (_) => setState(
+                        () => _titleDecoration = TitleDecoration.boxed,
+                      ),
+                    ),
+                    _buildChip(
+                      '橙右竖线',
+                      _titleDecoration == TitleDecoration.orangeRight,
+                      (_) => setState(
+                        () => _titleDecoration = TitleDecoration.orangeRight,
+                      ),
+                    ),
+                    _buildChip(
+                      '上下边框',
+                      _titleDecoration == TitleDecoration.topBottomLine,
+                      (_) => setState(
+                        () => _titleDecoration =
+                            TitleDecoration.topBottomLine,
+                      ),
+                    ),
+                  ]),
+                  if (_titleDecoration != TitleDecoration.none)
+                    _buildStyleRow('装饰颜色', [
+                      for (final (label, color) in [
+                        ('默认', ''),
+                        ('红', '#C2181E'),
+                        ('橙', '#FE9803'),
+                        ('青', '#478686'),
+                        ('暗金', '#91531D'),
+                        ('墨', '#1A1A1A'),
+                      ])
+                        _buildChip(
+                          label,
+                          _titleAccentColor == color,
+                          (_) => setState(() => _titleAccentColor = color),
+                        ),
+                    ]),
+                  _buildStyleRow('布局', [
+                    _buildChip(
+                      '单行',
+                      _titleLayout == TitleLayout.single,
+                      (_) => setState(() => _titleLayout = TitleLayout.single),
+                    ),
+                    _buildChip(
+                      '双行红章',
+                      _titleLayout == TitleLayout.split,
+                      (_) => setState(() => _titleLayout = TitleLayout.split),
+                    ),
+                  ]),
+                  if (_titleLayout == TitleLayout.split) ...[
+                    _buildStyleRow('序号颜色', [
+                      for (final (label, color) in [
+                        ('暗灰', '#413245'),
+                        ('红', '#C2181E'),
+                        ('青', '#478686'),
+                        ('墨', '#1A1A1A'),
+                        ('蓝', '#1F4A92'),
+                      ])
+                        _buildChip(
+                          label,
+                          _chapterNumberColor == color,
+                          (_) => setState(() => _chapterNumberColor = color),
+                        ),
+                    ]),
+                    _buildStyleRow('名称颜色', [
+                      for (final (label, color) in [
+                        ('红', '#C2181E'),
+                        ('橙', '#FE9803'),
+                        ('青', '#478686'),
+                        ('暗金', '#91531D'),
+                        ('墨', '#1A1A1A'),
+                        ('蓝', '#1F4A92'),
+                      ])
+                        _buildChip(
+                          label,
+                          _chapterNameColor == color,
+                          (_) => setState(() => _chapterNameColor = color),
+                        ),
+                    ]),
+                  ],
+                  if (_headerImagePath.isNotEmpty)
+                    _buildStyleRow('头图间距', [
+                      _buildChip(
+                        '紧凑',
+                        _titleImageSpacing == TitleImageSpacing.compact,
+                        (_) => setState(
+                          () => _titleImageSpacing = TitleImageSpacing.compact,
+                        ),
+                      ),
+                      _buildChip(
+                        '标准',
+                        _titleImageSpacing == TitleImageSpacing.standard,
+                        (_) => setState(
+                          () => _titleImageSpacing = TitleImageSpacing.standard,
+                        ),
+                      ),
+                      _buildChip(
+                        '宽松',
+                        _titleImageSpacing == TitleImageSpacing.loose,
+                        (_) => setState(
+                          () => _titleImageSpacing = TitleImageSpacing.loose,
+                        ),
+                      ),
+                    ]),
+                ],
+              );
+
+              if (!wide) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    preview,
+                    const SizedBox(height: 14),
+                    options,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 左侧预览（按比例分配，手机阅读比例）
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '预览',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: context.themeTextSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        preview,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // 右侧样式选项
+                  Expanded(flex: 3, child: options),
+                ],
+              );
+            },
           ),
         ),
 
@@ -1567,30 +2016,6 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         ],
 
         const SizedBox(height: 10),
-
-        // 清洗选项
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            _buildChip(
-              '去除空行',
-              _removeEmptyLines,
-              (v) => setState(() {
-                _removeEmptyLines = v;
-                _invalidateAnalysis();
-              }),
-            ),
-            _buildChip(
-              '修正缩进',
-              _fixIndent,
-              (v) => setState(() {
-                _fixIndent = v;
-                _invalidateAnalysis();
-              }),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -1970,42 +2395,12 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     return Scaffold(
       body: Column(
         children: [
-          // 紧凑分类标签（替代页头）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.themeAccent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.auto_stories,
-                        color: context.themeAccent,
-                        size: 12,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        '导入 TXT → 自动识别 → 检查分章 → 生成 EPUB',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: context.themeAccent,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          // 页头（与其他操作页一致：标题 + 说明）
+          buildToolHeader(
+            context,
+            icon: Icons.auto_stories,
+            title: 'TXT 转 EPUB',
+            subtitle: '导入 TXT → 自动识别章节 → 检查分章 → 生成 EPUB',
           ),
 
           // 分段式 Tab
@@ -2013,19 +2408,19 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Container(
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: context.themeBgWarm,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: TabBar(
                 controller: _tabController,
                 indicator: BoxDecoration(
-                  color: cs.primary,
+                  color: context.themeAccent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 dividerColor: Colors.transparent,
                 indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: cs.onPrimary,
-                unselectedLabelColor: cs.onSurfaceVariant,
+                labelColor: Colors.white,
+                unselectedLabelColor: context.themeTextTertiary,
                 labelStyle: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -2050,48 +2445,709 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             ),
           ),
 
-          // 底部固定操作栏
-          Container(
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor,
-              border: Border(
-                top: BorderSide(color: cs.outlineVariant, width: 1),
+          // 底部悬浮操作栏（与其他操作页一致的胶囊风格）
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: context.themeCard,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                  border: Border.all(color: context.themeDividerLight),
+                  boxShadow: context.themeCardShadowLight,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: BaseButton(
+                        label: '预览分割',
+                        icon: Icons.preview,
+                        onPressed: _loading ? null : _previewSplit,
+                        variant: BaseButtonVariant.secondary,
+                        loading: _loading,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: BaseButton(
+                        label: '生成 EPUB',
+                        icon: Icons.auto_stories,
+                        onPressed: _loading ? null : _generate,
+                        variant: BaseButtonVariant.primary,
+                        loading: _loading,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: BaseButton(
-                      label: '预览分割',
-                      icon: Icons.preview,
-                      onPressed: _loading ? null : _previewSplit,
-                      variant: BaseButtonVariant.secondary,
-                      loading: _loading,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 50,
-                    child: BaseButton(
-                      label: '生成 EPUB',
-                      icon: Icons.auto_stories,
-                      onPressed: _loading ? null : _generate,
-                      variant: BaseButtonVariant.primary,
-                      loading: _loading,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+// ==================== 头图模板预览 ====================
+
+/// 头图模板名称映射
+const Map<ChapterHeaderImageStyle, String> _headerStyleTemplates = {
+  ChapterHeaderImageStyle.weread: '微信读书',
+  ChapterHeaderImageStyle.kindle: 'Kindle 头图',
+  ChapterHeaderImageStyle.center: '居中圆角',
+  ChapterHeaderImageStyle.banner: '通用头图',
+  ChapterHeaderImageStyle.small: '小图配标题',
+};
+
+/// 头图模板预览卡片：使用真实导入图片按模板样式渲染，选中高亮
+class _HeaderStylePreviewCard extends StatelessWidget {
+  final ChapterHeaderImageStyle style;
+  final String label;
+  final String imagePath;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HeaderStylePreviewCard({
+    required this.style,
+    required this.label,
+    required this.imagePath,
+    required this.selected,
+    required this.onTap,
+  });
+
+  Widget _image(BuildContext context) {
+    final fallback = Container(
+      color: context.themeAccentSoft,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        size: 18,
+        color: context.themeTextTertiary,
+      ),
+    );
+    return Image.file(
+      File(imagePath),
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback,
+    );
+  }
+
+  /// 按模板样式渲染真实图片（模拟效果）
+  Widget _renderPreview(BuildContext context) {
+    switch (style) {
+      case ChapterHeaderImageStyle.weread:
+        // 微信读书：三重出血，图片贴边显示
+        return SizedBox(width: double.infinity, child: _image(context));
+      case ChapterHeaderImageStyle.kindle:
+        // 越界：图片比预览区宽，左右溢出（裁剪展示）
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: 140,
+              child: _image(context),
+            ),
+          ),
+        );
+      case ChapterHeaderImageStyle.center:
+        // 居中圆角：四周留白 + 圆角
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(width: double.infinity, child: _image(context)),
+          ),
+        );
+      case ChapterHeaderImageStyle.banner:
+        // 顶部通栏：占满宽度置于顶部
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(width: double.infinity, child: _image(context)),
+        );
+      case ChapterHeaderImageStyle.small:
+        // 小图配标题：小尺寸图 + 下方标题线
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 34,
+              height: 22,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: _image(context),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: 40,
+              height: 2,
+              decoration: BoxDecoration(
+                color: context.themeDivider,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ],
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        children: [
+          Container(
+            width: 104,
+            height: 64,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: selected
+                  ? context.themeWarmLight.withValues(alpha: 0.5)
+                  : context.themeCard,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected
+                    ? context.themeWarm
+                    : context.themeDividerLight,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: _renderPreview(context),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected
+                  ? context.themeTextPrimary
+                  : context.themeTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== 排版样式实时预览 ====================
+
+/// 章节页排版预览：用真实生成的 CSS 在 WebView（浏览器内核）中渲染，
+/// 与 TEpub-Editor 的样式库预览方式一致；不支持 WebView 的平台
+/// （Linux、测试环境）自动降级为 Flutter 模拟渲染。
+class _TypographyPreview extends StatefulWidget {
+  final BodyFontFamily font;
+  final BodyFontSize fontSize;
+  final LineSpacing lineSpacing;
+  final ParagraphIndent indent;
+  final TitleAlign titleAlign;
+  final TitleDecoration titleDecoration;
+  final TitleLayout titleLayout;
+  final TitleImageSpacing titleImageSpacing;
+  final String titleAccentColor;
+  final String chapterNumberColor;
+  final String chapterNameColor;
+
+  /// 头图路径与模板（有头图时在标题上方按模板渲染真实图片）
+  final String? headerImagePath;
+  final ChapterHeaderImageStyle? headerImageStyle;
+
+  /// 页面滚动控制器：预览区域滚轮事件转发给页面整体滚动
+  final ScrollController? wheelScrollController;
+
+  const _TypographyPreview({
+    required this.font,
+    required this.fontSize,
+    required this.lineSpacing,
+    required this.indent,
+    required this.titleAlign,
+    required this.titleDecoration,
+    this.titleLayout = TitleLayout.single,
+    this.titleImageSpacing = TitleImageSpacing.standard,
+    this.titleAccentColor = '',
+    this.chapterNumberColor = '#413245',
+    this.chapterNameColor = '#C2181E',
+    this.headerImagePath,
+    this.headerImageStyle,
+    this.wheelScrollController,
+  });
+
+  @override
+  State<_TypographyPreview> createState() => _TypographyPreviewState();
+}
+
+class _TypographyPreviewState extends State<_TypographyPreview> {
+  WebViewController? _controller;
+  bool _webViewFailed = false;
+  String? _lastHtml;
+
+  /// 预览高度：按内容自适应（头图较大时不被裁切）
+  double _previewHeight = 260;
+
+  /// WebView 是否可用：桌面/移动真机可用，Linux 与测试环境降级
+  bool get _webViewAvailable {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.macOS ||
+      TargetPlatform.windows ||
+      TargetPlatform.android ||
+      TargetPlatform.iOS => true,
+      _ => false,
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_webViewAvailable) {
+      _controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => _syncHeight()),
+        );
+      // 延迟到首帧渲染后加载，避免 controller 未就绪导致初始黑屏
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreview());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TypographyPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller != null && !_webViewFailed) {
+      _loadPreview();
+    }
+  }
+
+  /// 内容加载完成后测量文档高度，自适应预览容器
+  ///
+  /// 头图（base64）解码与布局需要时间，多次测量取最大值，
+  /// 避免初次测量内容未完全布局导致正文被裁切。
+  Future<void> _syncHeight() async {
+    double maxHeight = _previewHeight;
+    for (final delayMs in [0, 200, 500]) {
+      if (delayMs > 0) {
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+      if (!mounted || _controller == null) return;
+      try {
+        final result = await _controller!.runJavaScriptReturningResult(
+          'document.documentElement.scrollHeight',
+        );
+        final height = double.tryParse(result.toString());
+        if (height != null && height > maxHeight) {
+          maxHeight = height;
+        }
+      } catch (_) {
+        // 测量失败时保持当前高度
+      }
+    }
+    if (mounted) {
+      final clamped = maxHeight.clamp(120.0, 520.0);
+      if (clamped != _previewHeight) {
+        setState(() => _previewHeight = clamped);
+      }
+    }
+  }
+
+  Future<void> _loadPreview() async {
+    final html = await _buildHtml();
+    if (html == _lastHtml || _controller == null) return;
+    _lastHtml = html;
+    if (mounted) setState(() => _previewHeight = 260);
+    try {
+      await _controller!.loadHtmlString(html);
+    } catch (_) {
+      if (mounted) setState(() => _webViewFailed = true);
+    }
+  }
+
+  /// 拼接完整预览 HTML：真实生成的 CSS + 章节页结构
+  String _hex(Color color) =>
+      '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+
+  Future<String> _buildHtml() async {
+    final w = widget;
+    final css = EpubGenerator.generateCss(
+      headerImageStyle: w.headerImagePath?.isNotEmpty == true
+          ? w.headerImageStyle
+          : null,
+      bodyFont: w.font,
+      bodyFontSize: w.fontSize,
+      lineSpacing: w.lineSpacing,
+      paragraphIndent: w.indent,
+      titleAlign: w.titleAlign,
+      titleDecoration: w.titleDecoration,
+      titleLayout: w.titleLayout,
+      titleImageSpacing: w.titleImageSpacing,
+      titleAccentColor: w.titleAccentColor,
+      chapterNumberColor: w.chapterNumberColor,
+      chapterNameColor: w.chapterNameColor,
+    );
+
+    // 头图：转 base64 data URI 内嵌（WebView 无法直接读本地文件）
+    String? headerImg;
+    if (w.headerImagePath != null && w.headerImagePath!.isNotEmpty) {
+      try {
+        final bytes = await File(w.headerImagePath!).readAsBytes();
+        final ext = w.headerImagePath!.toLowerCase().endsWith('.png')
+            ? 'png'
+            : 'jpeg';
+        headerImg =
+            'data:image/$ext;base64,${base64Encode(bytes)}';
+      } catch (_) {
+        headerImg = null;
+      }
+    }
+
+    final headerHtml = headerImg == null
+        ? ''
+        : '<div class="logo"><img class="responsive-image" alt="logo" src="$headerImg"/></div>';
+
+    // 标题：双行红章时拆分"第一章 初入江湖"
+    final titleHtml = w.titleLayout == TitleLayout.split
+        ? '<h1>'
+            '<span class="chapter-number">第一章</span>'
+            '<span class="chapter-name">初入江湖</span>'
+            '</h1>'
+        : '<h1>第一章  初入江湖</h1>';
+
+    // 背景与文字颜色跟随日夜间模式
+    final bg = _hex(context.themeCard);
+    final textColor = _hex(context.themeTextSecondary);
+    final titleColor = _hex(context.themeTextPrimary);
+
+    return '<!doctype html>\n'
+        '<html>\n'
+        '<head>\n'
+        '<meta charset="utf-8"/>\n'
+        '<style>'
+        'html, body { margin: 0; padding: 0; overflow-x: hidden;'
+        'background: $bg; color: $textColor; scrollbar-width: none; }'
+        '::-webkit-scrollbar { display: none; }'
+        'h1, h2, h3, h4, h5, h6 { color: $titleColor; }'
+        '$css'
+        '</style>\n'
+        '</head>\n'
+        '<body>\n'
+        '$headerHtml'
+        '$titleHtml\n'
+        '<p>春江潮水连海平，海上明月共潮生。滟滟随波千万里，何处春江无月明。</p>\n'
+        '<p>江流宛转绕芳甸，月照花林皆似霰。空里流霜不觉飞，汀上白沙看不见。</p>\n'
+        '<p>江天一色无纤尘，皎皎空中孤月轮。江畔何人初见月，江月何年初照人。</p>\n'
+        '<p>人生代代无穷已，江月年年望相似。不知江月待何人，但见长江送流水。</p>\n'
+        '<p>白云一片去悠悠，青枫浦上不胜愁。谁家今夜扁舟子，何处相思明月楼。</p>\n'
+        '</body>\n'
+        '</html>';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final useWebView = _controller != null && !_webViewFailed;
+    return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: context.themeCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: context.themeDividerLight),
+      ),
+      child: useWebView
+          ? AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: _previewHeight,
+              // 预览区自适应高度无需自身滚动；滚轮事件转发给页面整体滚动
+              child: Listener(
+                onPointerSignal: (event) {
+                  if (event is PointerScrollEvent) {
+                    final c = widget.wheelScrollController;
+                    if (c != null && c.hasClients) {
+                      final target = (c.offset + event.scrollDelta.dy).clamp(
+                        c.position.minScrollExtent,
+                        c.position.maxScrollExtent,
+                      );
+                      c.jumpTo(target);
+                    }
+                  }
+                },
+                child: WebViewWidget(controller: _controller!),
+              ),
+            )
+          : _buildFallback(context),
+    );
+  }
+
+  /// Flutter 模拟渲染（降级方案，视觉效果接近真实 CSS）
+  Widget _buildFallback(BuildContext context) {
+    final w = widget;
+    final bodyFontSize = 13.0 *
+        switch (w.fontSize) {
+          BodyFontSize.small => 0.9,
+          BodyFontSize.large => 1.1,
+          BodyFontSize.standard => 1.0,
+        };
+    final lineHeight = switch (w.lineSpacing) {
+      LineSpacing.compact => 1.5,
+      LineSpacing.loose => 2.1,
+      LineSpacing.standard => 1.8,
+    };
+    final fontFamily = w.font == BodyFontFamily.serif
+        ? 'Songti SC'
+        : w.font == BodyFontFamily.kaiti
+        ? 'KaiTi'
+        : 'PingFang SC';
+    final indentText = w.indent == ParagraphIndent.twoChars ? '　　' : '';
+
+    // 标题装饰样式（模拟，支持自定义颜色）
+    final titleDecoration = _fallbackTitleDecoration(
+      context,
+      w.titleDecoration,
+      w.titleAccentColor,
+    );
+    final titleAlign = switch (w.titleDecoration) {
+      TitleDecoration.leftBar => TextAlign.left,
+      TitleDecoration.orangeRight ||
+      TitleDecoration.topBottomLine => TextAlign.right,
+      _ => switch (w.titleAlign) {
+          TitleAlign.center => TextAlign.center,
+          TitleAlign.right => TextAlign.right,
+          _ => TextAlign.left,
+        },
+    };
+
+    // 标题内容：双行红章拆分为序号+名称（颜色可自定义）
+    final numberColor =
+        _colorFromHex(w.chapterNumberColor) ?? const Color(0xFF413245);
+    final nameColor =
+        _colorFromHex(w.chapterNameColor) ?? const Color(0xFFC2181E);
+    final titleWidget = w.titleLayout == TitleLayout.split
+        ? Column(
+            crossAxisAlignment: titleAlign == TextAlign.right
+                ? CrossAxisAlignment.end
+                : titleAlign == TextAlign.center
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
+            children: [
+              Text(
+                '第一章',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: fontFamily,
+                  color: numberColor,
+                ),
+              ),
+              Text(
+                '初入江湖',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: fontFamily,
+                  color: nameColor,
+                ),
+              ),
+            ],
+          )
+        : Text(
+            '第一章  初入江湖',
+            textAlign: titleAlign,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              fontFamily: fontFamily,
+              color: w.titleDecoration == TitleDecoration.boxed
+                  ? Colors.white
+                  : context.themeTextPrimary,
+            ),
+          );
+
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ?_buildFallbackHeader(context),
+          Container(
+            width: double.infinity,
+            padding: titleDecoration.padding,
+            decoration: titleDecoration.boxDecoration,
+            child: titleWidget,
+          ),
+          const SizedBox(height: 10),
+          for (final paragraph in const [
+            '春江潮水连海平，海上明月共潮生。滟滟随波千万里，何处春江无月明。',
+            '江流宛转绕芳甸，月照花林皆似霰。空里流霜不觉飞，汀上白沙看不见。',
+            '江天一色无纤尘，皎皎空中孤月轮。江畔何人初见月，江月何年初照人。',
+            '人生代代无穷已，江月年年望相似。不知江月待何人，但见长江送流水。',
+            '白云一片去悠悠，青枫浦上不胜愁。谁家今夜扁舟子，何处相思明月楼。',
+          ]) ...[
+            Text(
+              '$indentText$paragraph',
+              style: TextStyle(
+                fontSize: bodyFontSize,
+                height: lineHeight,
+                fontFamily: fontFamily,
+                color: context.themeTextSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 降级方案的头图渲染（按模板模拟）
+  Widget? _buildFallbackHeader(BuildContext context) {
+    final path = widget.headerImagePath;
+    final style = widget.headerImageStyle;
+    if (path == null || path.isEmpty || style == null) return null;
+
+    final fallback = Container(
+      height: 40,
+      color: context.themeAccentSoft,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_outlined,
+        size: 18,
+        color: context.themeTextTertiary,
+      ),
+    );
+    final image = Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => fallback,
+    );
+
+    switch (style) {
+      case ChapterHeaderImageStyle.weread:
+        return SizedBox(width: double.infinity, height: 56, child: image);
+      case ChapterHeaderImageStyle.kindle:
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(width: 320, height: 56, child: image),
+          ),
+        );
+      case ChapterHeaderImageStyle.center:
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(width: double.infinity, height: 56, child: image),
+          ),
+        );
+      case ChapterHeaderImageStyle.banner:
+        return SizedBox(width: double.infinity, height: 56, child: image);
+      case ChapterHeaderImageStyle.small:
+        return Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 6),
+          child: Column(
+            children: [
+              SizedBox(
+                width: 56,
+                height: 36,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: image,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Container(
+                width: 64,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: context.themeDivider,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  /// 标题装饰的降级渲染样式（padding + boxDecoration）
+  ({EdgeInsetsGeometry padding, BoxDecoration? boxDecoration})
+  _fallbackTitleDecoration(
+    BuildContext context,
+    TitleDecoration decoration,
+    String accentColor,
+  ) {
+    final accent = _colorFromHex(accentColor);
+    switch (decoration) {
+      case TitleDecoration.divider:
+        return (
+          padding: const EdgeInsets.only(bottom: 6),
+          boxDecoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: accent ?? context.themeDivider,
+                width: 1,
+              ),
+            ),
+          ),
+        );
+      case TitleDecoration.leftBar:
+        return (
+          padding: const EdgeInsets.only(left: 8),
+          boxDecoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: accent ?? const Color(0xFFAB2524),
+                width: 4,
+              ),
+            ),
+          ),
+        );
+      case TitleDecoration.boxed:
+        return (
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          boxDecoration: BoxDecoration(
+            color: accent ?? const Color(0xFF2F2F2F),
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+      case TitleDecoration.orangeRight:
+        return (
+          padding: const EdgeInsets.only(right: 8),
+          boxDecoration: BoxDecoration(
+            border: Border(
+              right: BorderSide(
+                color: accent ?? const Color(0xFFFE9803),
+                width: 5,
+              ),
+            ),
+          ),
+        );
+      case TitleDecoration.topBottomLine:
+        return (
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          boxDecoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: accent ?? context.themeDivider, width: 1),
+              bottom: BorderSide(
+                color: accent ?? context.themeDivider,
+                width: 1,
+              ),
+            ),
+          ),
+        );
+      case TitleDecoration.none:
+        return (padding: EdgeInsets.zero, boxDecoration: null);
+    }
+  }
+
+  /// 解析十六进制颜色字符串（#RRGGBB 或 RRGGBB），失败返回 null
+  Color? _colorFromHex(String hex) {
+    final raw = hex.trim().replaceFirst('#', '');
+    if (raw.length != 6) return null;
+    final value = int.tryParse('FF$raw', radix: 16);
+    return value == null ? null : Color(value);
   }
 }

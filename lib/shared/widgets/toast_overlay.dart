@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme.dart';
 import '../providers/toast_provider.dart';
 
 /// Toast 全局叠加层
@@ -201,7 +202,7 @@ class _ToastCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final style = _toastStyle(toast.type, colorScheme);
+    final style = _toastStyle(toast.type, context);
 
     // 背景 = 在 surface 上叠加半透明语义色，适配亮 / 暗模式
     final Color bgColor = Color.alphaBlend(
@@ -260,27 +261,27 @@ class _ToastCard extends StatelessWidget {
 }
 
 /// Toast 类型对应的配色与图标
-_ToastStyle _toastStyle(ToastType type, ColorScheme colorScheme) {
+_ToastStyle _toastStyle(ToastType type, BuildContext context) {
   switch (type) {
     case ToastType.success:
-      return const _ToastStyle(
+      return _ToastStyle(
         icon: Icons.check_circle_outline,
-        color: Color(0xFF5B9C6B),
+        color: context.themeSuccess,
       );
     case ToastType.warning:
-      return const _ToastStyle(
+      return _ToastStyle(
         icon: Icons.warning_amber_rounded,
-        color: Color(0xFFD49241),
+        color: context.themeWarning,
       );
     case ToastType.error:
       return _ToastStyle(
         icon: Icons.error_outline,
-        color: colorScheme.error,
+        color: context.themeError,
       );
     case ToastType.info:
-      return const _ToastStyle(
+      return _ToastStyle(
         icon: Icons.info_outline,
-        color: Color(0xFF3D7A6C),
+        color: context.themeInfo,
       );
   }
 }

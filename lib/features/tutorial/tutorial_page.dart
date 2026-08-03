@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../shared/widgets/page_header.dart';
+import '../../core/theme.dart';
+import '../epub_tools/epub_tool_widgets.dart';
 
 /// 使用教程页面
 class TutorialPage extends StatelessWidget {
@@ -14,11 +15,11 @@ class TutorialPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const PageHeader(
+            buildToolHeader(
+              context,
               icon: Icons.school_outlined,
-              iconColor: Color(0xFF14B8A6),
               title: 'Kindle 传书教程',
-              description: '邮箱推送与网页推送的完整使用指南',
+              subtitle: '邮箱推送与网页推送的完整使用指南',
             ),
             const SizedBox(height: 20),
             _SectionCard(
@@ -131,7 +132,7 @@ class _SectionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: const Color(0xFF14B8A6), size: 22),
+                Icon(icon, color: context.themeAccent, size: 21),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -218,8 +219,8 @@ class _StepText extends StatelessWidget {
             width: 24,
             height: 24,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Color(0xFF14B8A6),
+            decoration: BoxDecoration(
+              color: context.themeAccent,
               shape: BoxShape.circle,
             ),
             child: Text(

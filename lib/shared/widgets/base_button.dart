@@ -1,34 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
+
 import '../../core/theme.dart';
 
 /// 按钮样式枚举
 enum BaseButtonVariant {
-  /// 主色填充（松青绿）
+  /// 主色填充（墨色）
   primary,
 
   /// 描边
   secondary,
 
-  /// 强调色填充（暖陶橙）
+  /// 强调色填充（柔粉蓝）
   accent,
 
-  /// 红色填充（危险操作）
+  /// 暗红填充（破坏性操作）
   danger,
 }
 
 /// 按钮尺寸枚举
 enum BaseButtonSize {
-  /// 紧凑：高 36px，卡片内操作
+  /// 紧凑：卡片内操作
   sm,
 
-  /// 默认：高 44px
+  /// 默认
   md,
 
-  /// 大号：高 48px，底部主操作
+  /// 大号：底部主操作
   lg,
 }
 
-/// 通用按钮组件
+/// 通用按钮组件（TDesign TDButton 封装）
 class BaseButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -52,125 +54,102 @@ class BaseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool disabled = loading || onPressed == null;
-    final foregroundColor = _foregroundColor(context);
 
-    final double height = switch (size) {
-      BaseButtonSize.sm => 36,
-      BaseButtonSize.md => 44,
-      BaseButtonSize.lg => 48,
+    final tdSize = switch (size) {
+      BaseButtonSize.sm => TDButtonSize.small,
+      BaseButtonSize.md => TDButtonSize.medium,
+      BaseButtonSize.lg => TDButtonSize.large,
     };
 
-    final double fontSize = switch (size) {
-      BaseButtonSize.sm => 12,
-      BaseButtonSize.md => 14,
-      BaseButtonSize.lg => 15,
+    final tdType = switch (variant) {
+      BaseButtonVariant.secondary => TDButtonType.outline,
+      _ => TDButtonType.fill,
     };
 
-    final double iconSize = switch (size) {
-      BaseButtonSize.sm => 15,
-      BaseButtonSize.md => 18,
-      BaseButtonSize.lg => 20,
+    final tdTheme = switch (variant) {
+      BaseButtonVariant.danger => TDButtonTheme.danger,
+      _ => TDButtonTheme.primary,
     };
 
-    final EdgeInsets padding = switch (size) {
-      BaseButtonSize.sm =>
-        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      BaseButtonSize.md =>
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-      BaseButtonSize.lg =>
-        const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+    final fontSize = switch (size) {
+      BaseButtonSize.sm => 12.0,
+      BaseButtonSize.md => 14.0,
+      BaseButtonSize.lg => 15.0,
     };
 
-    final Widget buttonChild = Row(
-      mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (loading)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.2,
-                valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
-              ),
+    // 加载态：自定义 child（转圈 + 文案）
+    final Widget? child;
+    if (loading) {
+      child = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 15,
+            height: 15,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(_fgColor(context)),
             ),
-          )
-        else if (icon != null)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Icon(icon, size: iconSize),
           ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-
-    final OutlinedBorder shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusS),
-    );
-
-    if (variant == BaseButtonVariant.secondary) {
-      return SizedBox(
-        height: height,
-        child: OutlinedButton(
-          onPressed: disabled ? null : onPressed,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: foregroundColor,
-            side: BorderSide(
-              color: disabled
-                  ? context.themeDividerLight
-                  : context.themeDivider,
-              width: 1.5,
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w500,
+              color: _fgColor(context),
             ),
-            disabledForegroundColor: context.themeTextTertiary,
-            padding: padding,
-            shape: shape,
           ),
-          child: buttonChild,
-        ),
+        ],
       );
+    } else {
+      child = null;
     }
 
-    final backgroundColor = switch (variant) {
-      BaseButtonVariant.primary => context.themeAccent,
-      BaseButtonVariant.accent => context.themeWarm,
-      BaseButtonVariant.danger => context.themeError,
-      BaseButtonVariant.secondary => Colors.transparent,
+    final style = switch (variant) {
+      BaseButtonVariant.accent => TDButtonStyle(
+          backgroundColor: context.themeWarm,
+          textColor: context.isDarkMode
+              ? const Color(0xFF101418)
+              : const Color(0xFF2A3B47),
+          frameColor: Colors.transparent,
+        ),
+      _ => null,
     };
 
-    return SizedBox(
-      height: height,
-      child: ElevatedButton(
-        onPressed: disabled ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
-          disabledBackgroundColor: backgroundColor.withValues(alpha: 0.4),
-          disabledForegroundColor: foregroundColor.withValues(alpha: 0.5),
-          padding: padding,
-          elevation: 0,
-          shape: shape,
-        ),
-        child: buttonChild,
+    return TDButton(
+      text: label,
+      size: tdSize,
+      type: tdType,
+      theme: tdTheme,
+      disabled: disabled,
+      isBlock: expanded,
+      icon: loading ? null : icon,
+      child: child,
+      height: switch (size) {
+        BaseButtonSize.sm => 32,
+        BaseButtonSize.md => 40,
+        BaseButtonSize.lg => 48,
+      },
+      textStyle: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
       ),
+      style: style,
+      onTap: disabled ? null : onPressed,
     );
   }
 
-  Color _foregroundColor(BuildContext context) {
+  Color _fgColor(BuildContext context) {
     switch (variant) {
       case BaseButtonVariant.primary:
         return Colors.white;
       case BaseButtonVariant.secondary:
         return context.themeTextSecondary;
       case BaseButtonVariant.accent:
-        return Colors.white;
+        return context.isDarkMode
+            ? const Color(0xFF101418)
+            : const Color(0xFF2A3B47);
       case BaseButtonVariant.danger:
         return Colors.white;
     }

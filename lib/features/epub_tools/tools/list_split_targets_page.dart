@@ -82,7 +82,6 @@ class _ListSplitTargetsPageState extends State<ListSplitTargetsPage> {
           buildToolHeader(
             context,
             icon: Icons.list_alt_outlined,
-            iconColor: const Color(0xFF65A30D),
             title: '列出拆分目标',
             subtitle: '扫描 EPUB 目录结构供选择拆分点',
           ),

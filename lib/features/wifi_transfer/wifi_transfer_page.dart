@@ -5,12 +5,12 @@ import 'package:provider/provider.dart';
 
 import '../../core/file_service.dart';
 import '../../core/theme.dart';
+import '../epub_tools/epub_tool_widgets.dart';
 import '../../shared/providers/toast_provider.dart';
 import '../../shared/widgets/base_button.dart';
 import '../../shared/widgets/base_card.dart';
 import '../../shared/widgets/base_input.dart';
 import '../../shared/widgets/output_log.dart';
-import '../../shared/widgets/page_header.dart';
 import 'wifi_book.dart';
 import 'wifi_book_library.dart';
 import 'wifi_http_server.dart';
@@ -159,11 +159,11 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const PageHeader(
+            buildToolHeader(
+              context,
               icon: Icons.wifi_rounded,
-              iconColor: Color(0xFF6FAE5C),
               title: 'WiFi 局域网传书',
-              description: '本机启动服务，Kindle 浏览器访问局域网地址下载',
+              subtitle: '本机启动服务，Kindle 浏览器访问局域网地址下载',
             ),
             const SizedBox(height: 12),
             _buildServerCard(),
@@ -199,123 +199,124 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
       WifiServerStatus.starting => Icons.pending_outlined,
       WifiServerStatus.stopped => Icons.radio_button_unchecked,
     };
-    return BaseCard(
+    return buildGroupCard(
+      context: context,
       title: '传书服务',
-      trailing: BaseButton(
-        label: isRunning ? '停止服务' : (isStarting ? '启动中…' : '启动服务'),
-        icon: isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
-        loading: isStarting,
-        variant: isRunning
-            ? BaseButtonVariant.danger
-            : BaseButtonVariant.primary,
-        onPressed: _initialized && !isStarting ? _toggleServer : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(statusIcon, size: 16, color: statusColor),
-              const SizedBox(width: 6),
-              Text(
-                statusLabel,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: statusColor,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '端口 ${_server.port}',
+      children: [
+        buildSettingRow(
+          context: context,
+          icon: statusIcon,
+          title: '服务状态',
+          value: statusLabel,
+          valueColor: statusColor,
+          trailing: SizedBox(
+            height: 30,
+            child: BaseButton(
+              label: isRunning ? '停止' : (isStarting ? '启动中…' : '启动'),
+              icon: isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              loading: isStarting,
+              size: BaseButtonSize.sm,
+              variant: isRunning
+                  ? BaseButtonVariant.danger
+                  : BaseButtonVariant.primary,
+              onPressed: _initialized && !isStarting ? _toggleServer : null,
+            ),
+          ),
+        ),
+        buildSettingRow(
+          context: context,
+          icon: Icons.dns_outlined,
+          title: '监听端口',
+          value: '${_server.port}',
+        ),
+        if (_server.addresses.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Text(
+                _server.addresses.length == 1 ? '访问地址' : '访问地址（首项为推荐地址）',
                 style: TextStyle(
                   fontSize: 12,
-                  color: context.themeTextTertiary,
+                  fontWeight: FontWeight.w500,
+                  color: context.themeTextSecondary,
                 ),
               ),
-            ],
-          ),
-          if (_server.addresses.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              _server.addresses.length == 1 ? '访问地址' : '访问地址（首项为推荐地址）',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: context.themeTextSecondary,
-              ),
             ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: context.themeAccentSoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: _server.addresses.indexed
-                    .map(
-                      (entry) => Column(
-                        children: [
-                          if (entry.$1 > 0)
-                            Divider(height: 1, color: context.themeDivider),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SelectableText(
-                                  entry.$2,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: entry.$1 == 0
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    fontFamily: 'monospace',
-                                    color: context.themeTextPrimary,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: context.themeAccentSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: _server.addresses.indexed
+                      .map(
+                        (entry) => Column(
+                          children: [
+                            if (entry.$1 > 0)
+                              Divider(height: 1, color: context.themeDivider),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SelectableText(
+                                    entry.$2,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: entry.$1 == 0
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      fontFamily: 'monospace',
+                                      color: context.themeTextPrimary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.copy_rounded, size: 18),
-                                tooltip: '复制地址',
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 32,
-                                  height: 40,
+                                IconButton(
+                                  icon: const Icon(Icons.copy_rounded, size: 18),
+                                  tooltip: '复制地址',
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 32,
+                                    height: 40,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  onPressed: () => _copyAddress(entry.$2),
                                 ),
-                                padding: EdgeInsets.zero,
-                                onPressed: () => _copyAddress(entry.$2),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    )
-                    .toList(growable: false),
+                              ],
+                            ),
+                          ],
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '请确保手机/电脑与 Kindle 连接同一 Wi-Fi，'
-              '在 Kindle 的「实验性浏览器」中打开上述地址，并保持本应用运行。',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.5,
-                color: context.themeTextSecondary,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                '请确保手机/电脑与 Kindle 连接同一 Wi-Fi，'
+                '在 Kindle 的「实验性浏览器」中打开上述地址，并保持本应用运行。',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: context.themeTextSecondary,
+                ),
               ),
             ),
           ],
           if (_server.errorMessage != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _server.errorMessage!,
-              style: TextStyle(
-                fontSize: 12,
-                color: isRunning ? context.themeWarning : context.themeError,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(
+                _server.errorMessage!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isRunning ? context.themeWarning : context.themeError,
+                ),
               ),
             ),
           ],
-        ],
-      ),
+      ],
     );
   }
 

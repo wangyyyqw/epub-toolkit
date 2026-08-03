@@ -60,9 +60,9 @@ class _FileDropTargetState extends State<FileDropTarget> {
               child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: context.themeAccentLight.withValues(alpha: 0.38),
+                    color: context.themeWarmLight.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(AppTheme.radiusS),
-                    border: Border.all(color: context.themeAccent, width: 1.5),
+                    border: Border.all(color: context.themeWarm, width: 1.5),
                   ),
                 ),
               ),

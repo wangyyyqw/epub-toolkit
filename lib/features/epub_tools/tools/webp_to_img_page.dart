@@ -144,7 +144,6 @@ class _WebpToImgPageState extends State<WebpToImgPage> {
           buildToolHeader(
             context,
             icon: Icons.image_search_outlined,
-            iconColor: const Color(0xFFDB2777),
             title: 'WebP 转图片',
             subtitle: '将 EPUB 中的 WebP 图片转回 JPEG/PNG',
           ),

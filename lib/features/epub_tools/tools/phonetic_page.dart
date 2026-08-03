@@ -199,7 +199,6 @@ class _PhoneticPageState extends State<PhoneticPage> {
           buildToolHeader(
             context,
             icon: Icons.record_voice_over_outlined,
-            iconColor: const Color(0xFF14B8A6),
             title: '拼音标注',
             subtitle: '为 EPUB 中的中文文本添加拼音标注',
           ),
@@ -239,9 +238,9 @@ class _PhoneticPageState extends State<PhoneticPage> {
                   },
                 ),
                 const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('全文注音'),
-                  subtitle: const Text('关闭则仅标注生僻字'),
+                SettingSwitchRow(
+                  title: '全文注音',
+                  subtitle: '关闭则仅标注生僻字',
                   value: _annotateAll,
                   onChanged: (v) => setState(() => _annotateAll = v),
                 ),

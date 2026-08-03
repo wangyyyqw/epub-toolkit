@@ -256,7 +256,6 @@ span.reader:hover:after {
           buildToolHeader(
             context,
             icon: Icons.comment_bank_outlined,
-            iconColor: const Color(0xFFF97316),
             title: '批注提取',
             subtitle: '用正则从正文中提取批注转为悬浮脚注',
           ),

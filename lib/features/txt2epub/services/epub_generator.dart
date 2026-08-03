@@ -14,10 +14,57 @@ import 'package:epub_gadget/core/file_service.dart';
 import 'package:epub_gadget/features/txt2epub/models/chapter.dart';
 
 /// 章节头图针对不同阅读器的排版样式。
-enum ChapterHeaderImageStyle { yuewei, kindle }
+///
+/// - [kindle]：Kindle 头图，图片超出页面边界（122% 宽度越界）
+/// - [center]：居中圆角，图片居中显示并带圆角与留白
+/// - [banner]：通用头图，图片拉满宽度置于章节顶部
+/// - [small]：小图配标题，小尺寸图片居中对齐标题上方
+/// - [weread]：微信读书头图，三重出血声明（duokan/qr/bleed）
+enum ChapterHeaderImageStyle { kindle, center, banner, small, weread }
 
 /// 打开 EPUB 时显示在正文之前的全屏首页模板。
 enum FullScreenCoverStyle { yuewei, kindle }
+
+/// 正文字体族
+enum BodyFontFamily { serif, sans, kaiti }
+
+/// 正文字号
+enum BodyFontSize { small, standard, large }
+
+/// 正文行距
+enum LineSpacing { compact, standard, loose }
+
+/// 段首缩进
+enum ParagraphIndent { twoChars, none }
+
+/// 标题对齐方式
+enum TitleAlign { center, left, right }
+
+/// 标题与头图之间的距离
+enum TitleImageSpacing { compact, standard, loose }
+
+/// 标题装饰（参考 EPUB 样式知识库的章节标题样式）
+///
+/// - [none]：无装饰
+/// - [divider]：标题下方细分隔线（墨线章题）
+/// - [leftBar]：左侧红色竖线 + 虚线边框（强制左对齐）
+/// - [boxed]：黑底白字标签 + 不对称圆角
+/// - [orangeRight]：右对齐 + 橙色右边框 + 文字阴影
+/// - [topBottomLine]：上下双边框线
+enum TitleDecoration {
+  none,
+  divider,
+  leftBar,
+  boxed,
+  orangeRight,
+  topBottomLine,
+}
+
+/// 标题布局
+///
+/// - [single]：单行标题（"第X章 章节名"同排一行）
+/// - [split]：经典红章双行（"第X章"暗灰小字 + "章节名"红色大字）
+enum TitleLayout { single, split }
 
 /// EPUB 生成器
 ///
@@ -64,9 +111,20 @@ class EpubGenerator {
     required List<Chapter> chapters,
     String? coverPath,
     String? headerImagePath,
-    ChapterHeaderImageStyle headerImageStyle = ChapterHeaderImageStyle.yuewei,
+    ChapterHeaderImageStyle headerImageStyle = ChapterHeaderImageStyle.banner,
     String? fullScreenCoverImagePath,
     FullScreenCoverStyle? fullScreenCoverStyle,
+    BodyFontFamily bodyFont = BodyFontFamily.serif,
+    BodyFontSize bodyFontSize = BodyFontSize.standard,
+    LineSpacing lineSpacing = LineSpacing.standard,
+    ParagraphIndent paragraphIndent = ParagraphIndent.twoChars,
+    TitleAlign titleAlign = TitleAlign.center,
+    TitleDecoration titleDecoration = TitleDecoration.none,
+    TitleLayout titleLayout = TitleLayout.single,
+    TitleImageSpacing titleImageSpacing = TitleImageSpacing.standard,
+    String titleAccentColor = '',
+    String chapterNumberColor = '#413245',
+    String chapterNameColor = '#C2181E',
     String lang = 'zh-CN',
   }) async {
     final log = StringBuffer();
@@ -109,7 +167,7 @@ class EpubGenerator {
         ),
       );
       log.writeln(
-        'PROGRESS: 已添加${headerImageStyle == ChapterHeaderImageStyle.yuewei ? '阅微' : 'Kindle'}章节头图 ($headerImageFileName)',
+        'PROGRESS: 已添加章节头图 ($headerImageFileName)',
       );
     }
 
@@ -158,8 +216,19 @@ class EpubGenerator {
     }
 
     // 6. 生成 CSS 样式文件
-    final cssContent = _generateCss(
+    final cssContent = generateCss(
       headerImageStyle: headerImageFileName == null ? null : headerImageStyle,
+      bodyFont: bodyFont,
+      bodyFontSize: bodyFontSize,
+      lineSpacing: lineSpacing,
+      paragraphIndent: paragraphIndent,
+      titleAlign: titleAlign,
+      titleDecoration: titleDecoration,
+      titleLayout: titleLayout,
+      titleImageSpacing: titleImageSpacing,
+      titleAccentColor: titleAccentColor,
+      chapterNumberColor: chapterNumberColor,
+      chapterNameColor: chapterNameColor,
     );
     _addStringFile(archive, 'OEBPS/style.css', cssContent);
 
@@ -198,6 +267,8 @@ class EpubGenerator {
       final xhtml = _generateChapterXhtml(
         chapter,
         headerImageFileName: headerImageFileName,
+        headerImageStyle: headerImageFileName == null ? null : headerImageStyle,
+        titleLayout: titleLayout,
       );
       _addStringFile(archive, 'OEBPS/$fileName', xhtml);
     }
@@ -308,63 +379,267 @@ class EpubGenerator {
 
   /// 生成 CSS 样式
   ///
-  /// 段落首行缩进 2em；标题居中；封面图片自适应宽度。
-  /// 不注入全局 body 边距、字体或行高，由阅读器和用户设置决定。
-  static String _generateCss({ChapterHeaderImageStyle? headerImageStyle}) {
-    final css = StringBuffer()
-      ..write(
-        'p {\n'
-        '  text-indent: 2em;\n'
-        '  margin: 0;\n'
-        '  padding: 0;\n'
-        '}\n'
-        'h1, h2, h3, h4, h5, h6 {\n'
-        '  text-align: center;\n'
-        '  margin: 1em 0;\n'
-        '}\n'
-        '.cover {\n'
-        '  text-align: center;\n'
-        '  margin: 0;\n'
-        '  padding: 0;\n'
-        '}\n'
-        '.cover img {\n'
-        '  max-width: 100%;\n'
-        '  height: auto;\n'
-        '}\n',
-      );
+  /// 默认：段落首行缩进 2em、标题居中，不注入全局 body 样式
+  /// （保持阅读器默认排版）。仅当用户选择非默认正文样式时
+  /// 才生成 body 的字体、字号与行距声明。
+  static String generateCss({
+    ChapterHeaderImageStyle? headerImageStyle,
+    BodyFontFamily bodyFont = BodyFontFamily.serif,
+    BodyFontSize bodyFontSize = BodyFontSize.standard,
+    LineSpacing lineSpacing = LineSpacing.standard,
+    ParagraphIndent paragraphIndent = ParagraphIndent.twoChars,
+    TitleAlign titleAlign = TitleAlign.center,
+    TitleDecoration titleDecoration = TitleDecoration.none,
+    TitleLayout titleLayout = TitleLayout.single,
+    TitleImageSpacing titleImageSpacing = TitleImageSpacing.standard,
+    String titleAccentColor = '',
+    String chapterNumberColor = '#413245',
+    String chapterNameColor = '#C2181E',
+  }) {
+    final css = StringBuffer();
 
-    if (headerImageStyle == ChapterHeaderImageStyle.yuewei) {
+    // body 全局样式：仅当用户选择非默认值时才注入
+    final needsBodyStyle = bodyFont != BodyFontFamily.serif ||
+        bodyFontSize != BodyFontSize.standard ||
+        lineSpacing != LineSpacing.standard;
+    if (needsBodyStyle) {
+      css.write('body {\n');
+      if (bodyFont == BodyFontFamily.kaiti) {
+        css.write(
+          '  font-family: "KaiTi", "STKaiti", "DK-KAITI", "楷体", serif;\n',
+        );
+      } else if (bodyFont == BodyFontFamily.sans) {
+        css.write(
+          '  font-family: "PingFang SC", "Heiti SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;\n',
+        );
+      } else {
+        css.write(
+          '  font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif;\n',
+        );
+      }
+      if (bodyFontSize == BodyFontSize.small) {
+        css.write('  font-size: 0.9em;\n');
+      } else if (bodyFontSize == BodyFontSize.large) {
+        css.write('  font-size: 1.1em;\n');
+      }
       css.write(
-        'div {\n'
-        '  margin: 0;\n'
-        '}\n'
-        '.logo {\n'
-        '  text-align: center;\n'
-        '  text-indent: 0;\n'
-        '  duokan-text-indent: 0;\n'
-        '  duokan-bleed: lefttopright;\n'
-        '}\n'
-        '.logo .responsive-image {\n'
-        '  width: 100%;\n'
-        '}\n',
+        '  line-height: ${switch (lineSpacing) { LineSpacing.compact => 1.5, LineSpacing.loose => 2.1, _ => 1.8 }};\n',
       );
-    } else if (headerImageStyle == ChapterHeaderImageStyle.kindle) {
+      css.write('}\n');
+    }
+
+    css.write(
+      'p {\n'
+      '  text-indent: ${paragraphIndent == ParagraphIndent.twoChars ? '2em' : '0'};\n'
+      '  margin: 0;\n'
+      '  padding: 0;\n'
+      '}\n',
+    );
+
+    // 标题样式
+    final accent = titleAccentColor.trim();
+    final dividerColor = accent.isNotEmpty ? accent : '#d0d0d0';
+    final leftBarColor = accent.isNotEmpty ? accent : '#AB2524';
+    final boxedColor = accent.isNotEmpty ? accent : '#2F2F2F';
+    final orangeRightColor = accent.isNotEmpty ? accent : '#FE9803';
+    final topBottomColor = accent.isNotEmpty ? accent : '#2F4F4F';
+
+    final titleAlignStr = switch (titleDecoration) {
+      // leftBar 强制左对齐；orangeRight/topBottomLine 强制右对齐
+      TitleDecoration.leftBar => 'left',
+      TitleDecoration.orangeRight ||
+      TitleDecoration.topBottomLine => 'right',
+      _ => switch (titleAlign) {
+          TitleAlign.center => 'center',
+          TitleAlign.right => 'right',
+          _ => 'left',
+        },
+    };
+    css.write('h1, h2, h3, h4, h5, h6 {\n'
+        '  text-align: $titleAlignStr;\n'
+        '  margin: 1em 0;\n');
+    switch (titleDecoration) {
+      case TitleDecoration.divider:
+        css.write(
+          '  border-bottom: 1px solid $dividerColor;\n'
+          '  padding-bottom: 0.4em;\n',
+        );
+      case TitleDecoration.leftBar:
+        css.write(
+          '  border-left: 4px solid $leftBarColor;\n'
+          '  padding-left: 0.5em;\n',
+        );
+      case TitleDecoration.boxed:
+        css.write(
+          '  background-color: $boxedColor;\n'
+          '  color: #fff;\n'
+          '  padding: 0.4em 0.9em;\n'
+          '  border-radius: 0.6em 0.6em 0.1em 0.6em;\n'
+          '  display: block;\n',
+        );
+      case TitleDecoration.orangeRight:
+        css.write(
+          '  border-right: 6px solid $orangeRightColor;\n'
+          '  padding-right: 0.4em;\n'
+          '  text-shadow: 1px 1px 1px #AAAAAA;\n',
+        );
+      case TitleDecoration.topBottomLine:
+        css.write(
+          '  border-top: 1px solid $topBottomColor;\n'
+          '  border-bottom: 1px solid $topBottomColor;\n'
+          '  padding: 0.5em 0;\n',
+        );
+      case TitleDecoration.none:
+        break;
+    }
+    // 标题与头图间距（仅头图存在时生效）
+    if (headerImageStyle != null) {
+      final spacing = switch (titleImageSpacing) {
+        TitleImageSpacing.compact => '0.3em',
+        TitleImageSpacing.loose => '1.5em',
+        TitleImageSpacing.standard => '0.8em',
+      };
+      css.write('  margin-top: $spacing;\n');
+    }
+    css.write('}\n');
+
+    // 经典红章双行布局：序号暗灰小字 + 名称红色大字
+    if (titleLayout == TitleLayout.split) {
       css.write(
-        'div {\n'
-        '  margin: 0;\n'
-        '}\n'
-        'div.logo {\n'
-        '  width: 122%;\n'
-        '  margin: -8% -11% 0;\n'
-        '  max-width: none;\n'
-        '  text-align: center;\n'
-        '}\n'
-        'img.responsive-image {\n'
-        '  width: 100%;\n'
-        '  height: auto;\n'
+        '.chapter-number {\n'
         '  display: block;\n'
+        '  font-size: 0.82em;\n'
+        '  color: $chapterNumberColor;\n'
+        '  line-height: 1.35;\n'
+        '}\n'
+        '.chapter-name {\n'
+        '  display: block;\n'
+        '  font-size: 1.2em;\n'
+        '  font-weight: 900;\n'
+        '  color: $chapterNameColor;\n'
         '}\n',
       );
+    }
+    css.write(
+      '.cover {\n'
+      '  text-align: center;\n'
+      '  margin: 0;\n'
+      '  padding: 0;\n'
+      '}\n'
+      '.cover img {\n'
+      '  max-width: 100%;\n'
+      '  height: auto;\n'
+      '}\n',
+    );
+
+    switch (headerImageStyle) {
+      case ChapterHeaderImageStyle.kindle:
+        css.write(
+          'div {\n'
+          '  margin: 0;\n'
+          '}\n'
+          'div.logo {\n'
+          '  width: 122%;\n'
+          '  margin: -8% -11% 0;\n'
+          '  max-width: none;\n'
+          '  text-align: center;\n'
+          '}\n'
+          'img.responsive-image {\n'
+          '  width: 100%;\n'
+          '  height: auto;\n'
+          '  display: block;\n'
+          '}\n',
+        );
+      case ChapterHeaderImageStyle.center:
+        css.write(
+          'div {\n'
+          '  margin: 0;\n'
+          '}\n'
+          '.logo {\n'
+          '  text-align: center;\n'
+          '  text-indent: 0;\n'
+          '  padding: 0.8em 2em;\n'
+          '}\n'
+          '.logo .responsive-image {\n'
+          '  max-width: 80%;\n'
+          '  height: auto;\n'
+          '  border-radius: 12px;\n'
+          '}\n',
+        );
+      case ChapterHeaderImageStyle.banner:
+        css.write(
+          'div {\n'
+          '  margin: 0;\n'
+          '}\n'
+          '.logo {\n'
+          '  width: 100%;\n'
+          '  text-align: center;\n'
+          '  text-indent: 0;\n'
+          '}\n'
+          '.logo .responsive-image {\n'
+          '  width: 100%;\n'
+          '  height: auto;\n'
+          '  display: block;\n'
+          '}\n',
+        );
+      case ChapterHeaderImageStyle.small:
+        css.write(
+          'div {\n'
+          '  margin: 0;\n'
+          '}\n'
+          '.logo {\n'
+          '  text-align: center;\n'
+          '  text-indent: 0;\n'
+          '  padding: 0.6em 0 0.4em;\n'
+          '}\n'
+          '.logo .responsive-image {\n'
+          '  max-width: 120px;\n'
+          '  height: auto;\n'
+          '  border-radius: 8px;\n'
+          '}\n',
+        );
+      case ChapterHeaderImageStyle.weread:
+        // 微信读书头图：duokan-bleed / qrbleed / bleed 三重出血声明，
+        // 最大兼容多看、Kindle 及其他阅读器
+        css.write(
+          'div {\n'
+          '  margin: 0;\n'
+          '  padding: 0;\n'
+          '  line-height: 130%;\n'
+          '  text-align: center;\n'
+          '}\n'
+          'div.logo-div {\n'
+          '  margin: 0;\n'
+          '  text-align: center;\n'
+          '  text-indent: 0em;\n'
+          '  duokan-text-indent: 0em;\n'
+          '  duokan-bleed: lefttopright;\n'
+          '  qrbleed: left top right;\n'
+          '  bleed: left top right;\n'
+          '}\n'
+          'img.logo {\n'
+          '  width: 100%;\n'
+          '  height: auto;\n'
+          '  display: block;\n'
+          '}\n'
+          // 兼容旧结构（.logo + .responsive-image）
+          '.logo {\n'
+          '  margin: 0;\n'
+          '  text-align: center;\n'
+          '  text-indent: 0em;\n'
+          '  duokan-text-indent: 0em;\n'
+          '  duokan-bleed: lefttopright;\n'
+          '  qrbleed: left top right;\n'
+          '  bleed: left top right;\n'
+          '}\n'
+          '.logo .responsive-image {\n'
+          '  width: 100%;\n'
+          '  height: auto;\n'
+          '  display: block;\n'
+          '}\n',
+        );
+      case null:
+        break;
     }
 
     return css.toString();
@@ -388,15 +663,7 @@ class EpubGenerator {
     if (decoded == null) {
       throw const FormatException('无法读取全屏首页图片');
     }
-    final requiredWidth = style == FullScreenCoverStyle.yuewei ? 1080 : 1536;
-    final requiredHeight = style == FullScreenCoverStyle.yuewei ? 2400 : 2048;
-    if (decoded.width != requiredWidth || decoded.height != requiredHeight) {
-      final name = style == FullScreenCoverStyle.yuewei ? '阅微' : 'Kindle';
-      throw FormatException(
-        '$name 全屏首页图片必须为 $requiredWidth×$requiredHeight，'
-        '当前为 ${decoded.width}×${decoded.height}',
-      );
-    }
+    // 模板尺寸仅作推荐：任何尺寸的图片都接受，生成时按原尺寸使用
     final isPng = p.extension(path).toLowerCase() == '.png';
     return (
       bytes: isPng
@@ -514,6 +781,8 @@ class EpubGenerator {
   static String _generateChapterXhtml(
     Chapter chapter, {
     String? headerImageFileName,
+    ChapterHeaderImageStyle? headerImageStyle,
+    TitleLayout titleLayout = TitleLayout.single,
   }) {
     final title = _escapeXml(chapter.title);
     // 标题层级限制在 1-6 之间（h1-h6）
@@ -527,13 +796,22 @@ class EpubGenerator {
     sb.writeln('</head>');
     sb.writeln('<body>');
     if (headerImageFileName != null) {
-      sb.writeln('  <div class="logo">');
-      sb.writeln(
-        '    <img class="responsive-image" alt="logo" src="Images/$headerImageFileName"/>',
-      );
-      sb.writeln('  </div>');
+      if (headerImageStyle == ChapterHeaderImageStyle.weread) {
+        // 微信读书头图：logo-div 结构（三重出血）
+        sb.writeln('  <div class="logo-div">');
+        sb.writeln(
+          '    <img class="logo" alt="logo" src="Images/$headerImageFileName"/>',
+        );
+        sb.writeln('  </div>');
+      } else {
+        sb.writeln('  <div class="logo">');
+        sb.writeln(
+          '    <img class="responsive-image" alt="logo" src="Images/$headerImageFileName"/>',
+        );
+        sb.writeln('  </div>');
+      }
     }
-    sb.writeln('  <h$level>$title</h$level>');
+    sb.writeln('  ${_renderTitle(title, level, titleLayout)}');
 
     // 将正文按换行分割为段落
     if (chapter.content.isNotEmpty) {
@@ -827,6 +1105,31 @@ class EpubGenerator {
   ///
   /// [text] 待转义的文本
   /// 返回转义后的文本
+  /// 渲染章节标题。
+  ///
+  /// [single] 单行：`h{level}title{level}`。
+  /// [split] 经典红章双行：按"第X章/回/卷 名称"拆分，
+  /// 序号为暗灰小字、名称为红色大字；不匹配格式时回退单行。
+  static String _renderTitle(String title, int level, TitleLayout layout) {
+    if (layout == TitleLayout.split) {
+      final match = RegExp(
+        r'^(第[\d一二三四五六七八九十百千零〇两]+[章回卷部节集篇])\s*(.*)$',
+      ).firstMatch(title);
+      if (match != null) {
+        final number = match.group(1)!;
+        final name = match.group(2)!.trim();
+        if (name.isNotEmpty) {
+          return '<h$level>'
+              '<span class="chapter-number">$number</span>'
+              '<span class="chapter-name">$name</span>'
+              '</h$level>';
+        }
+        return '<h$level><span class="chapter-name">$number</span></h$level>';
+      }
+    }
+    return '<h$level>$title</h$level>';
+  }
+
   static String _escapeXml(String text) {
     return text
         .replaceAll('&', '&amp;')

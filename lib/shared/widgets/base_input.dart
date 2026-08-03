@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
+
 import '../../core/theme.dart';
 
-/// 带标签的输入框组件
+/// 带标签的输入框组件（TDesign TDInput 封装）
 class BaseInput extends StatefulWidget {
   final String? label;
   final String? hint;
@@ -64,27 +66,7 @@ class _BaseInputState extends State<BaseInput> {
   Widget build(BuildContext context) {
     final hasError =
         widget.errorText != null && widget.errorText!.isNotEmpty;
-
-    final OutlineInputBorder border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
-      borderSide: BorderSide(
-        color: hasError ? context.themeError : context.themeDividerLight,
-        width: 1,
-      ),
-    );
-    final OutlineInputBorder focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
-      borderSide: BorderSide(
-        color: hasError ? context.themeError : context.themeAccent,
-        width: 1.5,
-      ),
-    );
-    final OutlineInputBorder disabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppTheme.radiusXS),
-      borderSide: BorderSide(
-        color: context.themeDividerLight.withValues(alpha: 0.5),
-      ),
-    );
+    final enabled = widget.enabled;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,21 +78,25 @@ class _BaseInputState extends State<BaseInput> {
             style: TextStyle(
               fontSize: 12.5,
               color: context.themeTextSecondary,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 6),
         ],
-        TextField(
+        TDInput(
           controller: _controller,
           focusNode: _focusNode,
-          enabled: widget.enabled,
-          readOnly: widget.readOnly,
+          hintText: widget.hint,
+          readOnly: widget.readOnly || !enabled,
           obscureText: widget.obscureText,
-          keyboardType: widget.keyboardType,
           onChanged: widget.onChanged,
-          style: TextStyle(fontSize: 14, color: context.themeTextPrimary),
-          decoration: InputDecoration(
+          needClear: false,
+          showBottomDivider: false,
+          textStyle: TextStyle(fontSize: 14, color: context.themeTextPrimary),
+          backgroundColor: enabled
+              ? context.themeCard
+              : context.themeCardSoft,
+          inputDecoration: InputDecoration(
             hintText: widget.hint,
             hintStyle: TextStyle(
               fontSize: 13.5,
@@ -124,10 +110,6 @@ class _BaseInputState extends State<BaseInput> {
                     color: context.themeTextTertiary,
                   )
                 : null,
-            prefixIconConstraints: const BoxConstraints(
-              minWidth: 40,
-              minHeight: 40,
-            ),
             suffixIcon: widget.suffix != null
                 ? Padding(
                     padding: const EdgeInsets.only(right: 4),
@@ -135,16 +117,47 @@ class _BaseInputState extends State<BaseInput> {
                   )
                 : null,
             filled: true,
-            fillColor: context.themeCard,
+            fillColor: enabled
+                ? context.themeCard
+                : context.themeCardSoft,
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 12,
             ),
-            border: border,
-            enabledBorder: border,
-            focusedBorder: focusedBorder,
-            disabledBorder: disabledBorder,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              borderSide: BorderSide(
+                color: hasError
+                    ? context.themeError
+                    : context.themeDivider,
+                width: 1,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              borderSide: BorderSide(
+                color: hasError
+                    ? context.themeError
+                    : context.themeDivider,
+                width: 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              borderSide: BorderSide(
+                color: hasError
+                    ? context.themeError
+                    : context.themeAccent,
+                width: 1.5,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusS),
+              borderSide: BorderSide(
+                color: context.themeDividerLight.withValues(alpha: 0.5),
+              ),
+            ),
           ),
         ),
       ],

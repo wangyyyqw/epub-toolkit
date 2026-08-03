@@ -156,7 +156,6 @@ class _DecryptPageState extends State<DecryptPage> {
           buildToolHeader(
             context,
             icon: Icons.no_encryption_outlined,
-            iconColor: const Color(0xFFEA580C),
             title: '名称混淆解密',
             subtitle: '还原被混淆的 EPUB 文件名',
           ),

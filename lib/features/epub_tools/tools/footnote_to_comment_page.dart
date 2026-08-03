@@ -247,7 +247,6 @@ span.reader:hover:after {
           buildToolHeader(
             context,
             icon: Icons.question_answer_outlined,
-            iconColor: const Color(0xFFA855F7),
             title: '脚注转弹窗',
             subtitle: '将 EPUB 内部脚注链接转换为阅微弹窗注释',
           ),

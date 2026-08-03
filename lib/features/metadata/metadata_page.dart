@@ -11,7 +11,7 @@ import '../../shared/widgets/base_button.dart';
 import '../../shared/widgets/base_card.dart';
 import '../../shared/widgets/base_input.dart';
 import '../../shared/widgets/base_select.dart';
-import '../../shared/widgets/page_header.dart';
+import '../epub_tools/epub_tool_widgets.dart';
 import '../view_opf/view_opf.dart';
 import 'metadata_service.dart';
 
@@ -63,11 +63,11 @@ class _MetadataPageState extends State<MetadataPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const PageHeader(
+            buildToolHeader(
+              context,
               icon: Icons.edit_note_outlined,
-              iconColor: Color(0xFF10B981),
               title: '元数据编辑',
-              description: '编辑书名、作者、封面等元数据，并查看完整 OPF 源码',
+              subtitle: '编辑书名、作者、封面等元数据，并查看完整 OPF 源码',
             ),
             const SizedBox(height: 12),
             // 卡片1：文件选择

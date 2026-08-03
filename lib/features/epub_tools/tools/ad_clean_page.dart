@@ -166,7 +166,6 @@ class _AdCleanPageState extends State<AdCleanPage> {
           buildToolHeader(
             context,
             icon: Icons.cleaning_services_outlined,
-            iconColor: const Color(0xFFEF4444),
             title: '广告清理',
             subtitle: '按正则规则批量清理 EPUB 中的广告内容',
           ),

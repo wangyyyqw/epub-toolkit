@@ -27,7 +27,6 @@ class _ConvertVersionPageState extends State<ConvertVersionPage> {
   static const _title = '版本转换';
   static const _subtitle = 'EPUB 2.0 与 3.0 互转';
   static const _icon = Icons.swap_vert_outlined;
-  static const _iconColor = Color(0xFF10B981);
 
   bool get _returnsText => false;
   String get _resultTitle => '提取的文本';
@@ -274,7 +273,6 @@ class _ConvertVersionPageState extends State<ConvertVersionPage> {
           buildToolHeader(
             context,
             icon: _icon,
-            iconColor: _iconColor,
             title: _title,
             subtitle: _subtitle,
           ),

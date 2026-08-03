@@ -2,8 +2,6 @@ import 'package:go_router/go_router.dart';
 
 import '../features/dashboard/dashboard_page.dart';
 import '../features/txt2epub/txt2epub_page.dart';
-// 工具箱入口已移除，工具直接通过侧边栏分类访问
-// import '../features/epub_tools/epub_tools_hub_page.dart';
 import '../features/epub_tools/tools/replace_cover_page.dart';
 import '../features/epub_tools/tools/reformat_page.dart';
 import '../features/epub_tools/tools/convert_version_page.dart';

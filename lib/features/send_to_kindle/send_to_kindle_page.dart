@@ -16,7 +16,7 @@ import '../../shared/widgets/base_card.dart';
 import '../../shared/widgets/base_input.dart';
 import '../../shared/widgets/base_select.dart';
 import '../../shared/widgets/output_log.dart';
-import '../../shared/widgets/page_header.dart';
+import '../epub_tools/epub_tool_widgets.dart';
 
 enum KindleTab { email, web }
 
@@ -326,11 +326,11 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            PageHeader(
+            buildToolHeader(
+              context,
               icon: Icons.send_outlined,
-              iconColor: const Color(0xFFF59E0B),
               title: 'Kindle 推送 · ${_isEmail ? '邮箱推送' : '网页推送'}',
-              description: _isEmail
+              subtitle: _isEmail
                   ? '通过 SMTP 邮箱发送文件到 Kindle 设备（支持最大 50MB）'
                   : '打开亚马逊 Send to Kindle 网页上传文件（支持最大 200MB）',
             ),
@@ -401,9 +401,9 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
                 ],
               ),
               const SizedBox(height: 12),
-              SwitchListTile(
-                title: const Text('SSL 直连'),
-                subtitle: const Text('465 端口通常开启；587 端口通常关闭并使用 STARTTLS'),
+              SettingSwitchRow(
+                title: 'SSL 直连',
+                subtitle: '465 端口通常开启；587 端口通常关闭并使用 STARTTLS',
                 value: _useSsl,
                 onChanged: (v) => setState(() => _useSsl = v),
               ),
@@ -456,8 +456,8 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
                 onChanged: (v) => setState(() => _subject = v),
               ),
               const SizedBox(height: 8),
-              SwitchListTile(
-                title: const Text('记住登录信息'),
+              SettingSwitchRow(
+                title: '记住登录信息',
                 value: _rememberLogin,
                 onChanged: (v) => setState(() => _rememberLogin = v),
               ),

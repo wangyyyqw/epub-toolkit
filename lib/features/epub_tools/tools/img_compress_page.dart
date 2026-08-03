@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../../core/file_service.dart';
+import '../../../core/theme.dart';
 import '../epub_background_operation.dart';
 import '../../../shared/providers/toast_provider.dart';
 import '../../../shared/widgets/output_log.dart';
@@ -154,7 +156,6 @@ class _ImgCompressPageState extends State<ImgCompressPage> {
           buildToolHeader(
             context,
             icon: Icons.compress_outlined,
-            iconColor: const Color(0xFF059669),
             title: '图片压缩',
             subtitle: '压缩 EPUB 中的图片以减小体积',
           ),
@@ -208,33 +209,23 @@ class _ImgCompressPageState extends State<ImgCompressPage> {
                     ),
                   ],
                 ),
-                Slider(
-                  value: _jpegQuality,
-                  min: 10,
-                  max: 100,
-                  divisions: 18,
-                  label: '${_jpegQuality.round()}',
+                TDSlider(
+                  value: _jpegQuality.toDouble(),
                   onChanged: _loading
                       ? null
-                      : (v) => setState(() => _jpegQuality = v),
+                      : (v) => setState(() => _jpegQuality = v.roundToDouble()),
+                  sliderThemeData: TDSliderThemeData(
+                    context: context,
+                    min: 10,
+                    max: 100,
+                    divisions: 18,
+                    activeTrackColor: context.themeWarm,
+                    inactiveTrackColor: context.themeDividerLight,
+                  ),
                 ),
-                SwitchListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0),
-                  title: Text(
-                    'PNG 转 JPG（无透明通道时）',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  subtitle: Text(
-                    '将不透明 PNG 转为 JPG 以获得更小体积',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
+                SettingSwitchRow(
+                  title: 'PNG 转 JPG（无透明通道时）',
+                  subtitle: '将不透明 PNG 转为 JPG 以获得更小体积',
                   value: _pngToJpg,
                   onChanged: _loading
                       ? null

@@ -213,7 +213,6 @@ class _EncryptFontPageState extends State<EncryptFontPage> {
           buildToolHeader(
             context,
             icon: Icons.security_outlined,
-            iconColor: const Color(0xFFBE123C),
             title: '字体加密',
             subtitle: '字形混淆加密实现防复制保护',
           ),

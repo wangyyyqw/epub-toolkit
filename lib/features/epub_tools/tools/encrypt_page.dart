@@ -151,7 +151,6 @@ class _EncryptPageState extends State<EncryptPage> {
           buildToolHeader(
             context,
             icon: Icons.enhanced_encryption_outlined,
-            iconColor: const Color(0xFFDC2626),
             title: '名称混淆加密',
             subtitle: '混淆 EPUB 文件名使编辑器无法打开修改',
           ),

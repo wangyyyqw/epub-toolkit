@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.2.0+12
+version: 1.2.1+13
 
 environment:
   sdk: ^3.12.0
@@ -73,6 +73,10 @@ dependencies:
 
   # QR 码生成(微信读书扫码登录)
   qr_flutter: ^4.1.0
+
+  # TDesign Flutter 组件库（本地 vendor：修复 IconData final class 兼容问题）
+  tdesign_flutter:
+    path: third_party/tdesign_flutter
 dev_dependencies:
   flutter_test:
     sdk: flutter
