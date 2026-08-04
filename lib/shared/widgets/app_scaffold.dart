@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -347,12 +349,17 @@ Widget _buildMobileLayout(
           ),
         ],
       ),
-      // 遮罩
+      // 遮罩：模糊灰色蒙层，点击收起抽屉
       if (sidebar.mobileOpen)
         Positioned.fill(
           child: GestureDetector(
             onTap: sidebar.closeMobile,
-            child: Container(color: Colors.black.withValues(alpha: 0.4)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.28),
+              ),
+            ),
           ),
         ),
       // 抽屉式侧边栏
@@ -389,7 +396,8 @@ class _SafeContent extends StatelessWidget {
   }
 }
 
-/// 移动端顶部栏：左侧菜单按钮 + 品牌名
+/// 移动端顶部栏：透明背景与状态栏/页面底色融为一体，
+/// 左侧菜单按钮 + 品牌名，高度紧凑以让更多空间给内容
 class _MobileTopBar extends StatelessWidget {
   final VoidCallback onMenuTap;
 
@@ -399,14 +407,8 @@ class _MobileTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: context.themeCard,
-          border: Border(
-            bottom: BorderSide(color: context.themeDividerLight),
-          ),
-        ),
+      child: SizedBox(
+        height: 44,
         child: Row(
           children: [
             const SizedBox(width: 4),
@@ -657,17 +659,10 @@ class _Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
-            // 底部按钮：抽屉模式为「关闭」，其余为折叠/展开切换
+            // 底部按钮：抽屉模式不留按钮（靠点击遮罩收起），底部留白更干净；
+            // 其余为折叠/展开切换
             if (drawerMode)
-              IconButton(
-                onPressed: sidebar.closeMobile,
-                tooltip: '收起侧边栏',
-                icon: Icon(
-                  Icons.close_rounded,
-                  size: 20,
-                  color: context.themeTextTertiary,
-                ),
-              )
+              const SizedBox(height: 12)
             else if (collapsed)
               IconButton(
                 onPressed: () => context.read<SidebarState>().toggleCollapsed(),

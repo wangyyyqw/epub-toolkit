@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:tdesign_flutter/tdesign_flutter.dart';
@@ -522,7 +524,7 @@ Widget buildToolHeader(
   );
 }
 
-/// 底部固定操作栏（悬浮胶囊风格 - 让纸色背景贯通）
+/// 底部固定操作栏（悬浮胶囊风格 - 让纸色背景贯通；加载态为半透明磨砂玻璃）
 Widget buildBottomActionBar(
   BuildContext context, {
   required bool loading,
@@ -535,34 +537,42 @@ Widget buildBottomActionBar(
     child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: loading
-          ? Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: context.themeCard,
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                border: Border.all(color: context.themeDividerLight),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: context.themeAccent,
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.radiusM),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: context.themeCard.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                    border: Border.all(
+                      color: context.themeDividerLight.withValues(alpha: 0.6),
                     ),
                   ),
-                  SizedBox(width: 12),
-                  Text(
-                    '正在处理，请稍候…',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: context.themeTextSecondary,
-                      letterSpacing: 0.3,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: context.themeAccent,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        '正在处理，请稍候…',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: context.themeTextSecondary,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             )
           : SizedBox(

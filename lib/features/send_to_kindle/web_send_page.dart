@@ -693,7 +693,7 @@ class _WebSendPageState extends State<WebSendPage> {
           vertical: compact ? 8 : 10,
         ),
         decoration: BoxDecoration(
-          color: context.themeCard,
+          color: context.themeBg,
           border: Border(top: BorderSide(color: context.themeDividerLight)),
         ),
         child: Row(
