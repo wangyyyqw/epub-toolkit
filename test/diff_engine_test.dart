@@ -382,6 +382,36 @@ void main() {
     });
   });
 
+  group('差异块按段落分', () {
+    test('忽略空白行后相邻两段差异拆分为两个不同点', () {
+      // 左侧两段都有改动，中间空白行被忽略（默认开启）→ 行号跳变，
+      // 应拆分为两个不同点而不是合并为一个
+      final r = compute(
+        ['第一段改动', '', '第二段改动'],
+        ['第一段改', '第二段改2'],
+      );
+      expect(r.changeCount, 2);
+      expect(r.blocks.first.startRow, 0);
+      expect(r.blocks.last.startRow, greaterThan(r.blocks.first.startRow));
+    });
+
+    test('连续修改行（同行号连续）仍为一个不同点', () {
+      final r = compute(
+        ['行1改', '行2改', '相同'],
+        ['行1改x', '行2改x', '相同'],
+      );
+      expect(r.changeCount, 1);
+    });
+
+    test('两段差异中间有相等行仍为两个不同点', () {
+      final r = compute(
+        ['甲改', '相同行', '乙改'],
+        ['甲改x', '相同行', '乙改x'],
+      );
+      expect(r.changeCount, 2);
+    });
+  });
+
   group('行数上限与未对比区域', () {
     test('maxCompareLines=0：全部标记未对比，内容完整显示', () {
       final left = List.generate(100, (i) => 'L$i');

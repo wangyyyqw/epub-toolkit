@@ -407,7 +407,13 @@ class DiffEngine {
     var start = -1;
     for (var r = 0; r < rows.length; r++) {
       if (rows[r].isChange) {
-        if (start < 0) start = r;
+        if (start < 0) {
+          start = r;
+        } else if (_isParagraphGap(rows[r - 1], rows[r])) {
+          // 行号跳变 > 1：中间被忽略的空白行（段落边界），按段落分两个不同点
+          blocks.add(DiffBlock(start, r));
+          start = r;
+        }
       } else if (start >= 0) {
         blocks.add(DiffBlock(start, r));
         start = -1;
@@ -421,6 +427,17 @@ class DiffEngine {
       comparedLeft: compareLeft.length,
       comparedRight: compareRight.length,
     );
+  }
+
+  /// 相邻差异行之间是否存在段落边界（某侧行号跳变 > 1）
+  static bool _isParagraphGap(DiffRow prev, DiffRow cur) {
+    final pl = prev.leftIndex;
+    final cl = cur.leftIndex;
+    final pr = prev.rightIndex;
+    final cr = cur.rightIndex;
+    if (pl != null && cl != null && cl - pl > 1) return true;
+    if (pr != null && cr != null && cr - pr > 1) return true;
+    return false;
   }
 
   // ==================== 行信息构建 ====================

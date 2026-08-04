@@ -388,9 +388,16 @@ class TextDiffController extends ChangeNotifier {
     var start = -1;
     for (var r = 0; r < rows.length; r++) {
       final row = rows[r];
-      if (row.isChange && !_ignoredPairs.contains(
-              _pairKey(row.leftIndex, row.rightIndex))) {
-        if (start < 0) start = r;
+      if (row.isChange &&
+          !_ignoredPairs.contains(_pairKey(row.leftIndex, row.rightIndex))) {
+        if (start < 0) {
+          start = r;
+        } else if (_isParagraphGap(rows[r - 1], row)) {
+          // 相邻差异行之间的行号出现跳变：中间被忽略的空白行（段落边界），
+          // 按段落划分为两个不同点
+          blocks.add(DiffBlock(start, r));
+          start = r;
+        }
       } else if (start >= 0) {
         blocks.add(DiffBlock(start, r));
         start = -1;
@@ -398,6 +405,17 @@ class TextDiffController extends ChangeNotifier {
     }
     if (start >= 0) blocks.add(DiffBlock(start, rows.length));
     return blocks;
+  }
+
+  /// 相邻差异行之间是否存在段落边界（某侧行号跳变 > 1）
+  static bool _isParagraphGap(DiffRow prev, DiffRow cur) {
+    final pl = prev.leftIndex;
+    final cl = cur.leftIndex;
+    final pr = prev.rightIndex;
+    final cr = cur.rightIndex;
+    if (pl != null && cl != null && cl - pl > 1) return true;
+    if (pr != null && cr != null && cr - pr > 1) return true;
+    return false;
   }
 
   @override

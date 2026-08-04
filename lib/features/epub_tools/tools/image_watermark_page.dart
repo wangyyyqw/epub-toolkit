@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -136,12 +137,28 @@ class _ImageWatermarkPageState extends State<ImageWatermarkPage> {
             'watermarkText': _watermarkController.text,
           },
         },
-      );
+      ).timeout(const Duration(minutes: 30));
       _logAppendLines(result);
       if (_mode == _WatermarkMode.embed) {
-        await _copyToPublicDownload();
+        // 复制到公共 Download 步骤与完成状态解耦：超时不阻塞界面收敛
+        await _copyToPublicDownload().timeout(
+          const Duration(minutes: 5),
+          onTimeout: () {
+            _logController.append(
+              'WARN: 复制到公共 Download 超时，输出文件仍在原路径：$_outputPath',
+            );
+          },
+        );
       }
       if (mounted) context.read<ToastProvider>().showSuccess('操作完成');
+    } on TimeoutException {
+      _logController.append(
+        'ERROR: 操作超时（后台可能仍在处理，输出文件可能尚未写入完成，'
+        '请稍后检查输出路径：$_outputPath）',
+      );
+      if (mounted) {
+        context.read<ToastProvider>().showError('操作超时，请稍后检查输出文件');
+      }
     } catch (e) {
       _logController.append('ERROR: 操作失败：$e');
       if (mounted) context.read<ToastProvider>().showError('操作失败：$e');

@@ -67,8 +67,15 @@ class _TextDiffPageState extends State<TextDiffPage> {
   /// 行上下内边距
   double get _rowVPadding => _isNarrow ? 2 : 3;
 
-  /// 行号列宽
-  double get _lineNoWidth => _isNarrow ? 32 : 40;
+  /// 行号列宽：按最大行号位数自适应，行号紧贴栏边（距离约为原来的 1/4）
+  double get _lineNoWidth {
+    final total = _controller.leftLineCount > _controller.rightLineCount
+        ? _controller.leftLineCount
+        : _controller.rightLineCount;
+    final digits = total.toString().length;
+    return (digits * (_isNarrow ? 6.2 : 6.4) + (_isNarrow ? 6 : 8))
+        .clamp(16.0, 64.0);
+  }
 
   /// 每行高度（左右取最大换行数，保证两栏同步滚动不错位）
   List<double> _rowHeights = const [];
@@ -120,8 +127,26 @@ class _TextDiffPageState extends State<TextDiffPage> {
 
   void _onControllerChanged() {
     if (!mounted) return;
+    // 重新对比前先记下当前滚动位置：重算后行模型重建可能导致滚动归零，
+    // 在下一帧恢复原位置（复制/编辑/改选项后不再跳回文本开头）
+    final leftOffset = _leftScroll.hasClients ? _leftScroll.offset : null;
+    final rightOffset = _rightScroll.hasClients ? _rightScroll.offset : null;
     setState(() {});
     _rebuildFindMatches();
+    if (leftOffset == null && rightOffset == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (leftOffset != null && _leftScroll.hasClients) {
+        _leftScroll.jumpTo(
+          leftOffset.clamp(0.0, _leftScroll.position.maxScrollExtent),
+        );
+      }
+      if (rightOffset != null && _rightScroll.hasClients) {
+        _rightScroll.jumpTo(
+          rightOffset.clamp(0.0, _rightScroll.position.maxScrollExtent),
+        );
+      }
+    });
   }
 
   // ==================== 同步滚动 ====================
@@ -163,8 +188,16 @@ class _TextDiffPageState extends State<TextDiffPage> {
         (columnWidth - _lineNoWidth - 14).clamp(40.0, double.infinity);
     final charsPerLine = textWidth / (_fontSize * 0.6);
     final lineUnit = _fontSize * _lineHeight + _rowVPadding * 2;
+    // 空白行（段落间距）行高压缩为普通行的 1/4
+    final blankUnit = (lineUnit / 4).clamp(4.0, 10.0);
     final heights = <double>[];
     for (final row in rows) {
+      final isBlank = (row.leftText ?? '').trim().isEmpty &&
+          (row.rightText ?? '').trim().isEmpty;
+      if (isBlank) {
+        heights.add(blankUnit);
+        continue;
+      }
       final leftLines = _estimateLineCount(row.leftText ?? '', charsPerLine);
       final rightLines =
           _estimateLineCount(row.rightText ?? '', charsPerLine);
@@ -541,17 +574,6 @@ class _TextDiffPageState extends State<TextDiffPage> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          TextButton.icon(
-            onPressed: () => _pickSide(true),
-            icon: const Icon(Icons.folder_open_rounded, size: 17),
-            label: const Text('打开 A'),
-          ),
-          TextButton.icon(
-            onPressed: () => _pickSide(false),
-            icon: const Icon(Icons.folder_open_rounded, size: 17),
-            label: const Text('打开 B'),
-          ),
-          const SizedBox(width: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
@@ -702,28 +724,6 @@ class _TextDiffPageState extends State<TextDiffPage> {
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          TextButton.icon(
-            onPressed: () => _pickSide(true),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 30),
-              textStyle: const TextStyle(fontSize: 12),
-            ),
-            icon: const Icon(Icons.folder_open_rounded, size: 15),
-            label: const Text('打开A'),
-          ),
-          TextButton.icon(
-            onPressed: () => _pickSide(false),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 30),
-              textStyle: const TextStyle(fontSize: 12),
-            ),
-            icon: const Icon(Icons.folder_open_rounded, size: 15),
-            label: const Text('打开B'),
-          ),
           TextButton.icon(
             onPressed: _showOptionsSheet,
             style: TextButton.styleFrom(
@@ -1035,15 +1035,17 @@ class _TextDiffPageState extends State<TextDiffPage> {
   Widget _buildDiffArea(BuildContext context) {
     final rows = _controller.rows;
     if (rows.isEmpty) {
-      return Center(
-        child: Text(
-          '打开两个文本文件开始对比\n（支持 UTF-8 / GBK / Big5 编码）',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            height: 1.6,
-            color: context.themeTextTertiary,
-          ),
+      // 未导入文本：两栏各自显示「打开 A / 打开 B」，不与选项按钮混在一起
+      final gap = _isNarrow ? 6.0 : 10.0;
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+            _isNarrow ? 10 : 16, 0, _isNarrow ? 10 : 16, 0),
+        child: Row(
+          children: [
+            Expanded(child: _buildEmptyColumn(context, isLeft: true)),
+            SizedBox(width: gap),
+            Expanded(child: _buildEmptyColumn(context, isLeft: false)),
+          ],
         ),
       );
     }
@@ -1083,6 +1085,84 @@ class _TextDiffPageState extends State<TextDiffPage> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// 未导入文本时的空栏：居中显示该侧的「打开 A / 打开 B」
+  Widget _buildEmptyColumn(BuildContext context, {required bool isLeft}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: context.themeCard,
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        border: Border.all(color: context.themeDividerLight),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: context.themeBgWarm,
+              border: Border(
+                bottom: BorderSide(color: context.themeDividerLight),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isLeft
+                      ? Icons.arrow_back_rounded
+                      : Icons.arrow_forward_rounded,
+                  size: 14,
+                  color: context.themeTextTertiary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    isLeft ? '左侧' : '右侧',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.folder_open_rounded,
+                    size: 34,
+                    color: context.themeTextTertiary,
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _pickSide(isLeft),
+                    icon: const Icon(Icons.folder_open_rounded, size: 17),
+                    label: Text(isLeft ? '打开 A' : '打开 B'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '支持 UTF-8 / GBK / Big5 编码',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.themeTextTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1149,10 +1229,28 @@ class _TextDiffPageState extends State<TextDiffPage> {
                     color: context.themeTextTertiary,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: '打开${isLeft ? '左侧' : '右侧'}',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                  onPressed: () => _pickSide(isLeft),
+                  icon: Icon(
+                    Icons.folder_open_rounded,
+                    size: 16,
+                    color: context.themeTextTertiary,
+                  ),
+                ),
                 IconButton(
                   tooltip: '保存${isLeft ? '左侧' : '右侧'}',
                   visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
                   onPressed: () => _saveSide(isLeft),
                   icon: Icon(
                     Icons.save_outlined,
@@ -1263,7 +1361,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
       child: Container(
         height: height,
         padding: EdgeInsets.only(
-          left: 4,
+          left: 1,
           top: _rowVPadding,
           bottom: _rowVPadding,
         ),
