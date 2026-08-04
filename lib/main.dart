@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
 import 'core/theme.dart';
@@ -8,6 +9,8 @@ import 'shared/widgets/toast_overlay.dart';
 
 /// 应用入口
 void main() {
+  // Android 沉浸式：应用内容延伸到状态栏与系统导航栏之后（Android 12+ 导航栏透明）
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   initTDesignTheme();
   runApp(
     MultiProvider(

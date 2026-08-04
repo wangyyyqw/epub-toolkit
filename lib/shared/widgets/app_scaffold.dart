@@ -269,10 +269,12 @@ class AppScaffold extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: context.themeBg,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarIconBrightness:
             context.isDarkMode ? Brightness.light : Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
+        // Android 12+ 三键导航：关闭系统强制对比度遮罩，实现真正透明沉浸
+        systemNavigationBarContrastEnforced: false,
       ),
       child: ChangeNotifierProvider(
         create: (_) => SidebarState(),
@@ -343,7 +345,7 @@ Widget _buildMobileLayout(
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                child: _SafeContent(child: child),
+                child: _SafeContent(child: child, mobile: true),
               ),
             ),
           ),
@@ -380,18 +382,33 @@ Widget _buildMobileLayout(
   );
 }
 
-/// 内容区安全边距：移动端顶部留出状态栏空间
+/// 内容区安全边距。
+///
+/// 统一处理顶部/底部系统栏内边距并移除 MediaQuery 中的对应 inset，
+/// 避免页面内层 SafeArea 重复留白：
+/// - 移动端顶部由 [_MobileTopBar] 的 SafeArea 处理，本层不再加顶部内边距
+/// - 底部统一加上系统导航栏内边距（edge-to-edge 下内容不被遮挡）
 class _SafeContent extends StatelessWidget {
   final Widget child;
 
-  const _SafeContent({required this.child});
+  /// 移动端布局：顶部内边距由顶部栏处理，本层置零
+  final bool mobile;
+
+  const _SafeContent({required this.child, this.mobile = false});
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
-    return Padding(
-      padding: EdgeInsets.only(top: topPadding, bottom: 8),
-      child: child,
+    final media = MediaQuery.of(context);
+    final topPadding = mobile ? 0.0 : media.padding.top;
+    final bottomPadding = media.padding.bottom + 8;
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: mobile,
+      removeBottom: true,
+      child: Padding(
+        padding: EdgeInsets.only(top: topPadding, bottom: bottomPadding),
+        child: child,
+      ),
     );
   }
 }
