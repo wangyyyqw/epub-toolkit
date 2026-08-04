@@ -4,7 +4,7 @@
 
 ### 修复
 
-- **Android 覆盖更新（签名修复）**：此前 GitHub Actions 构建未配置签名，回退为 debug 签名，导致每次 Release 的 APK 签名都不同、升级时提示签名冲突需要卸载重装。现已改为使用固定 release 密钥（GitHub Secrets 注入）签名，后续版本间可直接覆盖更新；已发布的旧版本用户需卸载重装一次（无法避免）。
+- **Android 覆盖更新（签名修复）**：此前 GitHub Actions 构建未配置签名，回退为 debug 签名，导致每次 Release 的 APK 签名都不同、升级时提示签名冲突需要卸载重装。现已改为使用固定 release 密钥签名（密钥随仓库提交），后续版本间可直接覆盖更新；已发布的旧版本用户需卸载重装一次（无法避免）。
 
 ### 界面
 
@@ -12,7 +12,7 @@
 
 ### 构建与发布
 
-- GitHub Actions Android 任务新增固定签名配置：`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` 四个 Secrets；未配置时回退 debug 签名（仅限开发验证）。
+- 签名密钥库 `android/app/release-keystore.jks` 与配置 `android/key.properties` 随仓库提交：GitHub Actions 构建时直接读取，无需配置 Secrets 即可固定签名，保证每次 Release 的 APK 签名一致、可覆盖更新。
 - 全平台应用版本统一更新为 `1.2.3`，默认构建号为 `15`。
 
 ## 1.2.2 - 2026-08-04

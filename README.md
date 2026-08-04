@@ -117,23 +117,11 @@ GitHub Release 附件发布。Flutter 的原始程序目录包含 DLL 和资源�
 
 ## Android 签名
 
-不要提交真实签名文件。复制示例文件后填入本地配置：
+签名密钥库 `android/app/release-keystore.jks` 与配置 `android/key.properties`
+随仓库提交：GitHub Actions 构建时直接读取，保证每次 Release 的 APK 签名一致，
+用户可以直接覆盖更新，无需配置任何 Secrets。
 
-```bash
-cp android/key.properties.example android/key.properties
-```
-
-`android/key.properties` 和 `android/app/*.jks` 已加入忽略列表。
-
-### GitHub Actions 发布签名
-
-CI 构建使用 GitHub Secrets 中的固定密钥签名，保证每次 Release 的 APK 签名一致，用户可以直接覆盖更新。需在仓库 Settings → Secrets and variables → Actions 配置：
-
-| Secret | 值 |
-| --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | 签名密钥库文件的 Base64 内容（`base64 < android/app/release-keystore.jks`） |
-| `ANDROID_KEYSTORE_PASSWORD` | 密钥库密码 |
-| `ANDROID_KEY_ALIAS` | 密钥别名（默认 `release`） |
-| `ANDROID_KEY_PASSWORD` | 密钥密码 |
-
-未配置 Secrets 时 CI 会回退为 debug 签名（每次构建签名都不同，用户无法覆盖更新），仅用于开发验证。
+> 注意：公开仓库提交签名密钥意味着任何人可以用同一密钥伪造应用签名。
+> 如果对安全性有更高要求，可将 `android/key.properties` 与 `*.jks` 移出
+> 仓库并改用 GitHub Secrets（`ANDROID_KEYSTORE_FILE` / `ANDROID_KEYSTORE_PASSWORD`
+> / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`）注入签名。

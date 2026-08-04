@@ -47,12 +47,6 @@ jobs:
     name: Android APK
     runs-on: ubuntu-latest
     needs: version
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_FILE: app/release-keystore.jks
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,15 +65,6 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      # 固定签名密钥来自 GitHub Secrets；未配置时回退为 debug 签名（仅用于开发验证，
-      # 正式发布必须配置 Secrets，否则每次构建签名都不同，用户无法覆盖更新）。
-      - name: Set up Android release signing
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
-        shell: bash
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release-keystore.jks
-          test -s android/app/release-keystore.jks
 
       - name: Build APK
         run: >
