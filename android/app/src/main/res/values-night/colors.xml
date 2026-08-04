@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间模式启动背景（暗色页面底色） -->
+    <color name="launch_background">#171A1E</color>
+</resources>

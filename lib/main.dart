@@ -11,6 +11,15 @@ import 'shared/widgets/toast_overlay.dart';
 void main() {
   // Android 沉浸式：应用内容延伸到状态栏与系统导航栏之后（Android 12+ 导航栏透明）
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // 首帧前即应用透明系统栏样式，避免等待 AnnotatedRegion 期间露出系统栏底色
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
   initTDesignTheme();
   runApp(
     MultiProvider(
