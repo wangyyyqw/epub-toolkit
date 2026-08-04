@@ -169,4 +169,59 @@ void main() {
       }
     });
   });
+
+  group('行数上限与未对比区域', () {
+    test('maxCompareLines=0：全部标记未对比，内容完整显示', () {
+      final left = List.generate(100, (i) => 'L$i');
+      final right = List.generate(100, (i) => 'R$i');
+      final r = engine.compute(left, right, maxCompareLines: 0);
+      expect(r.truncated, isTrue);
+      expect(r.rows, hasLength(100));
+      expect(r.rows.every((row) => row.op == DiffOp.unknown), isTrue);
+      expect(r.changeCount, 0);
+      // 文本完整保留
+      expect(r.rows.last.leftText, 'L99');
+      expect(r.rows.last.rightText, 'R99');
+    });
+
+    test('maxCompareLines=N：前 N 行对比，其余 unknown', () {
+      final left = ['a', 'b', 'c', 'd'];
+      final right = ['a', 'x', 'c', 'd'];
+      final r = engine.compute(left, right, maxCompareLines: 2);
+      expect(r.rows, hasLength(4));
+      // 前两行已对比：a 相同、b 被 x 替换
+      expect(r.rows[0].op, DiffOp.equal);
+      expect(r.rows[1].op, DiffOp.replace);
+      // 后两行未对比
+      expect(r.rows[2].op, DiffOp.unknown);
+      expect(r.rows[3].op, DiffOp.unknown);
+      expect(r.rows[2].leftText, 'c');
+      expect(r.rows[3].rightText, 'd');
+      expect(r.changeCount, 1);
+    });
+
+    test('截断后左右剩余行数不同也能完整显示', () {
+      final left = List.generate(5, (i) => 'L$i');
+      final right = List.generate(3, (i) => 'R$i');
+      final r = engine.compute(left, right, maxCompareLines: 2);
+      // 剩余 left 3 行、right 1 行 → unknown 区取最大值 3 行
+      expect(r.rows, hasLength(5));
+      final unknowns =
+          r.rows.where((row) => row.op == DiffOp.unknown).toList();
+      expect(unknowns, hasLength(3));
+      expect(unknowns[0].leftText, 'L2');
+      expect(unknowns[0].rightText, 'R2');
+      expect(unknowns[1].leftText, 'L3');
+      expect(unknowns[1].rightIndex, isNull);
+      expect(unknowns[2].leftText, 'L4');
+      expect(unknowns[2].rightIndex, isNull);
+      expect(r.truncated, isTrue);
+    });
+
+    test('全量对比（maxCompareLines=null）不产生 unknown', () {
+      final r = compute(['a', 'b'], ['a', 'b']);
+      expect(r.truncated, isFalse);
+      expect(r.rows.every((row) => row.op == DiffOp.equal), isTrue);
+    });
+  });
 }

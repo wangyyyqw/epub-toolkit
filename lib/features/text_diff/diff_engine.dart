@@ -8,7 +8,7 @@
 // - replace 行再做一次字符级差分，输出行内差异片段
 
 /// 行级操作类型
-enum DiffOp { equal, replace, delete, insert }
+enum DiffOp { equal, replace, delete, insert, unknown }
 
 /// 行内字符差异片段
 class CharSpan {
@@ -44,7 +44,8 @@ class DiffRow {
     this.rightSpans,
   });
 
-  bool get isChange => op != DiffOp.equal;
+  bool get isChange =>
+      op == DiffOp.delete || op == DiffOp.insert || op == DiffOp.replace;
 }
 
 /// 差异块（导航单元）：连续的非相等行
@@ -59,21 +60,27 @@ class DiffBlock {
 
 /// 一次完整对比的结果
 class DiffResult {
-  final List<String> leftLines;
-  final List<String> rightLines;
-
   /// 统一行模型（左右两栏共用，行号即滚动锚点）
   final List<DiffRow> rows;
 
   /// 差异块列表（未过滤忽略项，导航时用 activeBlocks）
   final List<DiffBlock> blocks;
 
+  /// 已对比的左侧行数（截断时小于输入行数）
+  final int comparedLeft;
+
+  /// 已对比的右侧行数
+  final int comparedRight;
+
   const DiffResult({
-    required this.leftLines,
-    required this.rightLines,
     required this.rows,
     required this.blocks,
+    this.comparedLeft = 0,
+    this.comparedRight = 0,
   });
+
+  /// 是否因行数上限截断了对比（未对比区域标记为 [DiffOp.unknown]）
+  bool get truncated => rows.any((row) => row.op == DiffOp.unknown);
 
   /// 差异处数
   int get changeCount => blocks.length;
@@ -101,20 +108,49 @@ class DiffEngine {
   const DiffEngine();
 
   /// 计算两个文本（按行拆分）的差异
+  ///
+  /// [maxCompareLines] 为对比行数上限：
+  /// - null：全量对比（小文件）
+  /// - 0：全部行标记为未对比（用于"先显示内容"的占位结果）
+  /// - N：只对比前 N 行，其余行标记为 [DiffOp.unknown]
   DiffResult compute(
     List<String> leftLines,
     List<String> rightLines, {
     DiffOptions options = const DiffOptions(),
+    int? maxCompareLines,
   }) {
+    final compareLeft = maxCompareLines == null
+        ? leftLines
+        : leftLines.take(maxCompareLines).toList();
+    final compareRight = maxCompareLines == null
+        ? rightLines
+        : rightLines.take(maxCompareLines).toList();
+
     final leftKeys = [
-      for (final l in leftLines) _comparisonKey(l, options),
+      for (final l in compareLeft) _comparisonKey(l, options),
     ];
     final rightKeys = [
-      for (final l in rightLines) _comparisonKey(l, options),
+      for (final l in compareRight) _comparisonKey(l, options),
     ];
 
     final edits = _myers(leftKeys, rightKeys);
-    final rows = _buildRows(edits, leftLines, rightLines);
+    final rows = _buildRows(edits, compareLeft, compareRight);
+
+    // 未对比的剩余行：生成 unknown 占位行（内容完整显示，无差异高亮）
+    final leftRemain = leftLines.length - compareLeft.length;
+    final rightRemain = rightLines.length - compareRight.length;
+    final remain = leftRemain > rightRemain ? leftRemain : rightRemain;
+    for (var i = 0; i < remain; i++) {
+      final hasLeft = i < leftRemain;
+      final hasRight = i < rightRemain;
+      rows.add(DiffRow(
+        leftIndex: hasLeft ? compareLeft.length + i : null,
+        rightIndex: hasRight ? compareRight.length + i : null,
+        op: DiffOp.unknown,
+        leftText: hasLeft ? leftLines[compareLeft.length + i] : null,
+        rightText: hasRight ? rightLines[compareRight.length + i] : null,
+      ));
+    }
 
     final blocks = <DiffBlock>[];
     var start = -1;
@@ -129,10 +165,10 @@ class DiffEngine {
     if (start >= 0) blocks.add(DiffBlock(start, rows.length));
 
     return DiffResult(
-      leftLines: leftLines,
-      rightLines: rightLines,
       rows: rows,
       blocks: blocks,
+      comparedLeft: compareLeft.length,
+      comparedRight: compareRight.length,
     );
   }
 

@@ -2,7 +2,7 @@
 #define EnvArtifactSuffix GetEnv("EPUB_TOOLKIT_ARTIFACT_SUFFIX")
 
 #if EnvAppVersion == ""
-  #define MyAppVersion "1.2.6"
+  #define MyAppVersion "1.2.7"
 #else
   #define MyAppVersion EnvAppVersion
 #endif

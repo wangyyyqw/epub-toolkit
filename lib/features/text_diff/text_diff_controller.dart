@@ -7,17 +7,37 @@ import 'diff_engine.dart';
 
 /// 文本对比控制器：管理两侧文本、对比选项、差异结果与差异操作
 ///
-/// - 小文件同步计算（毫秒级），大文件走 Isolate + 防抖
+/// - 小文件（≤ [syncThreshold] 行）同步计算；大文件按块（[chunkSize] 行）
+///   在后台 Isolate 中**逐块渐进计算**：每完成一块立即合并到行模型并通知界面，
+///   差异边算边显示，无需等待全部完成
 /// - 差异操作（复制左↔右、忽略）基于统一行模型，编辑/替换后自动重算
 class TextDiffController extends ChangeNotifier {
-  /// 行数超过该值时改走后台 Isolate
-  static const _asyncThreshold = 3000;
+  /// 行数超过该值时改走后台逐块计算
+  static const syncThreshold = 3000;
+
+  /// 渐进计算的分块行数
+  static const chunkSize = 10000;
 
   String _leftText = '';
   String _rightText = '';
+  List<String> _leftLines = const [];
+  List<String> _rightLines = const [];
   DiffOptions _options = const DiffOptions();
-  DiffResult? _result;
-  bool _loading = false;
+
+  /// 每块的差异结果（null = 该块尚未计算，渲染占位行）
+  List<List<DiffRow>?> _chunks = const [];
+
+  /// 各块的占位行数（max(块左行数, 块右行数)）
+  List<int> _chunkPlaceholders = const [];
+
+  /// 已完成的块数
+  int _comparedChunks = 0;
+
+  bool _computing = false;
+
+  /// 平铺缓存（块完成时失效重建）
+  List<DiffRow>? _rowsCache;
+  List<DiffBlock>? _blocksCache;
 
   /// 当前选中的差异块（索引指向 activeBlocks）
   int _selectedBlock = -1;
@@ -27,25 +47,52 @@ class TextDiffController extends ChangeNotifier {
 
   Timer? _debounce;
 
+  /// 计算世代：文本变化时自增，异步结果过期则丢弃
+  int _generation = 0;
+
   String get leftText => _leftText;
   String get rightText => _rightText;
   DiffOptions get options => _options;
-  DiffResult? get result => _result;
-  bool get loading => _loading;
-  int get selectedBlock => _selectedBlock;
 
-  /// 未被忽略的差异块
-  List<DiffBlock> get activeBlocks {
-    final result = _result;
-    if (result == null) return const [];
-    return [
-      for (final b in result.blocks)
-        if (!_isBlockIgnored(result, b)) b,
-    ];
+  /// 是否正在后台计算（渐进进行中）
+  bool get computing => _computing;
+  int get selectedBlock => _selectedBlock;
+  int get leftLineCount => _leftLines.length;
+  int get rightLineCount => _rightLines.length;
+
+  /// 按行拆分的缓存（避免大文件反复 split）
+  List<String> get leftLines => _leftLines;
+  List<String> get rightLines => _rightLines;
+
+  /// 当前统一行模型（已对比部分为真实差异，未对比部分为占位行）
+  List<DiffRow> get rows => _rowsCache ??= _flattenRows();
+
+  /// 未被忽略的差异块（仅已对比区域）
+  List<DiffBlock> get activeBlocks => _blocksCache ??= _scanBlocks();
+
+  /// 已被忽略的差异行数
+  int get ignoredCount => _ignoredPairs.length;
+
+  /// 已对比行数（进度显示用，按左栏口径）
+  int get comparedLines {
+    var total = 0;
+    for (var k = 0; k < _comparedChunks && k < _chunks.length; k++) {
+      final start = k * chunkSize;
+      total += start < _leftLines.length
+          ? (chunkSize < _leftLines.length - start
+              ? chunkSize
+              : _leftLines.length - start)
+          : 0;
+    }
+    return total;
   }
 
-  /// 有效差异处数
-  int get changeCount => activeBlocks.length;
+  /// 对比总行数（进度显示用，取两侧较大值）
+  int get totalLines {
+    final n = _leftLines.length;
+    final m = _rightLines.length;
+    return n > m ? n : m;
+  }
 
   static String _pairKey(int? leftIndex, int? rightIndex) =>
       '$leftIndex->$rightIndex';
@@ -103,15 +150,15 @@ class TextDiffController extends ChangeNotifier {
   /// [toLeft] 为 true 表示「复制右侧 → 左侧」，false 为「复制左侧 → 右侧」。
   /// 基于统一行模型重建目标侧文本：块内取源侧行，块外保持目标侧原样。
   void copyBlock(int blockIndex, {required bool toLeft}) {
-    final result = _result;
+    final rows = this.rows;
     final blocks = activeBlocks;
-    if (result == null || blockIndex < 0 || blockIndex >= blocks.length) {
+    if (rows.isEmpty || blockIndex < 0 || blockIndex >= blocks.length) {
       return;
     }
     final block = blocks[blockIndex];
     final target = <String>[];
-    for (var r = 0; r < result.rows.length; r++) {
-      final row = result.rows[r];
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
       final inBlock = r >= block.startRow && r < block.endRow;
       final String? text;
       if (inBlock) {
@@ -131,20 +178,21 @@ class TextDiffController extends ChangeNotifier {
     _recompute();
   }
 
-  /// 忽略当前选中差异块（导航与统计不再计入；重新对比后自然失效）
+  /// 忽略当前选中差异块（导航不再计入；重新对比后自然失效）
   void ignoreSelectedBlock() {
-    final result = _result;
+    final rows = this.rows;
     final blocks = activeBlocks;
-    if (result == null || _selectedBlock < 0 ||
+    if (rows.isEmpty || _selectedBlock < 0 ||
         _selectedBlock >= blocks.length) {
       return;
     }
     final block = blocks[_selectedBlock];
     for (var r = block.startRow; r < block.endRow; r++) {
-      final row = result.rows[r];
+      final row = rows[r];
       _ignoredPairs.add(_pairKey(row.leftIndex, row.rightIndex));
     }
     _selectedBlock = -1;
+    _blocksCache = null;
     notifyListeners();
   }
 
@@ -152,6 +200,7 @@ class TextDiffController extends ChangeNotifier {
   void clearIgnored() {
     if (_ignoredPairs.isEmpty) return;
     _ignoredPairs.clear();
+    _blocksCache = null;
     notifyListeners();
   }
 
@@ -162,46 +211,117 @@ class TextDiffController extends ChangeNotifier {
     return lines;
   }
 
+  // ==================== 计算 ====================
+
   void _recompute() {
     _debounce?.cancel();
-    final left = splitLines(_leftText);
-    final right = splitLines(_rightText);
+    _generation++;
+    _leftLines = splitLines(_leftText);
+    _rightLines = splitLines(_rightText);
     _selectedBlock = -1;
-    if (left.length + right.length > _asyncThreshold) {
-      _loading = true;
+    _ignoredPairs.clear();
+
+    final total = _leftLines.length + _rightLines.length;
+    if (total <= syncThreshold) {
+      // 小文件：同步全量对比
+      final result = const DiffEngine().compute(
+        _leftLines,
+        _rightLines,
+        options: _options,
+      );
+      _chunks = [result.rows];
+      _chunkPlaceholders = [_placeholderCount(_leftLines.length,
+          _rightLines.length)];
+      _comparedChunks = 1;
+      _computing = false;
+      _rowsCache = null;
+      _blocksCache = null;
       notifyListeners();
-      _debounce = Timer(const Duration(milliseconds: 300), () {
-        _computeAsync(left, right, _options);
+      return;
+    }
+
+    // 大文件：先显示占位内容，再逐块渐进计算
+    final chunkCount =
+        (totalLines + chunkSize - 1) ~/ chunkSize;
+    _chunks = List<List<DiffRow>?>.filled(chunkCount, null);
+    _chunkPlaceholders = [
+      for (var k = 0; k < chunkCount; k++)
+        _placeholderCount(
+          _chunkCountAt(_leftLines.length, k),
+          _chunkCountAt(_rightLines.length, k),
+        ),
+    ];
+    _comparedChunks = 0;
+    _computing = true;
+    _rowsCache = null;
+    _blocksCache = null;
+    notifyListeners();
+
+    final gen = _generation;
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _computeChunks(gen);
+    });
+  }
+
+  int _chunkCountAt(int total, int k) {
+    final start = k * chunkSize;
+    if (start >= total) return 0;
+    final remain = total - start;
+    return remain < chunkSize ? remain : chunkSize;
+  }
+
+  int _placeholderCount(int left, int right) =>
+      left > right ? left : right;
+
+  /// 逐块渐进计算：每完成一块立即合并并通知界面
+  Future<void> _computeChunks(int gen) async {
+    final chunkCount = _chunks.length;
+    for (var k = 0; k < chunkCount; k++) {
+      final start = k * chunkSize;
+      final leftChunk = start < _leftLines.length
+          ? _leftLines.sublist(
+              start,
+              (start + chunkSize) < _leftLines.length
+                  ? start + chunkSize
+                  : _leftLines.length,
+            )
+          : const <String>[];
+      final rightChunk = start < _rightLines.length
+          ? _rightLines.sublist(
+              start,
+              (start + chunkSize) < _rightLines.length
+                  ? start + chunkSize
+                  : _rightLines.length,
+            )
+          : const <String>[];
+      if (leftChunk.isEmpty && rightChunk.isEmpty) {
+        _chunks[k] = const [];
+        continue;
+      }
+
+      final chunkRows = await runBackgroundTask(_computeChunk, {
+        'left': leftChunk,
+        'right': rightChunk,
+        'ignoreWhitespace': _options.ignoreWhitespace,
+        'ignoreCase': _options.ignoreCase,
+        'startLeft': start,
+        'startRight': start,
       });
-    } else {
-      _computeSync(left, right);
+      if (gen != _generation) return; // 文本已变化，丢弃过期结果
+
+      _chunks[k] = chunkRows;
+      _comparedChunks = k + 1;
+      _computing = k < chunkCount - 1;
+      _rowsCache = null;
+      _blocksCache = null;
+      notifyListeners();
     }
   }
 
-  void _computeSync(List<String> left, List<String> right) {
-    _result = const DiffEngine().compute(left, right, options: _options);
-    _loading = false;
-    notifyListeners();
-  }
-
-  Future<void> _computeAsync(
-    List<String> left,
-    List<String> right,
-    DiffOptions options,
-  ) async {
-    final result = await runBackgroundTask(_isolateCompute, {
-      'left': left,
-      'right': right,
-      'ignoreWhitespace': options.ignoreWhitespace,
-      'ignoreCase': options.ignoreCase,
-    });
-    _result = result;
-    _loading = false;
-    notifyListeners();
-  }
-
-  static DiffResult _isolateCompute(Map<String, Object?> msg) {
-    return const DiffEngine().compute(
+  static List<DiffRow> _computeChunk(Map<String, Object?> msg) {
+    final startLeft = msg['startLeft'] as int;
+    final startRight = msg['startRight'] as int;
+    final result = const DiffEngine().compute(
       (msg['left'] as List).cast<String>(),
       (msg['right'] as List).cast<String>(),
       options: DiffOptions(
@@ -209,16 +329,70 @@ class TextDiffController extends ChangeNotifier {
         ignoreCase: msg['ignoreCase'] as bool,
       ),
     );
+    return [
+      for (final row in result.rows)
+        DiffRow(
+          leftIndex: row.leftIndex == null
+              ? null
+              : row.leftIndex! + startLeft,
+          rightIndex: row.rightIndex == null
+              ? null
+              : row.rightIndex! + startRight,
+          op: row.op,
+          leftText: row.leftText,
+          rightText: row.rightText,
+          leftSpans: row.leftSpans,
+          rightSpans: row.rightSpans,
+        ),
+    ];
   }
 
-  bool _isBlockIgnored(DiffResult result, DiffBlock block) {
-    for (var r = block.startRow; r < block.endRow; r++) {
-      final row = result.rows[r];
-      if (!_ignoredPairs.contains(_pairKey(row.leftIndex, row.rightIndex))) {
-        return false;
+  /// 平铺：已完成块用真实结果，未完成块用占位行（内容完整显示）
+  List<DiffRow> _flattenRows() {
+    final rows = <DiffRow>[];
+    for (var k = 0; k < _chunks.length; k++) {
+      final chunkRows = _chunks[k];
+      if (chunkRows != null) {
+        rows.addAll(chunkRows);
+        continue;
+      }
+      final start = k * chunkSize;
+      final count = _chunkPlaceholders[k];
+      for (var i = 0; i < count; i++) {
+        final leftIndex = start + i;
+        final rightIndex = start + i;
+        rows.add(DiffRow(
+          leftIndex: leftIndex < _leftLines.length ? leftIndex : null,
+          rightIndex: rightIndex < _rightLines.length ? rightIndex : null,
+          op: DiffOp.unknown,
+          leftText: leftIndex < _leftLines.length
+              ? _leftLines[leftIndex]
+              : null,
+          rightText: rightIndex < _rightLines.length
+              ? _rightLines[rightIndex]
+              : null,
+        ));
       }
     }
-    return true;
+    return rows;
+  }
+
+  List<DiffBlock> _scanBlocks() {
+    final rows = this.rows;
+    final blocks = <DiffBlock>[];
+    var start = -1;
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      if (row.isChange && !_ignoredPairs.contains(
+              _pairKey(row.leftIndex, row.rightIndex))) {
+        if (start < 0) start = r;
+      } else if (start >= 0) {
+        blocks.add(DiffBlock(start, r));
+        start = -1;
+      }
+    }
+    if (start >= 0) blocks.add(DiffBlock(start, rows.length));
+    return blocks;
   }
 
   @override

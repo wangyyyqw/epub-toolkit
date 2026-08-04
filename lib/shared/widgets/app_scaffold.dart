@@ -673,7 +673,7 @@ class _Sidebar extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'v1.2.6',
+                  'v1.2.7',
                   style: TextStyle(
                     fontSize: 11,
                     color: context.themeTextTertiary.withValues(alpha: 0.6),

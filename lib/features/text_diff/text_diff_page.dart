@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../core/background_task.dart';
 import '../../core/encoding_detector.dart';
 import '../../core/file_service.dart';
 import '../../core/theme.dart';
@@ -62,6 +63,12 @@ class _TextDiffPageState extends State<TextDiffPage> {
 
   /// 上次计算行高的列宽（宽度变化时重算）
   double _lastColumnWidth = 0;
+
+  /// 上次参与行高计算的结果（结果变化时重算）
+  List<DiffRow>? _lastRowHeightResult;
+
+  /// 文件读取中（后台 Isolate，避免大文件卡 UI）
+  bool _fileLoading = false;
 
   String _leftPath = '';
   String _rightPath = '';
@@ -130,21 +137,21 @@ class _TextDiffPageState extends State<TextDiffPage> {
   ///
   /// 行高 = max(左栏换行数, 右栏换行数) × 行高 + 内边距，
   /// 保证两栏同高、同步滚动与跳转精确。
-  void _computeRowHeights(DiffResult result, double columnWidth) {
+  ///
+  /// 换行数用字符宽度估算（等宽字体：拉丁 1 单位、CJK/全角 2 单位），
+  /// 纯算术 O(n)，避免对超大文件逐行 TextPainter 测量的性能问题。
+  void _computeRowHeights(List<DiffRow> rows, double columnWidth) {
     if (columnWidth <= 0) return;
     // 行内文本实际可用宽度 = 列宽 - 行号列(40) - 间距(6) - 内边距(4) - 边框(1~3)；
     // 测量宽度略窄，宁可多算一行也不截断
     final textWidth = (columnWidth - 54).clamp(40.0, double.infinity);
-    final style = TextStyle(
-      fontFamily: _monoFamily,
-      fontSize: _fontSize,
-      height: _lineHeight,
-    );
+    final charsPerLine = textWidth / (_fontSize * 0.6);
     final lineUnit = _fontSize * _lineHeight + _rowVPadding * 2;
     final heights = <double>[];
-    for (final row in result.rows) {
-      final leftLines = _lineCount(row.leftText ?? '', textWidth, style);
-      final rightLines = _lineCount(row.rightText ?? '', textWidth, style);
+    for (final row in rows) {
+      final leftLines = _estimateLineCount(row.leftText ?? '', charsPerLine);
+      final rightLines =
+          _estimateLineCount(row.rightText ?? '', charsPerLine);
       final lines = leftLines > rightLines ? leftLines : rightLines;
       heights.add(lines < 1 ? lineUnit : lines * lineUnit);
     }
@@ -154,23 +161,26 @@ class _TextDiffPageState extends State<TextDiffPage> {
     }
     _rowHeights = heights;
     _rowOffsets = offsets;
+    _lastRowHeightResult = rows;
   }
 
-  /// 用 TextPainter 测量文本在给定宽度下的换行行数
-  static int _lineCount(String text, double width, TextStyle style) {
-    if (text.isEmpty) return 0;
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    )..layout(maxWidth: width);
-    return painter.computeLineMetrics().length;
+  /// 估算文本在给定每行字符容量下的换行行数（保守多算一行防截断）
+  static int _estimateLineCount(String text, double charsPerLine) {
+    if (text.isEmpty || charsPerLine <= 0) return 0;
+    var units = 0.0;
+    for (final r in text.runes) {
+      units += (r > 0xFF) ? 2 : 1;
+    }
+    var lines = (units / charsPerLine).ceil();
+    if (lines < 1) lines = 1;
+    return lines + 1;
   }
 
   /// 根据行号（左/右侧各自的行号）找统一行模型中的行
-  int _rowForLine(DiffResult result, {required bool isLeft, required int line}) {
-    for (var r = 0; r < result.rows.length; r++) {
-      final row = result.rows[r];
+  int _rowForLine(List<DiffRow> rows,
+      {required bool isLeft, required int line}) {
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
       if ((isLeft ? row.leftIndex : row.rightIndex) == line) return r;
     }
     return 0;
@@ -203,10 +213,12 @@ class _TextDiffPageState extends State<TextDiffPage> {
     await _loadFile(path, isLeft: isLeft);
   }
 
+  /// 后台读取文件（编码检测 + 解码在 Isolate 中执行，大文件不卡 UI）
   Future<void> _loadFile(String path, {required bool isLeft}) async {
+    if (mounted) setState(() => _fileLoading = true);
     try {
-      final encoding = EncodingDetector.detect(path);
-      final text = EncodingDetector.readFile(path, encoding);
+      final (text, encoding) =
+          await runBackgroundTask(_loadFileTask, path);
       _controller.setTexts(
         left: isLeft ? text : null,
         right: isLeft ? null : text,
@@ -226,7 +238,15 @@ class _TextDiffPageState extends State<TextDiffPage> {
       if (mounted) {
         context.read<ToastProvider>().showError('读取文件失败：$e');
       }
+    } finally {
+      if (mounted) setState(() => _fileLoading = false);
     }
+  }
+
+  static (String, String) _loadFileTask(String path) {
+    final encoding = EncodingDetector.detect(path);
+    final text = EncodingDetector.readFile(path, encoding);
+    return (text, encoding);
   }
 
   Future<void> _saveSide(bool isLeft) async {
@@ -339,8 +359,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
 
   void _rebuildFindMatches() {
     final query = _findCtrl.text;
-    final result = _controller.result;
-    if (query.isEmpty || result == null) {
+    if (query.isEmpty) {
       _findMatches = [];
       _currentMatch = -1;
       return;
@@ -356,17 +375,17 @@ class _TextDiffPageState extends State<TextDiffPage> {
       return;
     }
     final matches = <_FindMatch>[];
-    final lines = TextDiffController.splitLines(_controller.leftText);
+    final leftLines = _controller.leftLines;
     if (_findSide != '右栏') {
-      for (var i = 0; i < lines.length; i++) {
-        for (final m in re.allMatches(lines[i])) {
+      for (var i = 0; i < leftLines.length; i++) {
+        for (final m in re.allMatches(leftLines[i])) {
           matches.add(
             _FindMatch(isLeft: true, lineIndex: i, start: m.start, end: m.end),
           );
         }
       }
     }
-    final rightLines = TextDiffController.splitLines(_controller.rightText);
+    final rightLines = _controller.rightLines;
     if (_findSide != '左栏') {
       for (var i = 0; i < rightLines.length; i++) {
         for (final m in re.allMatches(rightLines[i])) {
@@ -393,10 +412,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
         _findMatches.length;
     _currentMatch = target;
     final m = _findMatches[target];
-    final result = _controller.result;
-    if (result != null) {
+    final rows = _controller.rows;
+    if (rows.isNotEmpty) {
       _scrollToRow(
-        _rowForLine(result, isLeft: m.isLeft, line: m.lineIndex),
+        _rowForLine(rows, isLeft: m.isLeft, line: m.lineIndex),
       );
     }
     setState(() {});
@@ -412,17 +431,13 @@ class _TextDiffPageState extends State<TextDiffPage> {
       return;
     }
     final m = _findMatches[_currentMatch];
-    final text = m.isLeft ? _controller.leftText : _controller.rightText;
-    final lines = TextDiffController.splitLines(text);
+    final lines =
+        m.isLeft ? _controller.leftLines : _controller.rightLines;
     if (m.lineIndex < 0 || m.lineIndex >= lines.length) return;
     final line = lines[m.lineIndex];
     if (m.start < 0 || m.end > line.length || m.start > m.end) return;
-    lines[m.lineIndex] = line.replaceRange(m.start, m.end, _replaceCtrl.text);
-    _controller.updateLine(
-      m.lineIndex,
-      lines[m.lineIndex],
-      isLeft: m.isLeft,
-    );
+    final newLine = line.replaceRange(m.start, m.end, _replaceCtrl.text);
+    _controller.updateLine(m.lineIndex, newLine, isLeft: m.isLeft);
     _currentMatch = -1;
     context.read<ToastProvider>().showSuccess('已替换 1 处');
   }
@@ -475,7 +490,19 @@ class _TextDiffPageState extends State<TextDiffPage> {
             subtitle: '对比两个文本文件的差异，支持编辑、替换与正则查找',
           ),
           _buildToolbar(context),
-          if (_controller.loading) const LinearProgressIndicator(minHeight: 2),
+          if (_controller.computing || _fileLoading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (_controller.computing)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '正在对比…已处理 ${_controller.comparedLines} / ${_controller.totalLines} 行，已完成部分实时高亮',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.themeTextTertiary,
+                ),
+              ),
+            ),
           if (_showFind) _buildFindPanel(context),
           Expanded(child: _buildDiffArea(context)),
           _buildBottomBar(context),
@@ -487,9 +514,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
   // ==================== 工具栏 ====================
 
   Widget _buildToolbar(BuildContext context) {
-    final count = _controller.changeCount;
-    final ignored = _controller.result != null &&
-        _controller.activeBlocks.length < _controller.result!.blocks.length;
+    final hasBlocks = _controller.activeBlocks.isNotEmpty;
+    final ignored = _controller.ignoredCount > 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Wrap(
@@ -548,13 +574,13 @@ class _TextDiffPageState extends State<TextDiffPage> {
           IconButton(
             tooltip: '上一处差异',
             visualDensity: VisualDensity.compact,
-            onPressed: count == 0 ? null : _prevBlock,
+            onPressed: !hasBlocks ? null : _prevBlock,
             icon: const Icon(Icons.arrow_upward_rounded, size: 18),
           ),
           IconButton(
             tooltip: '下一处差异',
             visualDensity: VisualDensity.compact,
-            onPressed: count == 0 ? null : _nextBlock,
+            onPressed: !hasBlocks ? null : _nextBlock,
             icon: const Icon(Icons.arrow_downward_rounded, size: 18),
           ),
           if (ignored)
@@ -562,13 +588,6 @@ class _TextDiffPageState extends State<TextDiffPage> {
               onPressed: () => _controller.clearIgnored(),
               child: const Text('清除忽略'),
             ),
-          Text(
-            '共 $count 处差异',
-            style: TextStyle(
-              fontSize: 12.5,
-              color: context.themeTextTertiary,
-            ),
-          ),
         ],
       ),
     );
@@ -675,8 +694,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
   // ==================== 对比区域 ====================
 
   Widget _buildDiffArea(BuildContext context) {
-    final result = _controller.result;
-    if (result == null || result.rows.isEmpty) {
+    final rows = _controller.rows;
+    if (rows.isEmpty) {
       return Center(
         child: Text(
           '打开两个文本文件开始对比\n（支持 UTF-8 / GBK / Big5 编码）',
@@ -698,16 +717,16 @@ class _TextDiffPageState extends State<TextDiffPage> {
         builder: (context, constraints) {
           final columnWidth = (constraints.maxWidth - 10) / 2;
           if (columnWidth != _lastColumnWidth ||
-              _rowHeights.length != result.rows.length) {
+              !identical(_lastRowHeightResult, rows)) {
             _lastColumnWidth = columnWidth;
-            _computeRowHeights(result, columnWidth);
+            _computeRowHeights(rows, columnWidth);
           }
           return Row(
             children: [
               Expanded(
                 child: _buildColumn(
                   context,
-                  result: result,
+                  rows: rows,
                   isLeft: true,
                   selectedBlock: selectedBlock,
                 ),
@@ -716,7 +735,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
               Expanded(
                 child: _buildColumn(
                   context,
-                  result: result,
+                  rows: rows,
                   isLeft: false,
                   selectedBlock: selectedBlock,
                 ),
@@ -730,13 +749,15 @@ class _TextDiffPageState extends State<TextDiffPage> {
 
   Widget _buildColumn(
     BuildContext context, {
-    required DiffResult result,
+    required List<DiffRow> rows,
     required bool isLeft,
     required DiffBlock? selectedBlock,
   }) {
     final path = isLeft ? _leftPath : _rightPath;
     final encoding = isLeft ? _leftEncoding : _rightEncoding;
-    final lines = isLeft ? result.leftLines : result.rightLines;
+    final lineCount = isLeft
+        ? _controller.leftLineCount
+        : _controller.rightLineCount;
     final scroll = isLeft ? _leftScroll : _rightScroll;
     return Container(
       decoration: BoxDecoration(
@@ -782,7 +803,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
                   ),
                 ),
                 Text(
-                  '${lines.length} 行${encoding.isEmpty ? '' : ' · $encoding'}',
+                  '$lineCount 行${encoding.isEmpty ? '' : ' · $encoding'}',
                   style: TextStyle(
                     fontSize: 11,
                     color: context.themeTextTertiary,
@@ -808,9 +829,9 @@ class _TextDiffPageState extends State<TextDiffPage> {
               controller: scroll,
               child: ListView.builder(
                 controller: scroll,
-                itemCount: result.rows.length,
+                itemCount: rows.length,
                 itemBuilder: (context, rowIndex) {
-                  final row = result.rows[rowIndex];
+                  final row = rows[rowIndex];
                   final height = rowIndex < _rowHeights.length
                       ? _rowHeights[rowIndex]
                       : _fontSize * _lineHeight + _rowVPadding * 2;
@@ -872,6 +893,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
     Color? bg;
     switch (row.op) {
       case DiffOp.equal:
+      case DiffOp.unknown:
         bg = null;
       case DiffOp.delete:
         bg = isLeft ? (isDark ? _delBgDark : _delBg) : null;
@@ -884,6 +906,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
       bg = isDark
           ? const Color(0xFF23262B)
           : const Color(0xFFF2F3F5);
+    }
+    if (row.op == DiffOp.unknown) {
+      // 未对比区域：中性底色 + 分隔线，弱化显示
+      bg = isDark ? const Color(0xFF1E2126) : const Color(0xFFF4F5F7);
     }
 
     final inlineColor = (row.op == DiffOp.replace)
@@ -942,15 +968,18 @@ class _TextDiffPageState extends State<TextDiffPage> {
                     height: _lineHeight,
                     color: ignored
                         ? context.themeTextTertiary
-                        : context.themeTextPrimary,
+                        : row.op == DiffOp.unknown
+                            ? context.themeTextSecondary
+                            : context.themeTextPrimary,
                   ),
                   children: _buildRowSpans(
                     context,
                     text ?? '',
-                    spans,
+                    row.op == DiffOp.unknown ? null : spans,
                     _matchesFor(isLeft: isLeft, line: lineIndex),
                     isCurrentMatch: isCurrentMatch,
-                    inlineColor: inlineColor,
+                    inlineColor:
+                        row.op == DiffOp.unknown ? null : inlineColor,
                   ),
                 ),
               ),
@@ -1036,8 +1065,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
   // ==================== 底部操作栏 ====================
 
   Widget _buildBottomBar(BuildContext context) {
-    final result = _controller.result;
-    if (result == null || result.rows.isEmpty) {
+    final rows = _controller.rows;
+    if (rows.isEmpty) {
       return const SizedBox(height: 12);
     }
     final selected = _controller.selectedBlock;
@@ -1045,7 +1074,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
         child: Text(
-          '共 ${_controller.changeCount} 处差异 · 点击差异行或使用上下箭头选择操作',
+          '点击差异行或使用上下箭头查看差异点',
           style: TextStyle(fontSize: 12, color: context.themeTextTertiary),
         ),
       );
@@ -1056,39 +1085,34 @@ class _TextDiffPageState extends State<TextDiffPage> {
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
         child: Row(
           children: [
-            Text(
-              '差异 ${selected + 1} / ${_controller.changeCount}',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: context.themeTextSecondary,
-              ),
-            ),
-            const SizedBox(width: 12),
             TextButton.icon(
               onPressed: () {
                 final block = _controller.activeBlocks[selected];
-                _editRow(_controller.result!.rows[block.startRow]);
+                _editRow(_controller.rows[block.startRow]);
               },
               icon: const Icon(Icons.edit_outlined, size: 16),
               label: const Text('编辑该差异'),
             ),
+            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () =>
                   _controller.copyBlock(selected, toLeft: false),
               icon: const Icon(Icons.arrow_back_rounded, size: 16),
               label: const Text('复制左 → 右'),
             ),
+            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () => _controller.copyBlock(selected, toLeft: true),
               icon: const Icon(Icons.arrow_forward_rounded, size: 16),
               label: const Text('复制右 → 左'),
             ),
+            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () => _controller.ignoreSelectedBlock(),
               icon: const Icon(Icons.visibility_off_outlined, size: 16),
               label: const Text('忽略该差异'),
             ),
+            const SizedBox(width: 8),
             TextButton(
               onPressed: () => _controller.selectBlock(-1),
               child: const Text('取消选择'),
