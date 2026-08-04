@@ -31,9 +31,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
   // ==================== 常量 ====================
 
   static const String _monoFamily = 'monospace';
-  static const double _fontSize = 12.5;
   static const double _lineHeight = 1.5;
-  static const double _rowVPadding = 3;
+
+  /// 窄屏（移动端）布局断点：小于该宽度时切换为紧凑布局
+  static const double _narrowBreakpoint = 640;
 
   // 差异色（亮色）
   static const _delBg = Color(0xFFF7E3E1);
@@ -54,6 +55,20 @@ class _TextDiffPageState extends State<TextDiffPage> {
   final ScrollController _leftScroll = ScrollController();
   final ScrollController _rightScroll = ScrollController();
   bool _syncing = false;
+
+  /// 屏幕宽度（build 时刷新，用于窄屏紧凑布局）
+  double _screenWidth = 0;
+
+  bool get _isNarrow => _screenWidth < _narrowBreakpoint;
+
+  /// 文本字号（窄屏略小，单行显示更多字符）
+  double get _fontSize => _isNarrow ? 11.5 : 12.5;
+
+  /// 行上下内边距
+  double get _rowVPadding => _isNarrow ? 2 : 3;
+
+  /// 行号列宽
+  double get _lineNoWidth => _isNarrow ? 32 : 40;
 
   /// 每行高度（左右取最大换行数，保证两栏同步滚动不错位）
   List<double> _rowHeights = const [];
@@ -142,9 +157,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
   /// 纯算术 O(n)，避免对超大文件逐行 TextPainter 测量的性能问题。
   void _computeRowHeights(List<DiffRow> rows, double columnWidth) {
     if (columnWidth <= 0) return;
-    // 行内文本实际可用宽度 = 列宽 - 行号列(40) - 间距(6) - 内边距(4) - 边框(1~3)；
+    // 行内文本实际可用宽度 = 列宽 - 行号列 - 间距(6) - 内边距(4) - 边框(1~3)；
     // 测量宽度略窄，宁可多算一行也不截断
-    final textWidth = (columnWidth - 54).clamp(40.0, double.infinity);
+    final textWidth =
+        (columnWidth - _lineNoWidth - 14).clamp(40.0, double.infinity);
     final charsPerLine = textWidth / (_fontSize * 0.6);
     final lineUnit = _fontSize * _lineHeight + _rowVPadding * 2;
     final heights = <double>[];
@@ -302,7 +318,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         content: SizedBox(
-          width: 480,
+          width: _isNarrow ? (_screenWidth - 48) : 480,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -480,6 +496,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
 
   @override
   Widget build(BuildContext context) {
+    _screenWidth = MediaQuery.sizeOf(context).width;
     return Scaffold(
       body: Column(
         children: [
@@ -514,6 +531,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
   // ==================== 工具栏 ====================
 
   Widget _buildToolbar(BuildContext context) {
+    if (_isNarrow) return _buildCompactToolbar(context);
     final hasBlocks = _controller.activeBlocks.isNotEmpty;
     final ignored = _controller.ignoredCount > 0;
     return Padding(
@@ -534,20 +552,70 @@ class _TextDiffPageState extends State<TextDiffPage> {
             label: const Text('打开 B'),
           ),
           const SizedBox(width: 4),
-          FilterChip(
-            label: const Text('忽略空白'),
-            labelStyle: TextStyle(
-              fontSize: 12,
-              color: _controller.options.ignoreWhitespace
-                  ? context.themeTextPrimary
-                  : context.themeTextSecondary,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: context.themeDividerLight),
+              borderRadius: BorderRadius.circular(8),
             ),
-            selected: _controller.options.ignoreWhitespace,
-            visualDensity: VisualDensity.compact,
-            onSelected: (v) => _controller.setOptions(DiffOptions(
-              ignoreWhitespace: v,
-              ignoreCase: _controller.options.ignoreCase,
-            )),
+            child: DropdownButton<WhiteSpaceMode>(
+              value: _controller.options.whitespaceMode,
+              underline: const SizedBox.shrink(),
+              isDense: true,
+              style: const TextStyle(fontSize: 12),
+              items: const [
+                DropdownMenuItem(
+                  value: WhiteSpaceMode.exact,
+                  child: Text('不忽略空白'),
+                ),
+                DropdownMenuItem(
+                  value: WhiteSpaceMode.trim,
+                  child: Text('忽略行首尾空白'),
+                ),
+                DropdownMenuItem(
+                  value: WhiteSpaceMode.trimEnd,
+                  child: Text('忽略行尾空白'),
+                ),
+                DropdownMenuItem(
+                  value: WhiteSpaceMode.all,
+                  child: Text('忽略全部空白'),
+                ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                _controller.setOptions(DiffOptions(
+                  whitespaceMode: v,
+                  ignoreCase: _controller.options.ignoreCase,
+                  ignoreBlankLines: _controller.options.ignoreBlankLines,
+                  similarityThreshold:
+                      _controller.options.similarityThreshold,
+                ));
+              },
+            ),
+          ),
+          Tooltip(
+            message: '忽略空白行差异：空白行按顺序配对显示，单侧多余的空白行不再标记为差异',
+            waitDuration: const Duration(milliseconds: 400),
+            child: FilterChip(
+              label: const Text('忽略空白行'),
+              labelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: _controller.options.ignoreBlankLines
+                    ? FontWeight.w600
+                    : FontWeight.w400,
+                color: _controller.options.ignoreBlankLines
+                    ? context.themeTextPrimary
+                    : context.themeTextSecondary,
+              ),
+              selected: _controller.options.ignoreBlankLines,
+              visualDensity: VisualDensity.compact,
+              onSelected: (v) => _controller.setOptions(DiffOptions(
+                whitespaceMode: _controller.options.whitespaceMode,
+                ignoreCase: _controller.options.ignoreCase,
+                ignoreBlankLines: v,
+                similarityThreshold: _controller.options.similarityThreshold,
+              )),
+            ),
           ),
           FilterChip(
             label: const Text('忽略大小写'),
@@ -560,9 +628,39 @@ class _TextDiffPageState extends State<TextDiffPage> {
             selected: _controller.options.ignoreCase,
             visualDensity: VisualDensity.compact,
             onSelected: (v) => _controller.setOptions(DiffOptions(
-              ignoreWhitespace: _controller.options.ignoreWhitespace,
+              whitespaceMode: _controller.options.whitespaceMode,
               ignoreCase: v,
+              ignoreBlankLines: _controller.options.ignoreBlankLines,
+              similarityThreshold: _controller.options.similarityThreshold,
             )),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: context.themeDividerLight),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: DropdownButton<int>(
+              value: _controller.options.similarityThreshold,
+              underline: const SizedBox.shrink(),
+              isDense: true,
+              style: const TextStyle(fontSize: 12),
+              items: const [
+                DropdownMenuItem(value: 0, child: Text('仅精确匹配')),
+                DropdownMenuItem(value: 50, child: Text('相似度 ≥ 50%')),
+                DropdownMenuItem(value: 70, child: Text('相似度 ≥ 70%')),
+                DropdownMenuItem(value: 90, child: Text('相似度 ≥ 90%')),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                _controller.setOptions(DiffOptions(
+                  whitespaceMode: _controller.options.whitespaceMode,
+                  ignoreCase: _controller.options.ignoreCase,
+                  ignoreBlankLines: _controller.options.ignoreBlankLines,
+                  similarityThreshold: v,
+                ));
+              },
+            ),
           ),
           const SizedBox(width: 4),
           TextButton.icon(
@@ -593,13 +691,226 @@ class _TextDiffPageState extends State<TextDiffPage> {
     );
   }
 
+  /// 窄屏（移动端）紧凑工具栏：对比选项收进「选项」底部弹层，按钮更小
+  Widget _buildCompactToolbar(BuildContext context) {
+    final hasBlocks = _controller.activeBlocks.isNotEmpty;
+    final ignored = _controller.ignoredCount > 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          TextButton.icon(
+            onPressed: () => _pickSide(true),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            icon: const Icon(Icons.folder_open_rounded, size: 15),
+            label: const Text('打开A'),
+          ),
+          TextButton.icon(
+            onPressed: () => _pickSide(false),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            icon: const Icon(Icons.folder_open_rounded, size: 15),
+            label: const Text('打开B'),
+          ),
+          TextButton.icon(
+            onPressed: _showOptionsSheet,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            icon: const Icon(Icons.tune_rounded, size: 15),
+            label: const Text('选项'),
+          ),
+          TextButton.icon(
+            onPressed: () => setState(() => _showFind = !_showFind),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            icon: const Icon(Icons.find_in_page_rounded, size: 15),
+            label: Text(_showFind ? '收起' : '查找'),
+          ),
+          IconButton(
+            tooltip: '上一处差异',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 30),
+            onPressed: !hasBlocks ? null : _prevBlock,
+            icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+          ),
+          IconButton(
+            tooltip: '下一处差异',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 30),
+            onPressed: !hasBlocks ? null : _nextBlock,
+            icon: const Icon(Icons.arrow_downward_rounded, size: 18),
+          ),
+          if (ignored)
+            TextButton(
+              onPressed: () => _controller.clearIgnored(),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 30),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+              child: const Text('清除忽略'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 窄屏对比选项弹层：切换立即生效
+  Future<void> _showOptionsSheet() {
+    final options = _controller.options;
+    return showModalBottomSheet(
+      context: context,
+      backgroundColor: context.themeCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusL)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '对比选项',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: context.themeTextPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<WhiteSpaceMode>(
+                initialValue: options.whitespaceMode,
+                isDense: true,
+                decoration: const InputDecoration(
+                  labelText: '空白模式',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                style: TextStyle(fontSize: 13, color: context.themeTextPrimary),
+                items: const [
+                  DropdownMenuItem(
+                    value: WhiteSpaceMode.exact,
+                    child: Text('不忽略空白'),
+                  ),
+                  DropdownMenuItem(
+                    value: WhiteSpaceMode.trim,
+                    child: Text('忽略行首尾空白'),
+                  ),
+                  DropdownMenuItem(
+                    value: WhiteSpaceMode.trimEnd,
+                    child: Text('忽略行尾空白'),
+                  ),
+                  DropdownMenuItem(
+                    value: WhiteSpaceMode.all,
+                    child: Text('忽略全部空白'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  _controller.setOptions(DiffOptions(
+                    whitespaceMode: v,
+                    ignoreCase: _controller.options.ignoreCase,
+                    ignoreBlankLines: _controller.options.ignoreBlankLines,
+                    similarityThreshold:
+                        _controller.options.similarityThreshold,
+                  ));
+                },
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('忽略空白行', style: TextStyle(fontSize: 13)),
+                subtitle: const Text('单侧多余的空白行不显示为差异', style: TextStyle(fontSize: 11)),
+                value: options.ignoreBlankLines,
+                onChanged: (v) => _controller.setOptions(DiffOptions(
+                  whitespaceMode: _controller.options.whitespaceMode,
+                  ignoreCase: _controller.options.ignoreCase,
+                  ignoreBlankLines: v,
+                  similarityThreshold: _controller.options.similarityThreshold,
+                )),
+              ),
+              SwitchListTile.adaptive(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('忽略大小写', style: TextStyle(fontSize: 13)),
+                value: options.ignoreCase,
+                onChanged: (v) => _controller.setOptions(DiffOptions(
+                  whitespaceMode: _controller.options.whitespaceMode,
+                  ignoreCase: v,
+                  ignoreBlankLines: _controller.options.ignoreBlankLines,
+                  similarityThreshold: _controller.options.similarityThreshold,
+                )),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: options.similarityThreshold,
+                isDense: true,
+                decoration: const InputDecoration(
+                  labelText: '相似度匹配',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                style: TextStyle(fontSize: 13, color: context.themeTextPrimary),
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('仅精确匹配')),
+                  DropdownMenuItem(value: 50, child: Text('相似度 ≥ 50%')),
+                  DropdownMenuItem(value: 70, child: Text('相似度 ≥ 70%')),
+                  DropdownMenuItem(value: 90, child: Text('相似度 ≥ 90%')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  _controller.setOptions(DiffOptions(
+                    whitespaceMode: _controller.options.whitespaceMode,
+                    ignoreCase: _controller.options.ignoreCase,
+                    ignoreBlankLines: _controller.options.ignoreBlankLines,
+                    similarityThreshold: v,
+                  ));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ==================== 查找面板 ====================
 
   Widget _buildFindPanel(BuildContext context) {
+    // 窄屏下查找/替换输入框占满可用宽度，减少换行
+    final fieldWidth = _isNarrow
+        ? (_screenWidth - 20 - 24).clamp(140.0, 220.0)
+        : 220.0;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      margin: EdgeInsets.fromLTRB(_isNarrow ? 10 : 16, 0, _isNarrow ? 10 : 16, 8),
+      padding: EdgeInsets.fromLTRB(_isNarrow ? 10 : 12, _isNarrow ? 8 : 10, _isNarrow ? 10 : 12, _isNarrow ? 8 : 10),
       decoration: BoxDecoration(
         color: context.themeCard,
         borderRadius: BorderRadius.circular(AppTheme.radiusM),
@@ -611,7 +922,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           SizedBox(
-            width: 220,
+            width: fieldWidth,
             child: TextField(
               controller: _findCtrl,
               onChanged: (_) {
@@ -655,7 +966,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
             style: TextStyle(fontSize: 12, color: context.themeTextTertiary),
           ),
           SizedBox(
-            width: 220,
+            width: fieldWidth,
             child: TextField(
               controller: _replaceCtrl,
               decoration: const InputDecoration(
@@ -668,22 +979,50 @@ class _TextDiffPageState extends State<TextDiffPage> {
           ),
           TextButton.icon(
             onPressed: _findMatches.isEmpty ? null : _prevFindMatch,
-            icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+            style: _isNarrow
+                ? TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 30),
+                    textStyle: const TextStyle(fontSize: 12),
+                  )
+                : null,
+            icon: const Icon(Icons.arrow_upward_rounded, size: 15),
             label: const Text('上一个'),
           ),
           TextButton.icon(
             onPressed: _findMatches.isEmpty ? null : _nextFindMatch,
-            icon: const Icon(Icons.arrow_downward_rounded, size: 16),
+            style: _isNarrow
+                ? TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 30),
+                    textStyle: const TextStyle(fontSize: 12),
+                  )
+                : null,
+            icon: const Icon(Icons.arrow_downward_rounded, size: 15),
             label: const Text('下一个'),
           ),
           TextButton.icon(
             onPressed: _findMatches.isEmpty ? null : _replaceCurrentMatch,
-            icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-            label: const Text('替换当前'),
+            style: _isNarrow
+                ? TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 30),
+                    textStyle: const TextStyle(fontSize: 12),
+                  )
+                : null,
+            icon: const Icon(Icons.swap_horiz_rounded, size: 15),
+            label: const Text('替换'),
           ),
           FilledButton.tonalIcon(
             onPressed: _findMatches.isEmpty ? null : _replaceAllMatches,
-            icon: const Icon(Icons.done_all_rounded, size: 16),
+            style: _isNarrow
+                ? FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 30),
+                    textStyle: const TextStyle(fontSize: 12),
+                  )
+                : null,
+            icon: const Icon(Icons.done_all_rounded, size: 15),
             label: const Text('全部替换'),
           ),
         ],
@@ -712,10 +1051,11 @@ class _TextDiffPageState extends State<TextDiffPage> {
         ? _controller.activeBlocks[_controller.selectedBlock]
         : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: EdgeInsets.fromLTRB(_isNarrow ? 10 : 16, 0, _isNarrow ? 10 : 16, 0),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final columnWidth = (constraints.maxWidth - 10) / 2;
+          final gap = _isNarrow ? 6 : 10;
+          final columnWidth = (constraints.maxWidth - gap) / 2;
           if (columnWidth != _lastColumnWidth ||
               !identical(_lastRowHeightResult, rows)) {
             _lastColumnWidth = columnWidth;
@@ -731,7 +1071,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
                   selectedBlock: selectedBlock,
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: gap.toDouble()),
               Expanded(
                 child: _buildColumn(
                   context,
@@ -942,14 +1282,14 @@ class _TextDiffPageState extends State<TextDiffPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 40,
+              width: _lineNoWidth,
               child: Padding(
                 padding: const EdgeInsets.only(top: 1),
                 child: Text(
                   lineIndex == null ? '' : '${lineIndex + 1}',
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    fontSize: 10.5,
+                    fontSize: _isNarrow ? 10 : 10.5,
                     color: ignored
                         ? context.themeTextTertiary
                         : const Color(0xFF9AA0A6),
@@ -957,7 +1297,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: _isNarrow ? 4 : 6),
             Expanded(
               child: RichText(
                 softWrap: true,
@@ -1070,51 +1410,67 @@ class _TextDiffPageState extends State<TextDiffPage> {
       return const SizedBox(height: 12);
     }
     final selected = _controller.selectedBlock;
+    final compact = _isNarrow;
     if (selected < 0) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+        padding: EdgeInsets.fromLTRB(compact ? 10 : 16, 4, compact ? 10 : 16, 8),
         child: Text(
           '点击差异行或使用上下箭头查看差异点',
-          style: TextStyle(fontSize: 12, color: context.themeTextTertiary),
+          style: TextStyle(
+            fontSize: compact ? 11 : 12,
+            color: context.themeTextTertiary,
+          ),
         ),
       );
     }
+    final btnStyle = compact
+        ? TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            minimumSize: const Size(0, 30),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            textStyle: const TextStyle(fontSize: 12),
+          )
+        : null;
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-        child: Row(
+        padding: EdgeInsets.fromLTRB(compact ? 10 : 16, 4, compact ? 10 : 16, 8),
+        child: Wrap(
+          spacing: compact ? 4 : 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             TextButton.icon(
               onPressed: () {
                 final block = _controller.activeBlocks[selected];
                 _editRow(_controller.rows[block.startRow]);
               },
-              icon: const Icon(Icons.edit_outlined, size: 16),
+              style: btnStyle,
+              icon: Icon(Icons.edit_outlined, size: compact ? 15 : 16),
               label: const Text('编辑该差异'),
             ),
-            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () =>
                   _controller.copyBlock(selected, toLeft: false),
-              icon: const Icon(Icons.arrow_back_rounded, size: 16),
+              style: btnStyle,
+              icon: Icon(Icons.arrow_back_rounded, size: compact ? 15 : 16),
               label: const Text('复制左 → 右'),
             ),
-            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () => _controller.copyBlock(selected, toLeft: true),
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              style: btnStyle,
+              icon: Icon(Icons.arrow_forward_rounded, size: compact ? 15 : 16),
               label: const Text('复制右 → 左'),
             ),
-            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () => _controller.ignoreSelectedBlock(),
-              icon: const Icon(Icons.visibility_off_outlined, size: 16),
+              style: btnStyle,
+              icon: Icon(Icons.visibility_off_outlined, size: compact ? 15 : 16),
               label: const Text('忽略该差异'),
             ),
-            const SizedBox(width: 8),
             TextButton(
               onPressed: () => _controller.selectBlock(-1),
+              style: btnStyle,
               child: const Text('取消选择'),
             ),
           ],

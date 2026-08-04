@@ -302,8 +302,10 @@ class TextDiffController extends ChangeNotifier {
       final chunkRows = await runBackgroundTask(_computeChunk, {
         'left': leftChunk,
         'right': rightChunk,
-        'ignoreWhitespace': _options.ignoreWhitespace,
+        'whitespaceMode': _options.whitespaceMode.name,
         'ignoreCase': _options.ignoreCase,
+        'ignoreBlankLines': _options.ignoreBlankLines,
+        'similarityThreshold': _options.similarityThreshold,
         'startLeft': start,
         'startRight': start,
       });
@@ -325,8 +327,11 @@ class TextDiffController extends ChangeNotifier {
       (msg['left'] as List).cast<String>(),
       (msg['right'] as List).cast<String>(),
       options: DiffOptions(
-        ignoreWhitespace: msg['ignoreWhitespace'] as bool,
+        whitespaceMode: WhiteSpaceMode.values
+            .byName(msg['whitespaceMode'] as String),
         ignoreCase: msg['ignoreCase'] as bool,
+        ignoreBlankLines: msg['ignoreBlankLines'] as bool,
+        similarityThreshold: msg['similarityThreshold'] as int,
       ),
     );
     return [

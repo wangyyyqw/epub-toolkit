@@ -78,8 +78,8 @@
 
 - **行级差异**：左独有（红）、右独有（绿）、修改（黄/橙双色分别标识左右两侧）
 - **字符级差异**：对"修改"行对做二次对比，行内标出具体变化的字符段（底色加深）
-- 忽略选项：忽略空白差异（行内连续空白归一后再比较）、忽略大小写；切换后立即重算
-- 差异导航：顶部统计「共 N 处差异」，上一条/下一条跳转并滚动到可视区居中，当前差异加边框强调
+- 对比选项（切换后立即重算）：**空白模式**（不忽略 / 忽略行首尾空白 / 忽略行尾空白 / 忽略全部空白）、**忽略空白行**（默认开启：多余的空白行不输出，可关闭后纳入差异）、**相似度阈值**（仅精确匹配 / ≥50% / ≥70% / ≥90%，用于哈希不等但内容相近的行配对）、忽略大小写
+- 差异导航：上一条/下一条跳转并滚动到可视区居中，当前差异加边框强调
 - 概览条（可选增强）：两栏中间细长条，色块概览全文差异分布，点击跳转
 
 #### ② 同步滚动
@@ -124,29 +124,44 @@
 
 #### Diff 算法（纯 Dart，`diff_engine.dart`）
 
-- 行级：**Myers 差分**（O(ND)），对 1 万行以内秒级；同时返回行映射表与差异块列表
-- 字符级：对每个"修改"行对再跑一次 Myers（限定行长度，开销小）
-- 大文件（>2 万行）：整体 diff 放入 Isolate（复用 `runBackgroundTask`），编辑防抖后仍走后台，UI 显示进度
+重构为 **notepad--（CCompare）同款对比架构**（国产开源编辑器 notepad-- 的代码对比功能即此方案）：
+
+- **行指纹哈希**：每行先归一化（空白模式 / 大小写）→ 计算 64 位哈希（双 32 位 djb2 变体，乘法上界 < 2^39，Web 精度安全），哈希比较代替逐行全文比较
+- **锚点切分（块间粗匹配）**：贪心哈希匹配提取公共行作为锚点，将两个文件切成块对
+- **块内行配对（对应上游 BlockCompare::lessCmpMore）**：少行对多行，按字符二元组 Dice 系数计算相似度，达到阈值（50/70/90%，默认仅精确匹配）即配对为修改行；未配对行按位置相邻配对为修改 / 新增 / 删除
+- **字符级 LCS**：Hirschberg 线性空间分治（非递归栈实现，内存 O(m)），输出行内相等/不等片段（SectionNode），行尾（\r）单独标记相等状态——CRLF 文件行内对比不丢精度
+- **空白处理 = 哈希预处理**：四种模式（不忽略 / 忽略行首尾空白 / 忽略行尾空白 / 忽略全部空白），与 notepad-- 三种空白规则同款
+- **空白行分离**：空白行默认不参与锚点匹配，左右空白行按顺序配对显示，单侧多余的空白行直接不输出——避免海量空行拖慢对比，也不再有空白行差异干扰阅读
+- 大文件（>3000 行）：控制器按块在 Isolate 中渐进计算（`runBackgroundTask`），编辑防抖后仍走后台，UI 显示进度
 - 忽略规则在比较前对行做归一化（不影响原始文本，只影响比较）
 
 #### 数据结构
 
 ```dart
 // diff_engine.dart
-enum DiffOp { equal, delete, insert, replace } // replace = 修改（delete+insert 合并展示）
+enum DiffOp { equal, replace, delete, insert, unknown } // replace = 修改（未配对行相邻配对 / 相似度匹配行）
+enum WhiteSpaceMode { exact, trim, trimEnd, all }        // 空白处理模式
 
-class DiffLine {
-  final DiffOp op;        // 该行在对比中的角色
-  final String text;      // 原始行文本
-  final List<CharSpan>? inlineSpans; // 行内字符级差异段（仅 replace 行）
+class DiffOptions {
+  final WhiteSpaceMode whitespaceMode;  // 空白模式（默认 exact）
+  final bool ignoreCase;                // 忽略大小写
+  final bool ignoreBlankLines;         // 忽略空白行差异（默认开启）
+  final int similarityThreshold;        // 相似度阈值 0/50/70/90（0 = 仅精确匹配）
+}
+
+class DiffRow {                         // 统一行模型：一行对应左右两栏各一条
+  final int? leftIndex;                 // 左栏行号（null = 右侧独有行）
+  final int? rightIndex;                // 右栏行号（null = 左侧独有行）
+  final DiffOp op;
+  final String? leftText; final String? rightText;
+  final List<CharSpan>? leftSpans;      // 行内字符级差异段（仅 replace 行）
+  final List<CharSpan>? rightSpans;
 }
 
 class DiffResult {
-  final List<DiffLine> leftLines;   // 带行的角色标注
-  final List<DiffLine> rightLines;
-  final Map<int, int> lineMap;      // 左行号 → 右行号（同步滚动用）
-  final List<DiffBlock> blocks;     // 差异块（导航用）
-  int get changeCount;              // 差异处数
+  final List<DiffRow> rows;             // 左右两栏共用，行号即滚动锚点
+  final List<DiffBlock> blocks;         // 差异块（导航用）
+  int get changeCount;                  // 差异处数
 }
 ```
 
@@ -155,10 +170,10 @@ class DiffResult {
 ```dart
 class TextDiffController extends ChangeNotifier {  // 页面内创建
   String _leftText; String _rightText;
-  DiffOptions _options;              // 忽略空白/大小写
-  DiffResult? _result;               // 后台 diff 完成后写入
-  int _currentBlockIndex;            // 差异导航位置
-  Map<int, bool> _ignoredLines;      // 手动忽略的差异
+  DiffOptions _options;              // 空白模式 / 大小写 / 空白行 / 相似度阈值
+  List<List<DiffRow>?> _chunks;      // 渐进分块结果（null = 未计算）
+  int _selectedBlock;                // 差异导航位置
+  Set<String> _ignoredPairs;         // 手动忽略的差异（leftIndex->rightIndex）
   // 方法：loadLeft/loadRight/pasteText/applyLine/replaceAll/…
 }
 ```
@@ -183,7 +198,8 @@ class TextDiffController extends ChangeNotifier {  // 页面内创建
 
 ## 三、关键决策记录
 
-1. **不采用 WebView 渲染编辑器**（TXT 对比用原生控件即可），避免引入 webview 依赖的复杂度；行列表 + TextSpan 高亮性能足够（数千行可滚动列表按需构建）。
-2. **固定行高 + 横向滚动**而非自动换行：保证两栏行高一致，同步滚动按行号换算像素，实现简单可靠；文本较长时横向滚动查看（移动端可后续加自动换行+锚点对齐）。
-3. **差异色沿用 TDesign 语义色**：红（删除/左独有）、绿（新增/右独有）、黄/橙（修改），暗色模式取对应深色变体；字符级差异用同色加深。
-4. **替换不破坏原始文件**：所有编辑/替换操作先在内存中执行，只有用户点「保存」才写盘；提供「另存为」。
+1. **对比引擎采用 notepad--（CCompare）架构而非 Myers**：原实现为行级 Myers O(ND) + trace 回溯，trace 表随差异数增长（几乎完全不同的 1 万行文件会达到数 GB 内存峰值）；重构为「行指纹哈希 + 锚点切分 + 块内相似度配对 + 字符级 Hirschberg 线性空间 LCS」，哈希 O(1) 比较、锚点把对比限制在局部块、字符级回溯内存 O(m)——大文件对比更稳更快，并天然支持渐进分块。
+2. **不采用 WebView 渲染编辑器**（TXT 对比用原生控件即可），避免引入 webview 依赖的复杂度；行列表 + TextSpan 高亮性能足够（数千行可滚动列表按需构建）。
+3. **固定行高 + 横向滚动**而非自动换行：保证两栏行高一致，同步滚动按行号换算像素，实现简单可靠；文本较长时横向滚动查看（移动端可后续加自动换行+锚点对齐）。
+4. **差异色沿用 TDesign 语义色**：红（删除/左独有）、绿（新增/右独有）、黄/橙（修改），暗色模式取对应深色变体；字符级差异用同色加深。
+5. **替换不破坏原始文件**：所有编辑/替换操作先在内存中执行，只有用户点「保存」才写盘；提供「另存为」。
