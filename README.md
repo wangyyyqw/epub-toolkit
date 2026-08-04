@@ -124,3 +124,16 @@ cp android/key.properties.example android/key.properties
 ```
 
 `android/key.properties` 和 `android/app/*.jks` 已加入忽略列表。
+
+### GitHub Actions 发布签名
+
+CI 构建使用 GitHub Secrets 中的固定密钥签名，保证每次 Release 的 APK 签名一致，用户可以直接覆盖更新。需在仓库 Settings → Secrets and variables → Actions 配置：
+
+| Secret | 值 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 签名密钥库文件的 Base64 内容（`base64 < android/app/release-keystore.jks`） |
+| `ANDROID_KEYSTORE_PASSWORD` | 密钥库密码 |
+| `ANDROID_KEY_ALIAS` | 密钥别名（默认 `release`） |
+| `ANDROID_KEY_PASSWORD` | 密钥密码 |
+
+未配置 Secrets 时 CI 会回退为 debug 签名（每次构建签名都不同，用户无法覆盖更新），仅用于开发验证。

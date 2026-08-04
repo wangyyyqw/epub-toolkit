@@ -241,6 +241,10 @@ const double _sidebarWidthCollapsed = 64;
 /// 窗口宽度低于该值时代理侧边栏默认收起
 const double _autoCollapseBreakpoint = 1150;
 
+/// 窗口宽度低于该值时切换为移动端抽屉模式：
+/// 侧边栏完全隐藏，仅保留顶部左侧菜单按钮，点击展开、选择功能后自动收起
+const double _mobileDrawerBreakpoint = 700;
+
 const String _brandName = 'EPUB 工具箱';
 
 // ==================== 应用整体布局 ====================
@@ -280,12 +284,23 @@ class AppScaffold extends StatelessWidget {
               backgroundColor: context.themeBg,
               body: LayoutBuilder(
                 builder: (context, constraints) {
-                  // 窗口宽度变化时应用默认收起策略（用户手动选择后跳过）
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    context.read<SidebarState>().applyWindowWidth(
-                          constraints.maxWidth < _autoCollapseBreakpoint,
-                        );
-                  });
+                  final isMobile =
+                      constraints.maxWidth < _mobileDrawerBreakpoint;
+                  // 窗口宽度变化时应用默认收起策略（用户手动选择后跳过）；移动端抽屉模式不干预
+                  if (!isMobile) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      context.read<SidebarState>().applyWindowWidth(
+                            constraints.maxWidth < _autoCollapseBreakpoint,
+                          );
+                    });
+                  }
+                  if (isMobile) {
+                    return _buildMobileLayout(
+                      context,
+                      location: location,
+                      child: child,
+                    );
+                  }
                   return Row(
                     children: [
                       _Sidebar(currentPath: location, width: width),
@@ -309,6 +324,55 @@ class AppScaffold extends StatelessWidget {
   }
 }
 
+/// 移动端布局：侧边栏完全隐藏，顶部栏左侧菜单按钮展开抽屉式侧边栏，
+/// 遮罩点击或选择功能后自动收起。
+Widget _buildMobileLayout(
+  BuildContext context, {
+  required String location,
+  required Widget child,
+}) {
+  final sidebar = context.watch<SidebarState>();
+  return Stack(
+    children: [
+      Column(
+        children: [
+          _MobileTopBar(onMenuTap: sidebar.toggleMobile),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                child: _SafeContent(child: child),
+              ),
+            ),
+          ),
+        ],
+      ),
+      // 遮罩
+      if (sidebar.mobileOpen)
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: sidebar.closeMobile,
+            child: Container(color: Colors.black.withValues(alpha: 0.4)),
+          ),
+        ),
+      // 抽屉式侧边栏
+      AnimatedPositioned(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        left: sidebar.mobileOpen ? 0 : -_sidebarWidthDesktop - 16,
+        top: 0,
+        bottom: 0,
+        width: _sidebarWidthDesktop,
+        child: _Sidebar(
+          currentPath: location,
+          width: _sidebarWidthDesktop,
+          drawerMode: true,
+        ),
+      ),
+    ],
+  );
+}
+
 /// 内容区安全边距：移动端顶部留出状态栏空间
 class _SafeContent extends StatelessWidget {
   final Widget child;
@@ -325,9 +389,56 @@ class _SafeContent extends StatelessWidget {
   }
 }
 
+/// 移动端顶部栏：左侧菜单按钮 + 品牌名
+class _MobileTopBar extends StatelessWidget {
+  final VoidCallback onMenuTap;
+
+  const _MobileTopBar({required this.onMenuTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: context.themeCard,
+          border: Border(
+            bottom: BorderSide(color: context.themeDividerLight),
+          ),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            IconButton(
+              onPressed: onMenuTap,
+              tooltip: '打开侧边栏',
+              icon: Icon(
+                Icons.menu_rounded,
+                size: 22,
+                color: context.themeTextPrimary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              _brandName,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: context.themeTextPrimary,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ==================== 侧边栏状态管理 ====================
 
-/// 全局侧边栏状态管理：支持多分组同时展开 + 折叠/展开切换
+/// 全局侧边栏状态管理：支持多分组同时展开 + 折叠/展开切换 + 移动端抽屉
 class SidebarState extends ChangeNotifier {
   final Set<String> _expandedGroups = {};
 
@@ -337,6 +448,9 @@ class SidebarState extends ChangeNotifier {
   /// 由折叠态点击分组展开侧边栏后，选择功能会自动收起
   bool _autoCollapseAfterNav = false;
 
+  /// 移动端抽屉模式：侧边栏是否展开
+  bool _mobileOpen = false;
+
   Set<String> get expandedGroups => Set.unmodifiable(_expandedGroups);
 
   /// 侧边栏是否处于折叠（图标栏）状态
@@ -345,7 +459,23 @@ class SidebarState extends ChangeNotifier {
   /// 用户是否手动选择过折叠状态（自动策略不再干预）
   bool get userCollapsed => _userCollapsed;
 
+  /// 移动端抽屉是否展开
+  bool get mobileOpen => _mobileOpen;
+
   bool isExpanded(String groupLabel) => _expandedGroups.contains(groupLabel);
+
+  /// 移动端：切换抽屉展开/收起
+  void toggleMobile() {
+    _mobileOpen = !_mobileOpen;
+    notifyListeners();
+  }
+
+  /// 移动端：收起抽屉
+  void closeMobile() {
+    if (!_mobileOpen) return;
+    _mobileOpen = false;
+    notifyListeners();
+  }
 
   /// 手动切换折叠/展开
   void toggleCollapsed() {
@@ -377,12 +507,21 @@ class SidebarState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 通过侧边栏导航后调用：若此前由折叠态展开，则自动收起
+  /// 通过侧边栏导航后调用：若此前由折叠态展开，则自动收起；移动端抽屉同步收起
   void navFromSidebar() {
-    if (!_autoCollapseAfterNav) return;
-    _autoCollapseAfterNav = false;
-    _collapsed = true;
-    notifyListeners();
+    var changed = false;
+    if (_autoCollapseAfterNav) {
+      _autoCollapseAfterNav = false;
+      if (!_collapsed) {
+        _collapsed = true;
+        changed = true;
+      }
+    }
+    if (_mobileOpen) {
+      _mobileOpen = false;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   void toggle(String groupLabel) {
@@ -431,12 +570,19 @@ class _Sidebar extends StatelessWidget {
   final String currentPath;
   final double width;
 
-  const _Sidebar({required this.currentPath, required this.width});
+  /// 移动端抽屉模式：始终展开显示，底部按钮改为「关闭抽屉」
+  final bool drawerMode;
+
+  const _Sidebar({
+    required this.currentPath,
+    required this.width,
+    this.drawerMode = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final sidebar = context.watch<SidebarState>();
-    final collapsed = sidebar.collapsed;
+    final collapsed = drawerMode ? false : sidebar.collapsed;
 
     return Container(
       width: collapsed ? _sidebarWidthCollapsed : width,
@@ -445,6 +591,15 @@ class _Sidebar extends StatelessWidget {
         border: Border(
           right: BorderSide(color: context.themeDividerLight, width: 1),
         ),
+        boxShadow: drawerMode
+            ? const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 16,
+                  offset: Offset(4, 0),
+                ),
+              ]
+            : null,
       ),
       child: SafeArea(
         right: false,
@@ -490,11 +645,11 @@ class _Sidebar extends StatelessWidget {
                   },
                 ),
             ),
-            if (!collapsed)
+            if (!collapsed && !drawerMode)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'v1.2.2',
+                  'v1.2.3',
                   style: TextStyle(
                     fontSize: 11,
                     color: context.themeTextTertiary.withValues(alpha: 0.6),
@@ -502,8 +657,18 @@ class _Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
-            // 底部折叠/展开按钮
-            if (collapsed)
+            // 底部按钮：抽屉模式为「关闭」，其余为折叠/展开切换
+            if (drawerMode)
+              IconButton(
+                onPressed: sidebar.closeMobile,
+                tooltip: '收起侧边栏',
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: context.themeTextTertiary,
+                ),
+              )
+            else if (collapsed)
               IconButton(
                 onPressed: () => context.read<SidebarState>().toggleCollapsed(),
                 tooltip: '展开侧边栏',

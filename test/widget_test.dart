@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:epub_gadget/core/router.dart';
 import 'package:epub_gadget/main.dart';
 import 'package:epub_gadget/shared/widgets/app_scaffold.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
@@ -87,5 +88,50 @@ void main() {
     // 导航后已收起：侧边栏回到图标栏，子项文字消失
     expect(find.text('WiFi 传书'), findsNothing);
     expect(find.byTooltip('展开侧边栏'), findsOneWidget);
+  });
+
+  testWidgets('移动端抽屉：隐藏侧栏，顶部按钮展开，选择/遮罩后自动收起', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // UniqueKey 强制全新挂载 + 重置路由：丢弃前序测试遗留的路由页面
+    // （如 WiFi 页常驻的加载动画），避免 pumpAndSettle 无法收敛
+    await tester.pumpWidget(
+      KeyedSubtree(
+        key: UniqueKey(),
+        child: MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => ToastProvider()),
+          ],
+          child: const EpubGadgetApp(),
+        ),
+      ),
+    );
+    AppRouter.config.go('/dashboard');
+    await tester.pumpAndSettle();
+
+    // 侧边栏完全隐藏：仅顶部菜单按钮，无任何导航项可点
+    expect(find.byTooltip('打开侧边栏'), findsOneWidget);
+    expect(find.byTooltip('展开侧边栏'), findsNothing);
+    expect(find.text('仪表盘').hitTestable(), findsNothing);
+
+    // 点击顶部菜单按钮 → 抽屉展开，导航项可见
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+    expect(find.text('仪表盘').hitTestable(), findsOneWidget);
+
+    // 点击导航项 → 选择功能后自动收起
+    await tester.tap(find.text('仪表盘'));
+    await tester.pumpAndSettle();
+    expect(find.text('仪表盘').hitTestable(), findsNothing);
+
+    // 再次展开，点遮罩区域收起
+    await tester.tap(find.byTooltip('打开侧边栏'));
+    await tester.pumpAndSettle();
+    expect(find.text('仪表盘').hitTestable(), findsOneWidget);
+    await tester.tapAt(const Offset(370, 400));
+    await tester.pumpAndSettle();
+    expect(find.text('仪表盘').hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }
