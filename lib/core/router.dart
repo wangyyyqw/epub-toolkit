@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/dashboard/dashboard_page.dart';
 import '../features/txt2epub/txt2epub_page.dart';
+import '../features/text_diff/text_diff_page.dart';
 import '../features/epub_tools/tools/replace_cover_page.dart';
 import '../features/epub_tools/tools/reformat_page.dart';
 import '../features/epub_tools/tools/convert_version_page.dart';
@@ -159,6 +160,10 @@ class AppRouter {
           GoRoute(
             path: '/epub-tool/weread-thoughts',
             builder: (context, state) => const WereadThoughtsPage(),
+          ),
+          GoRoute(
+            path: '/epub-tool/text-diff',
+            builder: (context, state) => const TextDiffPage(),
           ),
           GoRoute(
             path: '/metadata',

@@ -25,6 +25,7 @@ import 'package:epub_gadget/features/epub_tools/tools/yuewei_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/zhangyue_page.dart';
 import 'package:epub_gadget/features/metadata/metadata_page.dart';
 import 'package:epub_gadget/features/send_to_kindle/send_to_kindle_page.dart';
+import 'package:epub_gadget/features/text_diff/text_diff_page.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +59,7 @@ void main() {
     ('字体子集化', const FontSubsetPage()),
     ('元数据编辑', const MetadataPage()),
     ('Kindle 邮箱推送', const SendToKindlePage(tab: KindleTab.email)),
+    ('文本对比', const TextDiffPage()),
   ];
 
   testWidgets('所有功能页在窄窗口下均可构建且不溢出', (tester) async {

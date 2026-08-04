@@ -167,6 +167,11 @@ final List<NavItem> _navGroups = [
         icon: TDIcons.chat_heart,
         route: '/epub-tool/weread-thoughts',
       ),
+      const NavItem(
+        label: '文本对比',
+        icon: TDIcons.file_copy,
+        route: '/epub-tool/text-diff',
+      ),
     ],
   ),
   NavItem(
@@ -345,7 +350,7 @@ Widget _buildMobileLayout(
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                child: _SafeContent(child: child, mobile: true),
+                child: _SafeContent(mobile: true, child: child),
               ),
             ),
           ),
@@ -668,7 +673,7 @@ class _Sidebar extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'v1.2.5',
+                  'v1.2.6',
                   style: TextStyle(
                     fontSize: 11,
                     color: context.themeTextTertiary.withValues(alpha: 0.6),
