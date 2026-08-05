@@ -225,8 +225,10 @@ $cssMarker
 
     // 1. 读取 EPUB
     onProgress('read', 0, 1, '读取 EPUB');
-    final inputBytes = await File(epubPath).readAsBytes();
+    var inputBytes = await File(epubPath).readAsBytes();
     final archive = ZipDecoder().decodeBytes(inputBytes);
+    // 解压完成后原始字节已无用,提前释放降低移动端内存峰值(大书易 OOM)
+    inputBytes = Uint8List(0);
 
     // 2. 解析 OPF 获取 spine 顺序和文件路径
     onProgress('parse', 0, 1, '解析 EPUB 结构');
@@ -357,16 +359,15 @@ $cssMarker
 
     for (final file in archive.files) {
       if (file.name.isEmpty || writtenFiles.contains(file.name)) continue;
-      final rawBytes = Uint8List.fromList(file.content as List<int>);
 
       if (file.name == 'mimetype') {
-        final mf = ArchiveFile('mimetype', rawBytes.length, rawBytes)
+        final mf = ArchiveFile('mimetype', file.content.length, file.content)
           ..compress = false;
         outputArchive.addFile(mf);
       } else if (file.name == epubInfo.opfPath) {
         // 修改 OPF:添加 manifest 条目
         final opfContent =
-            utf8.decode(rawBytes, allowMalformed: true);
+            utf8.decode(file.content as List<int>, allowMalformed: true);
         final modifiedOpf = _addManifestItems(
           opfContent,
           notePngFullPath: _notePngPath,
@@ -383,8 +384,10 @@ $cssMarker
           ArchiveFile(file.name, newBytes.length, newBytes),
         );
       } else {
+        // 其他文件(图片/字体等)直接复用解压后的 content,
+        // 不再 Uint8List.fromList 全量复制一份,避免移动端大书 OOM 闪退
         outputArchive.addFile(
-          ArchiveFile(file.name, rawBytes.length, rawBytes),
+          ArchiveFile(file.name, file.content.length, file.content),
         );
       }
       writtenFiles.add(file.name);

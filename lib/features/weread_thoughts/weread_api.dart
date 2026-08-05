@@ -1697,54 +1697,82 @@ class WereadApi {
     final allUnderlines = <WereadUnderline>[];
     final hotReviews = <WereadReview>[];
 
-    // 2. 划线:先尝试 Web bestbookmarks(整本一次)
-    onProgress('underlines', 0, chapterList.length, '拉取热门划线');
-    bool usedWebBookmarks = false;
+    // 2. 划线数据源
+    //
+    // a. 整本 Web bestbookmarks:热门划线(带原文 markText)。
+    //    /book/underlines 不返回 markText(划线原文),bestbookmarks 的 markText
+    //    作为引文词典填充,同时作为逐章拉取失败时的兜底数据。
+    onProgress('underlines', 0, chapterList.length, '拉取划线');
+    final bestmarksByChapter = <String, List<WereadUnderline>>{};
+    final markTextByRange = <String, String>{};
     try {
       final bmData = await _webBestbookmarks(bookId);
       final bmUnderlines = _parseBestbookmarks(bmData, '');
-      if (bmUnderlines.isNotEmpty) {
-        allUnderlines.addAll(bmUnderlines);
-        usedWebBookmarks = true;
-        debugPrint('[WereadApi] Web bestbookmarks 成功: ${bmUnderlines.length} 条划线');
-      } else {
-        debugPrint('[WereadApi] Web bestbookmarks 返回空,回退到网关');
+      for (final u in bmUnderlines) {
+        if (u.markText.isNotEmpty && !markTextByRange.containsKey(u.range)) {
+          markTextByRange[u.range] = u.markText;
+        }
+        bestmarksByChapter.putIfAbsent(u.chapterUid, () => []).add(u);
       }
+      debugPrint('[WereadApi] Web bestbookmarks 成功: ${bmUnderlines.length} 条热门划线');
     } catch (e) {
-      debugPrint('[WereadApi] Web bestbookmarks 失败: $e, 回退到网关逐章拉取');
+      debugPrint('[WereadApi] Web bestbookmarks 失败(可选数据源,不影响主线): $e');
     }
 
-    // 3. 如果 Web bestbookmarks 失败,逐章用网关 underlines
-    if (!usedWebBookmarks) {
-      for (var i = 0; i < chapterList.length; i++) {
-        final ch = chapterList[i];
-        onProgress('underlines', i, chapterList.length,
-            '${i + 1}/${chapterList.length} ${ch.title}');
+    // b. 逐章网关 /book/underlines(该章全部划线,不限热度)。
+    //    这是 pickthought 的成熟方案:bestbookmarks 只给热门划线 range,
+    //    非热门段(却有想法)的 range 会丢失,readreviews 按缺不全的 range 拉就漏大量想法;
+    //    underlines 覆盖全章 range,后续 readreviews 才能按 range 拉全该段全部想法。
+    final underlinesByChapter = <String, List<WereadUnderline>>{};
+    for (var i = 0; i < chapterList.length; i++) {
+      final ch = chapterList[i];
+      onProgress('underlines', i, chapterList.length,
+          '${i + 1}/${chapterList.length} ${ch.title}');
 
-        try {
-          final chapterUnderlines = await underlines(bookId, ch.chapterUid);
-          allUnderlines.addAll(chapterUnderlines);
-        } catch (e) {
-          debugPrint('[WereadApi] 网关 underlines 失败: '
-              'chapter=${ch.chapterUid}, error=$e');
+      try {
+        final chapterUnderlines = await underlines(bookId, ch.chapterUid);
+        if (chapterUnderlines.isNotEmpty) {
+          underlinesByChapter.putIfAbsent(ch.chapterUid, () => []).addAll(chapterUnderlines);
         }
+      } catch (e) {
+        debugPrint('[WereadApi] 网关 underlines 失败,用 bestbookmarks 兜底: '
+            'chapter=${ch.chapterUid}, error=$e');
+        final fallback = bestmarksByChapter[ch.chapterUid];
+        if (fallback != null && fallback.isNotEmpty) {
+          underlinesByChapter.putIfAbsent(ch.chapterUid, () => []).addAll(fallback);
+        }
+      }
 
-        // 章节间停顿(防风控)
-        if (chapterList.length > 50) {
-          await _delay(300 + (i % 3) * 100);
-        } else {
-          await _delay(150);
-        }
+      // 章节间停顿(防风控)
+      if (chapterList.length > 50) {
+        await _delay(300 + (i % 3) * 100);
+      } else {
+        await _delay(150);
       }
     }
 
-    // 4. 按章分组划线
-    final underlinesByChapter = <String, List<WereadUnderline>>{};
-    for (final u in allUnderlines) {
-      underlinesByChapter.putIfAbsent(u.chapterUid, () => []).add(u);
+    // c. 合并 bestbookmarks 中未被 underlines 覆盖的热门 range(兜底补全)
+    bestmarksByChapter.forEach((chapterUid, marks) {
+      if (marks.isEmpty) return;
+      final list = underlinesByChapter.putIfAbsent(chapterUid, () => []);
+      final seen = <String>{for (final u in list) u.range};
+      for (final u in marks) {
+        if (!seen.contains(u.range)) {
+          seen.add(u.range);
+          list.add(u);
+        }
+      }
+    });
+
+    // d. 汇总全部划线
+    for (final list in underlinesByChapter.values) {
+      allUnderlines.addAll(list);
     }
 
-    // 5. 逐章拉取想法:先 Web review/list,失败则网关 readreviews
+    // 5. 逐章拉取想法
+    //    主路径:网关 /book/readreviews 按 range 拉该段【全部】公开想法
+    //    (每 range 最多 count=30 条),远比 /web/review/list 的章级热门前几条完整。
+    //    Web review/list 仅在 readreviews 无结果时兜底。
     final totalToFetch = chapterList.length;
 
     for (var i = 0; i < chapterList.length; i++) {
@@ -1764,23 +1792,9 @@ class WereadApi {
 
       final chapterReviews = <WereadReview>[];
 
-      // 5a. 先尝试 Web review/list
-      bool webReviewsOk = false;
-      try {
-        final rvData = await _webChapterReviews(bookId, ch.chapterUid);
-        final webReviews = _parseWebReviews(rvData, ch.chapterUid);
-        if (webReviews.isNotEmpty) {
-          chapterReviews.addAll(webReviews);
-          hotReviews.addAll(webReviews);
-          webReviewsOk = true;
-        }
-      } catch (e) {
-        debugPrint('[WereadApi] Web chapterReviews 失败: '
-            'chapter=${ch.chapterUid}, error=$e');
-      }
-
-      // 5b. Web 失败时,用网关 readreviews(按 range 批量)
-      if (!webReviewsOk && ranges.isNotEmpty) {
+      // 5a. 主路径:网关 readreviews 按 range 批量拉该段全部想法
+      bool reviewsFetched = false;
+      if (ranges.isNotEmpty) {
         final batches = reviewBatches(ranges, batchSize: 5);
         for (var bi = 0; bi < batches.length; bi++) {
           try {
@@ -1789,6 +1803,7 @@ class WereadApi {
               ch.chapterUid,
               batches[bi],
             );
+            if (batchReviews.isNotEmpty) reviewsFetched = true;
             chapterReviews.addAll(batchReviews);
             hotReviews.addAll(batchReviews);
           } catch (e) {
@@ -1799,7 +1814,22 @@ class WereadApi {
         }
       }
 
-      // 5c. 用想法的 abstract 填充划线的 markText
+      // 5b. readreviews 无结果时,用 Web review/list(章级热门想法)兜底
+      if (!reviewsFetched) {
+        try {
+          final rvData = await _webChapterReviews(bookId, ch.chapterUid);
+          final webReviews = _parseWebReviews(rvData, ch.chapterUid);
+          if (webReviews.isNotEmpty) {
+            chapterReviews.addAll(webReviews);
+            hotReviews.addAll(webReviews);
+          }
+        } catch (e) {
+          debugPrint('[WereadApi] Web chapterReviews 兜底失败: '
+              'chapter=${ch.chapterUid}, error=$e');
+        }
+      }
+
+      // 5c. 用想法的 abstract 填充划线的 markText(bestbookmarks 原文优先)
       final reviewMap = <String, List<WereadReview>>{};
       for (final r in chapterReviews) {
         reviewMap.putIfAbsent(r.range, () => []).add(r);
@@ -1807,6 +1837,9 @@ class WereadApi {
 
       for (final u in chapterUnderlines) {
         String markText = u.markText;
+        if (markText.isEmpty) {
+          markText = markTextByRange[u.range] ?? '';
+        }
         if (markText.isEmpty) {
           final texts = reviewMap[u.range];
           if (texts != null && texts.isNotEmpty) {

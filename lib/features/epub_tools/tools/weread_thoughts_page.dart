@@ -779,30 +779,20 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 把生成的 EPUB 复制到公共 Download/books/ 目录
   ///
-  /// 仅 Android 生效；大文件（>10MB）使用流式复制，否则直接写入字节。
+  /// 仅 Android 生效。统一走流式复制(原生端 FileInputStream 分块写入
+  /// MediaStore),避免 Dart 堆持有完整文件字节 + MethodChannel 序列化副本
+  /// 导致移动端大书 OOM 闪退。
   Future<void> _copyToPublicDownload() async {
     if (_outputPath.isEmpty) return;
     if (!Platform.isAndroid) return;
     if (!await File(_outputPath).exists()) return;
-    const streamThreshold = 10 * 1024 * 1024;
-    final fileSize = await File(_outputPath).length();
-    final useStream = fileSize > streamThreshold;
     try {
       final filename = p.basename(_outputPath);
-      String publicPath;
-      if (useStream) {
-        _logController.append('PROGRESS: 大文件，使用流式复制...');
-        publicPath = await FileService.copyFileToPublicDownload(
-          sourcePath: _outputPath,
-          filename: filename,
-        );
-      } else {
-        final bytes = await File(_outputPath).readAsBytes();
-        publicPath = await FileService.writeToPublicDownload(
-          filename: filename,
-          bytes: bytes,
-        );
-      }
+      _logController.append('PROGRESS: 复制到公共 Download...');
+      final publicPath = await FileService.copyFileToPublicDownload(
+        sourcePath: _outputPath,
+        filename: filename,
+      );
       _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
       try {
         await File(_outputPath).delete();
