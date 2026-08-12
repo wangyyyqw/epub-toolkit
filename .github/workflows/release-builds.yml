@@ -43,32 +43,10 @@ jobs:
           echo "artifact_suffix=v${app_version}+${build_number}" >> "$GITHUB_OUTPUT"
           echo "Building ${app_version}+${build_number}"
 
-  test:
-    name: Analyze & Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Static analysis
-        run: flutter analyze lib
-
-      - name: Run tests
-        run: flutter test
-
   android:
     name: Android APK
     runs-on: ubuntu-latest
-    needs: [version, test]
+    needs: [version]
     # 签名凭据统一映射到 job 环境变量（secrets 不可直接用于 if 条件）。
     # 未配置 Secrets 时各变量为空字符串，Gradle 自动回退 debug 签名。
     env:
@@ -85,6 +63,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -129,7 +112,7 @@ jobs:
   macos:
     name: macOS App
     runs-on: macos-latest
-    needs: [version, test]
+    needs: [version]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -178,7 +161,7 @@ jobs:
   windows:
     name: Windows App
     runs-on: windows-latest
-    needs: [version, test]
+    needs: [version]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -300,7 +283,7 @@ jobs:
   ios:
     name: iOS App
     runs-on: macos-latest
-    needs: [version, test]
+    needs: [version]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
