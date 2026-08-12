@@ -177,7 +177,11 @@ class FontSubsetOperation {
 
   /// 解析 @font-face 规则
   ///
-  /// 提取 font-family 名称和 src 中的 url
+  /// 提取 font-family 名称和 src 中的全部 url。
+  /// 注意：同一 family 的 src 常声明多个格式
+  /// (`src: url("a.woff2") format("woff2"), url("a.ttf") format("truetype")`),
+  /// 只取第一个会让其余字体文件被误判为"未被引用"而删除，
+  /// 因此这里把全部 url 都记到该 family 下。
   static void _parseFontFace(String css, Map<String, String> fontNameToFile) {
     final fontFacePattern = RegExp(
       r'@font-face\s*\{([^}]*)\}',
@@ -195,18 +199,22 @@ class FontSubsetOperation {
       if (familyMatch == null) continue;
       final familyName = familyMatch.group(1)!.trim();
 
-      // 提取 src url
-      final srcMatch = RegExp(
+      // 提取 src 中的全部 url
+      final urlPattern = RegExp(
         r"""url\s*\(\s*["']?([^"')\s]+)["']?""",
         caseSensitive: false,
-      ).firstMatch(body);
-      if (srcMatch == null) continue;
-      final url = srcMatch.group(1)!.trim();
+      );
+      for (final urlMatch in urlPattern.allMatches(body)) {
+        final url = urlMatch.group(1)!.trim();
+        if (url.isEmpty) continue;
 
-      // 提取文件名（CSS 中的 url 可能是相对路径或绝对路径）
-      final fileName = p.basename(url);
+        // 提取文件名（CSS 中的 url 可能是相对路径或绝对路径）
+        // 去掉查询串（如 font.ttf?ver=1），避免 basename 匹配不到文件
+        final cleanUrl = url.split('?').first;
+        final fileName = p.basename(cleanUrl);
 
-      fontNameToFile[familyName] = fileName;
+        fontNameToFile[familyName] = fileName;
+      }
     }
   }
 
@@ -477,7 +485,7 @@ class FontSubsetOperation {
       final updatedOpf = document.toXmlString(pretty: true);
       EpubImageHelper.addOrReplaceFile(
         archive,
-        ArchiveFile(opfPath, updatedOpf.length, utf8.encode(updatedOpf)),
+        ArchiveFile(opfPath, utf8.encode(updatedOpf).length, utf8.encode(updatedOpf)),
       );
     } catch (e) {
       // OPF 解析失败，跳过清理

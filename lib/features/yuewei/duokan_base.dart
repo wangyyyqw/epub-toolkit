@@ -284,6 +284,34 @@ abstract class DuokanConverterBase {
     }
   }
 
+  /// 计算 note.png 相对指定 HTML 文件的引用路径
+  ///
+  /// note.png 写入 imagesDir 目录，HTML 可能位于 Text/ 子目录或
+  /// OPF 根目录，硬编码 `../Images/note.png` 在目录名不同或
+  /// HTML 不在子目录时全部破图，必须按实际路径计算相对引用。
+  String notePngSrcFor(String htmlPath) {
+    final notePath = '$_imagesDir/note.png';
+    final htmlDir = htmlPath.contains('/')
+        ? htmlPath.substring(0, htmlPath.lastIndexOf('/') + 1)
+        : '';
+    final htmlParts = htmlDir.split('/').where((s) => s.isNotEmpty).toList();
+    final noteParts = notePath.split('/').where((s) => s.isNotEmpty).toList();
+    var common = 0;
+    while (common < htmlParts.length &&
+        common < noteParts.length &&
+        htmlParts[common] == noteParts[common]) {
+      common++;
+    }
+    final ups = htmlParts.length - common;
+    final downs = noteParts.sublist(common);
+    final parts = <String>[];
+    for (var i = 0; i < ups; i++) {
+      parts.add('..');
+    }
+    parts.addAll(downs);
+    return parts.join('/');
+  }
+
   /// 处理 OPF 文件：去重 manifest 项，追加 note.png 声明
   String _processOpf(String filename, String content) {
     try {

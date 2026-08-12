@@ -43,7 +43,9 @@ class EpubPacker {
     }
 
     final content = utf8.decode(mimetype.content as List<int>);
-    if (content != 'application/epub+zip') {
+    // 容忍 BOM / 尾随换行等合法变体(规范只要求第一行是 application/epub+zip)
+    final trimmed = content.replaceAll('\uFEFF', '').trim();
+    if (trimmed != 'application/epub+zip') {
       throw StateError('EPUB 打包失败：mimetype 内容无效: $content');
     }
 

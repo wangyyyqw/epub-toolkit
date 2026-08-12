@@ -43,10 +43,32 @@ jobs:
           echo "artifact_suffix=v${app_version}+${build_number}" >> "$GITHUB_OUTPUT"
           echo "Building ${app_version}+${build_number}"
 
+  test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Static analysis
+        run: flutter analyze lib
+
+      - name: Run tests
+        run: flutter test
+
   android:
     name: Android APK
     runs-on: ubuntu-latest
-    needs: version
+    needs: [version, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,7 +88,24 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Import Android signing keystore
+        # 从仓库 Secrets 解密 keystore；未配置时跳过，自动回退 debug 签名
+        # （fork / PR / 未配置 Secrets 的仓库仍可正常构建）。
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/android/app"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
+          test -s "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
+
       - name: Build APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/android/app/keystore-release.jks', github.workspace) || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: >
           flutter build apk --release
           --build-name "${{ needs.version.outputs.app_version }}"
@@ -88,7 +127,7 @@ jobs:
   macos:
     name: macOS App
     runs-on: macos-latest
-    needs: version
+    needs: [version, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,7 +176,7 @@ jobs:
   windows:
     name: Windows App
     runs-on: windows-latest
-    needs: version
+    needs: [version, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,7 +298,7 @@ jobs:
   ios:
     name: iOS App
     runs-on: macos-latest
-    needs: version
+    needs: [version, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -15,12 +15,14 @@ class ReviewInput {
   final String abstract;
   final String author;
   final int likes;
+  final int createTime;
 
   ReviewInput({
     required this.content,
     this.abstract = '',
     this.author = '',
     this.likes = 0,
+    this.createTime = 0,
   });
 }
 
@@ -31,28 +33,38 @@ class ChapterInput {
   final List<UnderlineInput> underlines;
   final Map<String, List<ReviewInput>> reviewMap;
 
+  /// 章评(挂在整章上,没有引文)
+  final List<ReviewInput> chapterReviews;
+
   ChapterInput({
     required this.uid,
     required this.title,
     required this.underlines,
     required this.reviewMap,
+    this.chapterReviews = const [],
   });
 }
 
 /// 映射结果:一个远端章 → 一个本地文件
 class MappedChapter {
   final String chapterUid;
+  final String title;
   final String href;
   final List<UnderlineInput> underlines;
   final Map<String, List<ReviewInput>> reviewMap;
   final bool quoteOnly;
 
+  /// 章评(挂在整章上,没有引文)
+  final List<ReviewInput> chapterReviews;
+
   MappedChapter({
     required this.chapterUid,
+    required this.title,
     required this.href,
     required this.underlines,
     required this.reviewMap,
     this.quoteOnly = false,
+    this.chapterReviews = const [],
   });
 }
 
@@ -351,10 +363,12 @@ class ChapterMapper {
         for (final href in targets) {
           mapped.add(MappedChapter(
             chapterUid: ch.uid,
+            title: ch.title,
             href: href,
             underlines: ch.underlines,
             reviewMap: ch.reviewMap,
             quoteOnly: quoteOnly,
+            chapterReviews: ch.chapterReviews,
           ));
         }
       } else {

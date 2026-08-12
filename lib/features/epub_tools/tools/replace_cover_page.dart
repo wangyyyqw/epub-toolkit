@@ -221,7 +221,7 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
 
   // ==================== 参数 UI ====================
 
-  /// 操作特定参数：新封面图片选择 + 输出路径选择
+  /// 操作特定参数：新封面图片选择（输出路径已并入顶部输入/输出双列）
   List<Widget> _buildParams() => [
     // 新封面图片
     buildSectionLabel(context, Icons.add_photo_alternate_outlined, '新封面图片'),
@@ -234,22 +234,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
       hint: '点击选择新封面图片（JPG / PNG）',
       onTap: _loading ? () {} : _pickCover,
       isComplete: _coverPath.isNotEmpty,
-    ),
-    const SizedBox(height: 16),
-
-    // 输出路径
-    buildSectionLabel(context, Icons.output_outlined, '输出文件'),
-    const SizedBox(height: 8),
-    buildFilePickerRow(
-      context,
-      icon: Icons.file_present_outlined,
-      label: '输出 EPUB',
-      value: _outputPath,
-      hint: '点击选择输出位置（默认自动填充）',
-      onTap: _loading
-          ? () {}
-          : () => _pickOutput(_defaultOutputFilename(_epubPath)),
-      isComplete: _outputPath.isNotEmpty,
     ),
   ];
 
@@ -274,17 +258,46 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
-                // EPUB 文件选择
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
-                  context,
-                  icon: Icons.book_outlined,
-                  label: 'EPUB 文件',
-                  value: _epubPath,
-                  hint: '点击选择 EPUB 文件',
-                  onTap: _loading ? () {} : _pickEpub,
-                  isComplete: _epubPath.isNotEmpty,
+                // 输入 + 输出（桌面双列并排，移动端单列）
+                ResponsiveRow(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.book_outlined,
+                          label: 'EPUB 文件',
+                          value: _epubPath,
+                          hint: '点击选择 EPUB 文件',
+                          onTap: _loading ? () {} : _pickEpub,
+                          isComplete: _epubPath.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.output_outlined, '输出文件'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.file_present_outlined,
+                          label: '输出 EPUB',
+                          value: _outputPath,
+                          hint: '点击选择输出位置（默认自动填充）',
+                          onTap: _loading
+                              ? () {}
+                              : () => _pickOutput(_defaultOutputFilename(_epubPath)),
+                          isComplete: _outputPath.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
 
                 // 操作特定参数

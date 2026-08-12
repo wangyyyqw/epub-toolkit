@@ -52,7 +52,26 @@ class EpubImageHelper {
   }
 
   /// 查找 EPUB 中的 OPF 文件路径
+  ///
+  /// 优先按 META-INF/container.xml 的 full-path 定位,
+  /// 避免含多个 .opf 文件(如遗留 toc.opf)的 EPUB 解析错 OPF。
+  /// container.xml 缺失或解析失败时兜底取第一个 .opf 文件。
   static String? findOpfPath(Archive archive) {
+    try {
+      final container = archive.findFile('META-INF/container.xml');
+      if (container != null) {
+        final xml = utf8.decode(
+          container.content as List<int>,
+          allowMalformed: true,
+        );
+        final match = RegExp(r'full-path="([^"]+)"').firstMatch(xml);
+        if (match != null && match.group(1)!.isNotEmpty) {
+          return match.group(1);
+        }
+      }
+    } catch (_) {
+      // 解析失败则降级到第一个 .opf
+    }
     for (final file in archive.files) {
       if (file.name.toLowerCase().endsWith('.opf')) {
         return file.name;
@@ -396,15 +415,9 @@ class EpubImageHelper {
       for (final entry in basenameMap.entries) {
         final oldBn = entry.key;
         final newBn = entry.value;
-        // 直接匹配 basename
-        if (content.contains(oldBn)) {
-          content = content.replaceAll(oldBn, newBn);
-          modified = true;
-        }
-        // URL 编码的 basename
-        final encoded = Uri.encodeComponent(oldBn);
-        if (encoded != oldBn && content.contains(encoded)) {
-          content = content.replaceAll(encoded, Uri.encodeComponent(newBn));
+        final replaced = _replaceBasenameRefs(content, oldBn, newBn);
+        if (replaced != content) {
+          content = replaced;
           modified = true;
         }
       }
@@ -421,7 +434,7 @@ class EpubImageHelper {
         try {
           final doc = XmlDocument.parse(content);
           var opfModified = false;
-          for (final item in doc.findAllElements('item')) {
+          for (final item in doc.findAllElements('item', namespace: '*')) {
             final href = item.getAttribute('href');
             if (href == null) continue;
             final hrefBase = p.basename(href);
@@ -448,14 +461,46 @@ class EpubImageHelper {
       if (modified) {
         addOrReplaceFile(
           archive,
-          ArchiveFile(file.name, content.length, utf8.encode(content)),
+          ArchiveFile(file.name, utf8.encode(content).length, utf8.encode(content)),
         );
       }
     }
   }
 
-  /// 检查当前平台是否支持 WebP 编码。
+  /// 替换内容中的文件名引用(带引用边界,避免误伤同名子串)
   ///
-  /// Android/iOS 使用 flutter_image_compress，桌面端调用 cwebp 命令行编码。
+  /// 只匹配作为完整文件名出现的 basename:前面不能是文件名/路径字符,
+  /// 后面不能是文件名续接字符(允许紧随 ? 查询串、# fragment、引号、括号等)。
+  /// 同时处理 URL 编码形式(如 %E4%B8%AD.jpg)。
+  static String _replaceBasenameRefs(
+    String content,
+    String oldBn,
+    String newBn,
+  ) {
+    var result = content;
+    // 文件名前后边界:前面排除文件名/路径/URL 编码字符,后面排除文件名续接字符
+    final pattern = RegExp(
+      '(?<![A-Za-z0-9._%#-])' +
+          RegExp.escape(oldBn) +
+          '(?![A-Za-z0-9._%-])',
+    );
+    result = result.replaceAll(pattern, newBn);
+
+    // URL 编码形式(引号内或 url() 中的 %-encoded 文件名)
+    final encoded = Uri.encodeComponent(oldBn);
+    if (encoded != oldBn) {
+      final encodedPattern = RegExp(
+        '(?<![A-Za-z0-9._%#-])' +
+            RegExp.escape(encoded) +
+            '(?![A-Za-z0-9._%-])',
+      );
+      result = result.replaceAll(encodedPattern, Uri.encodeComponent(newBn));
+    }
+    return result;
+  }
+
+  /// 检查当前平台是否支持 WebP 编码
+  ///
+  /// flutter_image_compress 仅在 Android 和 iOS 上支持 WebP 编码
   static bool get supportsWebPEncoding => true;
 }

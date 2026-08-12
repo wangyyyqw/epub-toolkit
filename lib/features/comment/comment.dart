@@ -137,7 +137,7 @@ span.reader:hover:after {
                 : match.group(0)!;
             buf.write(
               '<span class="reader js_readerFooterNote" '
-              'data-wr-footernote="$matchedText"></span>',
+              'data-wr-footernote="${_escapeAttr(matchedText)}"></span>',
             );
             lastIdx = match.end;
           }
@@ -243,6 +243,14 @@ span.reader:hover:after {
       name.endsWith('.html') ||
       name.endsWith('.xhtml') ||
       name.endsWith('.htm');
+
+  /// HTML 属性转义（写入 data-wr-footernote 前必须转义，
+  /// 否则批注含引号/尖括号时属性断裂、整章 HTML 损坏）
+  static String _escapeAttr(String text) => text
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
 
   /// 读取 ArchiveFile 的二进制内容
   static Uint8List _readFileBytes(ArchiveFile file) {

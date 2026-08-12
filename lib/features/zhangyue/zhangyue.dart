@@ -50,7 +50,8 @@ class _ZhangyueConverter extends DuokanConverterBase {
       text = addEpubNamespace(text);
 
       // 转换掌阅散落的 aside 脚注
-      final result = _convertZhangyueInlineAsides(text, imagesDir);
+      final notePngSrc = notePngSrcFor(filename);
+      final result = _convertZhangyueInlineAsides(text, notePngSrc);
       text = result.$1;
       final footnotes = result.$2;
 
@@ -73,7 +74,7 @@ class _ZhangyueConverter extends DuokanConverterBase {
 /// 返回 (修改后的内容, 脚注列表)
 (String, List<FootnoteInfo>) _convertZhangyueInlineAsides(
   String text,
-  String imagesDir,
+  String notePngSrc,
 ) {
   final asidePattern = RegExp(
     r'<aside[^>]*epub:type="footnote"[^>]*id="([^"]+)"[^>]*>(.*?)</aside>',
@@ -133,11 +134,6 @@ class _ZhangyueConverter extends DuokanConverterBase {
   text = text.replaceAll(asidePattern, '');
 
   // 将掌阅脚注 img 的 src 统一替换为 note.png
-  final imagesBasename = imagesDir.contains('/')
-      ? imagesDir.split('/').last
-      : imagesDir;
-  final notePngSrc = '../$imagesBasename/note.png';
-
   final imgPattern = RegExp(
     r"""<img[^>]*class="[^"]*(?:zhangyue-footnote|epub-footnote)[^"]*"[^>]*/?>""",
     caseSensitive: false,

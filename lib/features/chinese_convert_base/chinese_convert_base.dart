@@ -21,18 +21,35 @@ class ChineseConvertBase {
   /// [epubPath] 输入 EPUB 路径
   /// [outputPath] 输出 EPUB 路径
   /// [mode] 转换模式：'s2t' 简转繁，'t2s' 繁转简
+  /// [phrases]/[characters]/[phraseMaxLen]/[charMaxLen] 外部字典参数：
+  /// 在后台 Isolate 中 rootBundle 不可用，必须由 UI Isolate 先加载字典
+  /// 再传入；不传时在当前 isolate 内加载（UI isolate 路径）。
   ///
   /// 返回处理结果摘要字符串
   static Future<String> execute({
     required String epubPath,
     required String outputPath,
     required String mode,
+    Map<String, String>? phrases,
+    Map<String, String>? characters,
+    int phraseMaxLen = 1,
+    int charMaxLen = 1,
   }) async {
-    // 初始化对应方向的字典
-    if (mode == 's2t') {
-      await ChineseConverter.initS2T();
-    } else {
-      await ChineseConverter.initT2S();
+    // 未传入字典时在当前 isolate 加载（rootBundle 仅在 UI isolate 可用）
+    if (phrases == null || characters == null) {
+      if (mode == 's2t') {
+        await ChineseConverter.initS2T();
+        phrases = ChineseConverter.s2tPhrases;
+        characters = ChineseConverter.s2tCharacters;
+        phraseMaxLen = ChineseConverter.s2tPhraseMaxLen;
+        charMaxLen = ChineseConverter.s2tCharMaxLen;
+      } else {
+        await ChineseConverter.initT2S();
+        phrases = ChineseConverter.t2sPhrases;
+        characters = ChineseConverter.t2sCharacters;
+        phraseMaxLen = ChineseConverter.t2sPhraseMaxLen;
+        charMaxLen = ChineseConverter.t2sCharMaxLen;
+      }
     }
 
     final bytes = await File(epubPath).readAsBytes();
@@ -67,13 +84,20 @@ class ChineseConvertBase {
 
       try {
         final content = utf8.decode(file.content as List<int>);
-        final converted = _convertHtml(content, mode);
+        final converted = _convertHtml(
+          content,
+          mode,
+          phrases,
+          characters,
+          phraseMaxLen,
+          charMaxLen,
+        );
 
         if (converted != content) {
           convertCount++;
           workingArchive = EpubImageHelper.addOrReplaceFileSafe(
             workingArchive,
-            ArchiveFile(file.name, converted.length, utf8.encode(converted)),
+            ArchiveFile(file.name, utf8.encode(converted).length, utf8.encode(converted)),
           );
         }
       } catch (e) {
@@ -99,14 +123,34 @@ class ChineseConvertBase {
   ///
   /// 使用正则提取标签之间的文本内容和属性值进行转换，
   /// 跳过 <script> 和 <style> 标签内容。
-  static String _convertHtml(String content, String mode) {
+  /// 字典通过参数传入（支持后台 Isolate 场景）。
+  static String _convertHtml(
+    String content,
+    String mode,
+    Map<String, String> phrases,
+    Map<String, String> characters,
+    int phraseMaxLen,
+    int charMaxLen,
+  ) {
     var result = content;
 
-    // 同步转换函数（字典已在 execute() 中初始化）
+    // 同步转换函数（使用外部字典，不依赖当前 isolate 的静态状态）
     String syncConvert(String text) {
       return mode == 's2t'
-          ? ChineseConverter.s2tSync(text)
-          : ChineseConverter.t2sSync(text);
+          ? ChineseConverter.s2tWithDict(
+              text,
+              phrases: phrases,
+              characters: characters,
+              phraseMaxLen: phraseMaxLen,
+              charMaxLen: charMaxLen,
+            )
+          : ChineseConverter.t2sWithDict(
+              text,
+              phrases: phrases,
+              characters: characters,
+              phraseMaxLen: phraseMaxLen,
+              charMaxLen: charMaxLen,
+            );
     }
 
     // 1. 临时替换 script 和 style 内容

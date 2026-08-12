@@ -189,7 +189,7 @@ class EpubService {
 
     // 写回 OPF 文件（addFile 会自动替换同名文件）
     archive.addFile(
-      ArchiveFile(opfPath, opfContent.length, utf8.encode(opfContent)),
+      ArchiveFile(opfPath, utf8.encode(opfContent).length, utf8.encode(opfContent)),
     );
 
     // 保存 EPUB
@@ -349,7 +349,7 @@ class EpubService {
 
       // addFile 会自动替换同名文件，无需先移除
       archive.addFile(
-        ArchiveFile(filePath, newContent.length, utf8.encode(newContent)),
+        ArchiveFile(filePath, utf8.encode(newContent).length, utf8.encode(newContent)),
       );
     }
 

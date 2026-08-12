@@ -448,31 +448,22 @@ class EncryptDecryptBase {
   /// 当 addOrReplaceFileSafe 因索引损坏返回新 archive 时，
   /// 我们把新 archive 的所有文件复制到原 archive 中。
   ///
-  /// 这种方法虽然低效（逐文件复制），但能保持原 archive 引用不变，
-  /// 避免破坏外部调用方的 archive 状态。
+  /// 注意：必须用 clear() 清空（官方 API，正确维护 _fileMap），
+  /// 不能用 removeFile 逐文件删除——removeFile 不更新其他文件的
+  /// _fileMap 索引，后续 addFile/findFile 会越界或错位。
   static void _syncArchiveState(Archive original, Archive updated) {
-    // 先清空原 archive 的文件（通过移除每个文件）
-    for (final file in original.files.toList()) {
-      try {
-        original.removeFile(file);
-      } catch (_) {
-        // ignore: 某些场景下 removeFile 失败
-      }
-    }
-    // 再把新 archive 的文件逐一加入
+    original.clear();
     for (final file in updated.files) {
       try {
         original.addFile(
           ArchiveFile(
             file.name,
             file.size,
-            file.content is List<int>
-                ? file.content as List<int>
-                : (file.content as dynamic).toList() as List<int>,
+            file.content as List<int>,
           ),
         );
       } catch (_) {
-        // ignore
+        // ignore: 单文件复制失败不影响整体
       }
     }
   }

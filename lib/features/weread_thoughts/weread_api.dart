@@ -69,6 +69,9 @@ class WereadUnderline {
 }
 
 /// 想法数据
+///
+/// [type] 区分数据来源: paragraph(段评)/chapter(章评)/book(书评)。
+/// 章评/书评没有 range,范围为空字符串。
 class WereadReview {
   final String range;
   final String content;
@@ -76,14 +79,18 @@ class WereadReview {
   final String author;
   final int likes;
   final String chapterUid;
+  final int createTime;
+  final String type;
 
   WereadReview({
-    required this.range,
+    this.range = '',
     required this.content,
     this.abstract = '',
     this.author = '',
     this.likes = 0,
     this.chapterUid = '',
+    this.createTime = 0,
+    this.type = 'paragraph',
   });
 
   /// 序列化为 JSON
@@ -94,6 +101,8 @@ class WereadReview {
         'author': author,
         'likes': likes,
         'chapterUid': chapterUid,
+        'createTime': createTime,
+        'type': type,
       };
 
   /// 从 JSON 反序列化
@@ -105,6 +114,8 @@ class WereadReview {
       author: json['author']?.toString() ?? '',
       likes: json['likes'] as int? ?? 0,
       chapterUid: json['chapterUid']?.toString() ?? '',
+      createTime: json['createTime'] as int? ?? 0,
+      type: json['type']?.toString() ?? 'paragraph',
     );
   }
 }
@@ -116,15 +127,20 @@ class ChapterData {
   final List<WereadUnderline> underlines;
   final Map<String, List<WereadReview>> reviewMap;
 
+  /// 章评(挂在整章上,没有 range)
+  final List<WereadReview> chapterReviews;
+
   ChapterData({
     required this.chapterUid,
     required this.title,
     required this.underlines,
     required this.reviewMap,
+    this.chapterReviews = const [],
   });
 
   /// 是否有数据(划线或想法)
-  bool get hasData => underlines.isNotEmpty || reviewMap.isNotEmpty;
+  bool get hasData =>
+      underlines.isNotEmpty || reviewMap.isNotEmpty || chapterReviews.isNotEmpty;
 
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
@@ -134,6 +150,7 @@ class ChapterData {
         'reviewMap': reviewMap.map(
           (k, v) => MapEntry(k, v.map((r) => r.toJson()).toList()),
         ),
+        'chapterReviews': chapterReviews.map((r) => r.toJson()).toList(),
       };
 
   /// 从 JSON 反序列化
@@ -153,6 +170,9 @@ class ChapterData {
           .map((e) => WereadUnderline.fromJson(e as Map<String, dynamic>))
           .toList(),
       reviewMap: reviewMap,
+      chapterReviews: (json['chapterReviews'] as List? ?? [])
+          .map((e) => WereadReview.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -190,7 +210,7 @@ class SyncStats {
 
 /// 拉取结果
 ///
-/// 包含本次拉取的全部章节数据和远端总章节数。
+/// 包含本次拉取的全部章节数据、整本书评和远端总章节数。
 class FetchResult {
   /// 有数据的章节数据
   final List<ChapterData> chapters;
@@ -198,9 +218,13 @@ class FetchResult {
   /// 远端总章节数
   final int totalChapters;
 
+  /// 整本书评(挂在书上,没有 range)
+  final List<WereadReview> bookReviews;
+
   FetchResult({
     required this.chapters,
     required this.totalChapters,
+    this.bookReviews = const [],
   });
 }
 
@@ -1537,6 +1561,141 @@ class WereadApi {
     return batches;
   }
 
+  /// 解析章评/书评接口响应,提取想法列表
+  ///
+  /// 响应结构兼容:
+  /// - {reviews: [{review: {content, abstract, author, ...}, likesCount, ...}]}
+  /// - {reviews: [{content, abstract, ...}]} (扁平)
+  /// - {data: {reviews: [...]}}
+  List<WereadReview> _parseReviewList(
+    Map<String, dynamic> data,
+    String chapterUid,
+    String type,
+  ) {
+    dynamic reviewList = data['reviews'];
+    if (reviewList == null) {
+      final d = data['data'];
+      if (d is Map) {
+        reviewList = d['reviews'];
+      } else if (d is List) {
+        reviewList = d;
+      }
+    }
+
+    final result = <WereadReview>[];
+    if (reviewList is List) {
+      for (final item in reviewList) {
+        if (item is! Map<String, dynamic>) continue;
+        final wrapper = item;
+        final review = item['review'] is Map
+            ? item['review'] as Map<String, dynamic>
+            : item;
+        final content = review['content']?.toString() ?? '';
+        if (content.isEmpty) continue;
+        final author = review['author'];
+        result.add(WereadReview(
+          range: '',
+          content: content,
+          abstract: _cleanQuote(review['abstract']?.toString() ??
+              review['contextAbstract']?.toString() ?? ''),
+          author: author is Map
+              ? (author['name']?.toString() ??
+                  author['nick']?.toString() ??
+                  '')
+              : '',
+          likes: _safeInt(wrapper['likesCount'] ?? review['likesCount'] ?? 0),
+          chapterUid: chapterUid,
+          createTime: _safeInt(review['createTime'] ?? 0),
+          type: type,
+        ));
+      }
+    }
+
+    debugPrint('[WereadApi] _parseReviewList($type): ${result.length} reviews');
+    return result;
+  }
+
+  /// 获取单章章评(整章范围,不针对特定段落)
+  ///
+  /// [bookId] 读书书 ID
+  /// [chapterUid] 章节 UID
+  /// [pages] 最多拉取页数(每页 20 条)
+  ///
+  /// 注意:chapterUid 必须传整数,网关对类型敏感。
+  /// 接口失败时抛出异常(由调用方决定是否降级)。
+  Future<List<WereadReview>> chapterReviews(
+    String bookId,
+    String chapterUid, {
+    int pages = 2,
+  }) async {
+    final chapterUidInt = int.tryParse(chapterUid);
+    final result = <WereadReview>[];
+    var cursor = 0;
+    var fetched = 0;
+    var hasMore = true;
+
+    while (hasMore && fetched < pages) {
+      final data = await _gateway('/book/chapterreviewlist', params: {
+        'bookId': bookId,
+        'chapterUid': chapterUidInt ?? chapterUid,
+        'count': 20,
+        'maxIdx': cursor,
+      });
+      final reviews = _parseReviewList(data, chapterUid, 'chapter');
+      result.addAll(reviews);
+      fetched++;
+
+      final next = _safeInt(data['maxIdx'] ?? 0);
+      hasMore = (data['hasMore'] == true) && next > cursor && next > 0;
+      cursor = next;
+      if (hasMore) await _delay(150);
+    }
+
+    debugPrint('[WereadApi] chapterReviews: chapter=$chapterUid, '
+        '${result.length} reviews');
+    return result;
+  }
+
+  /// 获取整本书评(挂在书上的公开评论)
+  ///
+  /// [bookId] 读书书 ID
+  /// [category] 书评分类: 0=热门, 1=推荐, 3=最新, 4=一般, 2=不推荐, 8=资深读者
+  /// [pages] 最多拉取页数(每页 100 条)
+  ///
+  /// 接口失败时抛出异常(由调用方决定是否降级)。
+  Future<List<WereadReview>> bookReviews(
+    String bookId, {
+    int category = 0,
+    int pages = 2,
+  }) async {
+    final result = <WereadReview>[];
+    var cursor = 0;
+    var fetched = 0;
+    var hasMore = true;
+
+    while (hasMore && fetched < pages) {
+      final data = await _gateway('/book/podcasts', params: {
+        'bookId': bookId,
+        'count': 100,
+        'listType': 2,
+        'reviewListType': category,
+        'synckey': cursor,
+      });
+      final reviews = _parseReviewList(data, '', 'book');
+      result.addAll(reviews);
+      fetched++;
+
+      final next = _safeInt(data['synckey'] ?? 0);
+      hasMore = (data['reviewsHasMore'] == true) && next > cursor && next > 0;
+      cursor = next;
+      if (hasMore) await _delay(200);
+    }
+
+    debugPrint('[WereadApi] bookReviews: category=$category, '
+        '${result.length} reviews');
+    return result;
+  }
+
   /// 解析 Web bestbookmarks 响应,提取划线列表
   ///
   /// 响应结构兼容多种格式:
@@ -1674,15 +1833,20 @@ class WereadApi {
   /// a. 获取章节列表(Web 优先,网关回退)
   /// b. 划线:先尝试 Web bestbookmarks(整本一次拉取),失败则逐章网关 underlines
   /// c. 想法:先尝试 Web review/list(按章),失败则网关 readreviews(按 range 批量)
-  /// d. 用想法的 abstract 填充划线的 markText
-  /// e. 想法有自己的 range:没有对应划线时补一条划线
-  /// f. 合并到章节
+  /// d. 章评/书评:逐章网关 chapterreviewlist + 整本一次网关 podcasts(失败不影响主线)
+  /// e. 用想法的 abstract 填充划线的 markText
+  /// f. 想法有自己的 range:没有对应划线时补一条划线
+  /// g. 合并到章节
   ///
   /// [onProgress] 进度回调 (phase, current, total, text)
+  /// [includeChapterReviews] 是否拉取章评(默认拉取)
+  /// [includeBookReviews] 是否拉取书评(默认拉取)
   Future<FetchResult> fetchBookData(
     String bookId, {
     void Function(String phase, int current, int total, String text)?
         onProgress,
+    bool includeChapterReviews = true,
+    bool includeBookReviews = true,
   }) async {
     onProgress ??= (_, _, _, _) {};
 
@@ -1774,6 +1938,7 @@ class WereadApi {
     //    (每 range 最多 count=30 条),远比 /web/review/list 的章级热门前几条完整。
     //    Web review/list 仅在 readreviews 无结果时兜底。
     final totalToFetch = chapterList.length;
+    final chapterReviewsByChapter = <String, List<WereadReview>>{};
 
     for (var i = 0; i < chapterList.length; i++) {
       final ch = chapterList[i];
@@ -1790,7 +1955,7 @@ class WereadApi {
         }
       }
 
-      final chapterReviews = <WereadReview>[];
+      final paraReviews = <WereadReview>[];
 
       // 5a. 主路径:网关 readreviews 按 range 批量拉该段全部想法
       bool reviewsFetched = false;
@@ -1804,7 +1969,7 @@ class WereadApi {
               batches[bi],
             );
             if (batchReviews.isNotEmpty) reviewsFetched = true;
-            chapterReviews.addAll(batchReviews);
+            paraReviews.addAll(batchReviews);
             hotReviews.addAll(batchReviews);
           } catch (e) {
             debugPrint('[WereadApi] 网关 readreviews 失败: '
@@ -1820,7 +1985,7 @@ class WereadApi {
           final rvData = await _webChapterReviews(bookId, ch.chapterUid);
           final webReviews = _parseWebReviews(rvData, ch.chapterUid);
           if (webReviews.isNotEmpty) {
-            chapterReviews.addAll(webReviews);
+            paraReviews.addAll(webReviews);
             hotReviews.addAll(webReviews);
           }
         } catch (e) {
@@ -1831,8 +1996,24 @@ class WereadApi {
 
       // 5c. 用想法的 abstract 填充划线的 markText(bestbookmarks 原文优先)
       final reviewMap = <String, List<WereadReview>>{};
-      for (final r in chapterReviews) {
+      for (final r in paraReviews) {
         reviewMap.putIfAbsent(r.range, () => []).add(r);
+      }
+
+      // 5c2. 章评(挂在整章上,范围为空):失败不影响主线
+      final chapterReviewList = <WereadReview>[];
+      if (includeChapterReviews) {
+        try {
+          chapterReviewList.addAll(
+            await chapterReviews(bookId, ch.chapterUid),
+          );
+          if (chapterReviewList.isNotEmpty) {
+            chapterReviewsByChapter[ch.chapterUid] = chapterReviewList;
+          }
+        } catch (e) {
+          debugPrint('[WereadApi] 章评拉取失败(可选数据源,不影响主线): '
+              'chapter=${ch.chapterUid}, error=$e');
+        }
       }
 
       for (final u in chapterUnderlines) {
@@ -1893,6 +2074,19 @@ class WereadApi {
     onProgress('underlines', chapterList.length, chapterList.length,
         '划线 ${allUnderlines.length} 条(有引文 $withMarkText),公开想法 ${hotReviews.length} 条');
 
+    // 5e. 整本书评(挂在书上):失败不影响主线
+    var bookReviewList = <WereadReview>[];
+    if (includeBookReviews) {
+      try {
+        bookReviewList = await bookReviews(bookId);
+      } catch (e) {
+        debugPrint('[WereadApi] 书评拉取失败(可选数据源,不影响主线): $e');
+      }
+    }
+    if (bookReviewList.isNotEmpty) {
+      onProgress('reviews', 1, 1, '书评 ${bookReviewList.length} 条');
+    }
+
     // 6. 合并到章节
     final reviewsByChapter = <String, List<WereadReview>>{};
     for (final r in hotReviews) {
@@ -1903,11 +2097,13 @@ class WereadApi {
       chapterList,
       underlinesByChapter,
       reviewsByChapter,
+      chapterReviewsByChapter,
     );
 
     return FetchResult(
       chapters: result,
       totalChapters: chapterList.length,
+      bookReviews: bookReviewList,
     );
   }
 
@@ -1916,19 +2112,24 @@ class WereadApi {
   /// [chapterList] 章节列表
   /// [underlinesByChapter] 按 chapterUid 分组的划线
   /// [reviewsByChapter] 按 chapterUid 分组的想法
+  /// [chapterReviewsByChapter] 按 chapterUid 分组的章评
   static List<ChapterData> _mergeChapters(
     List<WereadChapter> chapterList,
     Map<String, List<WereadUnderline>> underlinesByChapter,
     Map<String, List<WereadReview>> reviewsByChapter,
+    Map<String, List<WereadReview>> chapterReviewsByChapter,
   ) {
     final result = <ChapterData>[];
 
     for (final ch in chapterList) {
       final underlines = underlinesByChapter[ch.chapterUid] ?? [];
       final reviews = reviewsByChapter[ch.chapterUid] ?? [];
+      final chapterReviews = chapterReviewsByChapter[ch.chapterUid] ?? [];
 
       // 跳过没有数据的章节
-      if (underlines.isEmpty && reviews.isEmpty) continue;
+      if (underlines.isEmpty && reviews.isEmpty && chapterReviews.isEmpty) {
+        continue;
+      }
 
       // 划线去重保序
       final seenRanges = <String>{};
@@ -1974,6 +2175,7 @@ class WereadApi {
         title: ch.title,
         underlines: cleanUnderlines,
         reviewMap: reviewMap,
+        chapterReviews: chapterReviews,
       ));
     }
 

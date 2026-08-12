@@ -74,9 +74,19 @@ class EpubService {
     final archive = ZipDecoder().decodeBytes(bytes);
     final coverBytes = await File(coverPath).readAsBytes();
 
-    // 确定封面格式
-    final coverExt = coverPath.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-    final coverMediaType = coverExt == 'png' ? 'image/png' : 'image/jpeg';
+    // 确定封面格式（按真实扩展名，png/jpg/jpeg/webp/gif/bmp）
+    final coverPathLower = coverPath.toLowerCase();
+    final coverExt = coverPathLower.endsWith('.png')
+        ? 'png'
+        : coverPathLower.endsWith('.jpeg') || coverPathLower.endsWith('.jpg')
+            ? 'jpg'
+            : coverPathLower.endsWith('.webp')
+                ? 'webp'
+                : coverPathLower.endsWith('.gif')
+                    ? 'gif'
+                    : coverPathLower.endsWith('.bmp')
+                        ? 'bmp'
+                        : 'jpg';
 
     // 找到 OPF 文件路径
     const containerPath = 'META-INF/container.xml';
@@ -105,7 +115,8 @@ class EpubService {
 
     // 查找现有封面在 manifest 中的 id 和 href
     final coverIdMatch = RegExp(
-      r'name="cover"\s+content="([^"]+)"',
+      r'\bname\s*=\s*"cover"\s+content\s*=\s*"([^"]+)"',
+      caseSensitive: false,
     ).firstMatch(opfContent);
     String? existingCoverId;
     if (coverIdMatch != null) {
@@ -116,34 +127,36 @@ class EpubService {
     String? coverHref;
     String? coverManifestId;
     if (existingCoverId != null) {
-      final itemMatch = RegExp(
-        r'<item\s+[^>]*id="' +
-            RegExp.escape(existingCoverId) +
-            r'"[^>]*href="([^"]+)"[^>]*media-type="([^"]+)"',
-      ).firstMatch(opfContent);
+      final itemMatch = _findManifestItem(opfContent, id: existingCoverId);
       if (itemMatch != null) {
-        coverHref = itemMatch.group(1);
+        coverHref = itemMatch.href;
         coverManifestId = existingCoverId;
       }
     }
     // 降级搜索 manifest 中 href 含 cover 的图片项
     if (coverHref == null) {
-      final itemMatch = RegExp(
-        r'<item\s+[^>]*href="([^"]*cover[^"]*\.(?:jpg|jpeg|png))"[^>]*media-type="image/(?:jpeg|png)"[^>]*/?>',
-        caseSensitive: false,
-      ).firstMatch(opfContent);
+      final itemMatch = _findManifestItem(opfContent, hrefContainsCover: true);
       if (itemMatch != null) {
-        coverHref = itemMatch.group(1);
+        coverHref = itemMatch.href;
+        coverManifestId = itemMatch.id;
       }
     }
 
-    // 确定新封面的文件名
+    // 确定新封面的文件名与 media-type（按真实扩展名映射，避免 webp/gif 被当 jpg 写入）
+    final coverMediaType = switch (coverExt) {
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'bmp' => 'image/bmp',
+      _ => 'image/jpeg',
+    };
     final newCoverName = 'cover.$coverExt';
     final newCoverPath = opfDir + newCoverName;
 
     // 替换或添加封面文件（使用 replaceFile 避免 removeFile 的索引损坏 bug）
     if (coverHref != null) {
-      final oldCoverPath = opfDir + coverHref;
+      final oldCoverPath = opfDir + Uri.decodeFull(coverHref);
       EpubImageHelper.replaceFile(
         archive,
         oldCoverPath,
@@ -156,44 +169,139 @@ class EpubService {
 
     // 更新 OPF 中的 manifest
     if (coverManifestId != null) {
-      // 替换现有 manifest 项的 href 和 media-type
-      opfContent = opfContent.replaceAll(
-        RegExp(
-          r'<item\s+[^>]*id="' + RegExp.escape(coverManifestId) + r'"[^>]*/?>',
-        ),
-        '<item id="$coverManifestId" href="$newCoverName" media-type="$coverMediaType"/>',
+      // 只更新 href/media-type，保留 properties 等其他属性
+      opfContent = _updateManifestItem(
+        opfContent,
+        coverManifestId,
+        newName: newCoverName,
+        mediaType: coverMediaType,
       );
     } else {
       // 添加新的 manifest 项
-      final manifestEnd = opfContent.indexOf('</manifest>');
-      if (manifestEnd != -1) {
+      final manifestEnd =
+          RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>').firstMatch(opfContent);
+      if (manifestEnd != null) {
         opfContent =
-            '${opfContent.substring(0, manifestEnd)}'
+            '${opfContent.substring(0, manifestEnd.start)}'
             '\n    <item id="cover-image" href="$newCoverName" media-type="$coverMediaType"/>'
-            '${opfContent.substring(manifestEnd)}';
+            '${opfContent.substring(manifestEnd.start)}';
       }
     }
 
-    // 更新或添加 meta name="cover"
-    if (RegExp(r'name="cover"\s+content=').hasMatch(opfContent)) {
-      opfContent = opfContent.replaceAll(
-        RegExp(r'name="cover"\s+content="[^"]*"'),
-        'name="cover" content="cover-image"',
+    // 更新或添加 meta name="cover"（属性顺序无关）
+    final coverMeta = RegExp(
+      r'<meta\b[^>]*\bname\s*=\s*"cover"[^>]*>',
+      caseSensitive: false,
+    ).firstMatch(opfContent);
+    if (coverMeta != null) {
+      opfContent = opfContent.replaceAllMapped(
+        RegExp(r'<meta\b[^>]*\bname\s*=\s*"cover"[^>]*>',
+            caseSensitive: false),
+        (m) {
+          var tag = m.group(0)!;
+          if (tag.contains(RegExp(r'\bcontent\s*=', caseSensitive: false))) {
+            tag = tag.replaceAllMapped(
+              RegExp(r'\bcontent\s*=\s*"[^"]*"', caseSensitive: false),
+              (_) => 'content="cover-image"',
+            );
+          } else {
+            tag = tag.replaceFirst(
+              RegExp(r'\s*/?>\s*$'),
+              ' content="cover-image"/>',
+            );
+          }
+          return tag;
+        },
       );
     } else {
-      opfContent = opfContent.replaceAll(
-        '</metadata>',
-        '    <meta name="cover" content="cover-image"/>\n  </metadata>',
+      opfContent = opfContent.replaceAllMapped(
+        RegExp(r'</[Mm][Ee][Tt][Aa][Dd][Aa][Tt][Aa]\s*>'),
+        (m) => '    <meta name="cover" content="cover-image"/>\n  ${m.group(0)}',
       );
     }
 
     // 写回 OPF 文件（addFile 会自动替换同名文件）
     archive.addFile(
-      ArchiveFile(opfPath, opfContent.length, utf8.encode(opfContent)),
+      ArchiveFile(opfPath, utf8.encode(opfContent).length, utf8.encode(opfContent)),
     );
 
     // 保存 EPUB
     await EpubPacker.pack(archive: archive, outputPath: outputPath);
+  }
+
+  /// 在 OPF manifest 中查找 item 元素（属性顺序无关）
+  ///
+  /// [id] 按 id 精确匹配
+  /// [hrefContainsCover] href 中含 "cover" 且为图片
+  static ({String id, String href, String mediaType})? _findManifestItem(
+    String opfContent, {
+    String? id,
+    bool hrefContainsCover = false,
+  }) {
+    final itemPattern = RegExp(r'<item\b[^>]*>', caseSensitive: false);
+    for (final match in itemPattern.allMatches(opfContent)) {
+      final tag = match.group(0)!;
+      if (tag.contains('</item')) continue; // 跳过闭合标签起点
+      if (id != null) {
+        final idMatch =
+            RegExp(r'\bid\s*=\s*"([^"]*)"', caseSensitive: false).firstMatch(tag);
+        if (idMatch == null || idMatch.group(1) != id) continue;
+      }
+      final hrefMatch =
+          RegExp(r'\bhref\s*=\s*"([^"]*)"', caseSensitive: false).firstMatch(tag);
+      if (hrefMatch == null) continue;
+      final href = hrefMatch.group(1)!;
+      if (hrefContainsCover) {
+        final isCoverImage = RegExp(
+          r'cover[^"]*\.(?:jpg|jpeg|png|webp|gif|bmp)',
+          caseSensitive: false,
+        ).hasMatch(href);
+        if (!isCoverImage) continue;
+      }
+      final mediaType = RegExp(
+        r'\bmedia-type\s*=\s*"([^"]*)"',
+        caseSensitive: false,
+      ).firstMatch(tag)?.group(1) ?? '';
+      return (id: id ?? '', href: href, mediaType: mediaType);
+    }
+    return null;
+  }
+
+  /// 更新 manifest 中指定 id 的 item 的 href/media-type（保留其他属性）
+  static String _updateManifestItem(
+    String opfContent,
+    String itemId, {
+    required String newName,
+    required String mediaType,
+  }) {
+    return opfContent.replaceAllMapped(
+      RegExp(
+        r'<item\b[^>]*\bid="' + RegExp.escape(itemId) + r'"[^>]*>',
+        caseSensitive: false,
+      ),
+      (m) {
+        var tag = m.group(0)!;
+        if (tag.contains('</item')) return tag;
+        final selfClosing = tag.endsWith('/>');
+        tag = tag.replaceFirst(RegExp(r'\s*/>$'), '>');
+        tag = tag.replaceAllMapped(
+          RegExp(r'\bhref\s*=\s*"[^"]*"', caseSensitive: false),
+          (_) => 'href="$newName"',
+        );
+        if (tag.contains(RegExp(r'\bmedia-type\s*=', caseSensitive: false))) {
+          tag = tag.replaceAllMapped(
+            RegExp(r'\bmedia-type\s*=\s*"[^"]*"', caseSensitive: false),
+            (_) => 'media-type="$mediaType"',
+          );
+        } else {
+          tag = tag.replaceFirst(
+            RegExp(r'\s*>\s*$'),
+            ' media-type="$mediaType">',
+          );
+        }
+        return selfClosing ? '$tag />' : tag;
+      },
+    );
   }
 
   /// 获取 EPUB 中所有 XHTML 文件的内容（按 spine 顺序）
@@ -277,7 +385,8 @@ class EpubService {
     for (final id in spineOrder) {
       final href = manifestItems[id];
       if (href == null) continue;
-      final fullPath = opfDir + href;
+      final fullPath = resolveInnerPath(opfDir, href);
+      if (fullPath.isEmpty) continue;
       final file = archive.findFile(fullPath);
       if (file == null) continue;
       final content = utf8.decode(file.content as List<int>);
@@ -299,6 +408,33 @@ class EpubService {
     }
 
     return result;
+  }
+
+  /// 将 OPF 目录 + manifest href 解析为 ZIP 内完整路径
+  ///
+  /// 处理 URL 编码(%20/中文文件名)、./、../、以 / 开头的绝对路径
+  /// 和 #fragment(仅 href 引用,zip 内路径无 fragment)。
+  static String resolveInnerPath(String opfDir, String href) {
+    var h = href;
+    final fragIdx = h.indexOf('#');
+    if (fragIdx >= 0) h = h.substring(0, fragIdx);
+    if (h.isEmpty) return '';
+    try {
+      h = Uri.decodeFull(h);
+    } catch (_) {
+      // 解码失败保留原文
+    }
+    final combined = h.startsWith('/') ? h : '$opfDir$h';
+    final parts = <String>[];
+    for (final part in combined.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (parts.isNotEmpty) parts.removeLast();
+      } else {
+        parts.add(part);
+      }
+    }
+    return parts.join('/');
   }
 
   /// 将 EPUB 保存到指定路径
@@ -349,7 +485,7 @@ class EpubService {
 
       // addFile 会自动替换同名文件，无需先移除
       archive.addFile(
-        ArchiveFile(filePath, newContent.length, utf8.encode(newContent)),
+        ArchiveFile(filePath, utf8.encode(newContent).length, utf8.encode(newContent)),
       );
     }
 

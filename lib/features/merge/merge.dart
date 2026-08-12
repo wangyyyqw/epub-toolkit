@@ -195,7 +195,12 @@ class MergeOperation {
             content = Uint8List.fromList(utf8.encode(updated));
           } else if (lowerPath.endsWith('.css')) {
             final text = utf8.decode(content, allowMalformed: true);
-            final updated = _updateCssReferences(text, renameMap, data.opfDir);
+            final updated = _updateCssReferences(
+              text,
+              bookpath,
+              renameMap,
+              data.opfDir,
+            );
             content = Uint8List.fromList(utf8.encode(updated));
           }
 
@@ -306,12 +311,12 @@ class MergeOperation {
 
     // OPF
     outputArchive.addFile(
-      ArchiveFile(mergedOpfPath, mergedOpf.length, utf8.encode(mergedOpf)),
+      ArchiveFile(mergedOpfPath, utf8.encode(mergedOpf).length, utf8.encode(mergedOpf)),
     );
 
     // nav
     outputArchive.addFile(
-      ArchiveFile(mergedNavPath, mergedNav.length, utf8.encode(mergedNav)),
+      ArchiveFile(mergedNavPath, utf8.encode(mergedNav).length, utf8.encode(mergedNav)),
     );
 
     // 内容文件（去重）
@@ -493,12 +498,20 @@ class MergeOperation {
   }
 
   /// 更新 CSS 中的引用路径
+  ///
+  /// CSS 的 url() 是相对 CSS 文件所在目录解析的,不是相对 OPF 目录,
+  /// 因此必须用 [cssBookpath] 定位并计算相对路径。
   static String _updateCssReferences(
     String content,
+    String cssBookpath,
     Map<String, String> renameMap,
     String opfDir,
   ) {
     if (renameMap.isEmpty) return content;
+
+    // CSS 文件合并后的路径(可能自身也被重命名),用于计算相对目标路径
+    final newCssPath = renameMap[cssBookpath] ?? cssBookpath;
+    final cssDir = p.dirname(newCssPath);
 
     return content.replaceAllMapped(RegExp(r"""url\((["']?)([^)]*?)\1\)"""), (
       m,
@@ -512,11 +525,13 @@ class MergeOperation {
         return m.group(0)!;
       }
 
-      final bookpath = _normalizePath('$opfDir$url');
+      // url 相对 CSS 文件所在目录解析
+      final bookpath = _normalizePath('${p.dirname(cssBookpath)}/$url');
       final renamed = renameMap[bookpath];
       if (renamed == null) return m.group(0)!;
 
-      return 'url($quote$renamed$quote)';
+      final relPath = _relPath(renamed, cssDir);
+      return 'url($quote$relPath$quote)';
     });
   }
 

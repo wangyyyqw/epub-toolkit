@@ -1,5 +1,30 @@
 # 更新日志
 
+## 1.3.3 - 2026-08-12
+
+### 安全
+
+- **更换 Android 发布签名密钥**：旧密钥与口令曾随仓库提交（公开 git 历史可追溯），存在被伪造签名更新的风险。现更换全新密钥，构建凭据全部改由 GitHub Secrets 注入（`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`），密钥文件不再入库。
+  - **注意**：新签名与旧版本不兼容，升级需先卸载旧版再安装（签名不一致时覆盖安装会失败）。
+
+### 构建与发布
+
+- 全平台应用版本统一更新为 `1.3.3`，构建号为 `24`。
+- CI 签名流程：`release-builds.yml` 从仓库 Secrets 解密 keystore 并注入 Gradle 环境变量；未配置 Secrets 的仓库（fork/PR）自动回退 debug 签名。
+
+## 1.3.2 - 2026-08-12
+
+### 修复
+
+- **简体转繁体/繁体转简体在 Android 上操作失败（两个连环问题）**：
+  1. **后台 isolate 空检查崩溃**：字典值在闭包内读取静态 getter，后台 isolate 中静态字段为 null，抛 `Null check operator used on a null value`。改为在 UI isolate 加载字典后经消息传入。
+  2. **后台 isolate 消息不可发送崩溃**：实例方法内定义的闭包隐式捕获 `this`（State 及整棵 Widget 树），Isolate 序列化时抛 `Illegal argument in isolate message: object is unsendable`。改为顶层函数 `runS2tTask`/`runT2sTask`，全部数据（路径、字典）随消息传递。
+- **错误日志可诊断化**：操作日志开头输出 `APP VERSION: <版本号>`，异常时输出 `STACK:` 堆栈，便于定位旧安装包与远端问题。
+
+### 构建与发布
+
+- 全平台应用版本统一更新为 `1.3.2`，构建号为 `23`。
+
 ## 1.3.0 - 2026-08-05
 
 ### 新增

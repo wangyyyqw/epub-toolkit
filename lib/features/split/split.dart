@@ -304,13 +304,13 @@ class SplitOperation {
       );
 
       segArchive.addFile(
-        ArchiveFile(opfPath, segOpfContent.length, utf8.encode(segOpfContent)),
+        ArchiveFile(opfPath, utf8.encode(segOpfContent).length, utf8.encode(segOpfContent)),
       );
 
       // TOC 文件
       final tocPath = _normalizePath('$opfDir$tocHref');
       segArchive.addFile(
-        ArchiveFile(tocPath, tocContent.length, utf8.encode(tocContent)),
+        ArchiveFile(tocPath, utf8.encode(tocContent).length, utf8.encode(tocContent)),
       );
 
       // 内容文件

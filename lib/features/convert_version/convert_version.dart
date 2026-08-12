@@ -62,7 +62,7 @@ class ConvertVersionOperation {
     // 将修改后的 OPF 写回（addFile 会自动替换同名文件）
     EpubImageHelper.addOrReplaceFile(
       archive,
-      ArchiveFile(opfPath, opfContent.length, utf8.encode(opfContent)),
+      ArchiveFile(opfPath, utf8.encode(opfContent).length, utf8.encode(opfContent)),
     );
 
     // 重新打包并保存
@@ -99,7 +99,7 @@ class ConvertVersionOperation {
         final navPath = '${opfDir}nav.xhtml';
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(navPath, navHtml.length, utf8.encode(navHtml)),
+          ArchiveFile(navPath, utf8.encode(navHtml).length, utf8.encode(navHtml)),
         );
         // 在 manifest 中添加 nav item
         content = content.replaceFirst(
@@ -619,7 +619,7 @@ class ConvertVersionOperation {
         ? (contents.first.getAttribute('src') ?? '')
         : '';
 
-    buffer.writeln('$indent<li><a href="$src">$label</a>');
+    buffer.writeln('$indent<li><a href="${_escapeXmlAttr(src)}">${_escapeXmlText(label)}</a>');
 
     // 递归处理嵌套子章节
     final subPoints = navPoint.findElements('navPoint', namespace: '*');

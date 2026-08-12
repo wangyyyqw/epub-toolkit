@@ -41,6 +41,86 @@ Widget buildSectionLabel(BuildContext context, IconData icon, String text) {
   );
 }
 
+/// 响应式行：宽屏(≥[breakpoint])横向排列子项，窄屏纵向堆叠
+///
+/// 用于把「文件选择 + 输出路径」「参数 + 参数」等表单在桌面端并排、
+/// 移动端单列，避免桌面留白、移动端拥挤。
+/// [flexes] 与 [children] 等长时按比例分配横向空间，缺省均分。
+class ResponsiveRow extends StatelessWidget {
+  final List<Widget> children;
+  final double breakpoint;
+  final double spacing;
+  final List<int> flexes;
+  final CrossAxisAlignment crossAxisAlignment;
+
+  const ResponsiveRow({
+    super.key,
+    required this.children,
+    this.breakpoint = 720,
+    this.spacing = 12,
+    this.flexes = const [],
+    this.crossAxisAlignment = CrossAxisAlignment.start,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= breakpoint;
+        if (!wide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i > 0) SizedBox(height: spacing),
+                children[i],
+              ],
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: crossAxisAlignment,
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) SizedBox(width: spacing),
+              Expanded(
+                flex: i < flexes.length ? flexes[i] : 1,
+                child: children[i],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 便捷函数：两个子项响应式并排（桌面双列、移动单列）
+Widget buildResponsivePair({
+  required Widget first,
+  required Widget second,
+  double breakpoint = 720,
+  double spacing = 12,
+  List<int> flexes = const [1, 1],
+}) {
+  return ResponsiveRow(
+    children: [first, second],
+    breakpoint: breakpoint,
+    spacing: spacing,
+    flexes: flexes,
+  );
+}
+
+/// 工具页内容区边距
+///
+/// 桌面端(≥720)底部操作栏为悬浮按钮,内容区不需要大留白;
+/// 移动端保留 80 底部空间给通栏按钮。
+EdgeInsets toolPageContentPadding(BuildContext context) {
+  final wide = MediaQuery.sizeOf(context).width >= 720;
+  return EdgeInsets.fromLTRB(16, 4, 16, wide ? 24 : 80);
+}
+
 /// 信息提示条
 Widget buildInfoBar(BuildContext context, String text) {
   return Container(
@@ -233,6 +313,8 @@ class _HelpContent extends StatelessWidget {
 }
 
 /// 文件选择行（整行可点击）
+///
+/// 桌面端展示更长路径，移动端截断。
 Widget buildFilePickerRow(
   BuildContext context, {
   required IconData icon,
@@ -244,6 +326,10 @@ Widget buildFilePickerRow(
   FilesDroppedCallback? onFilesDropped,
   bool dropEnabled = true,
 }) {
+  final wide = MediaQuery.sizeOf(context).width >= 720;
+  final displayValue = value.isNotEmpty
+      ? (value.length > (wide ? 88 : 40) ? truncatePath(value, maxLen: wide ? 72 : 35) : value)
+      : hint;
   final defaultDropHandler = _shouldAcceptDroppedFiles(label)
       ? (List<String> paths) {
           FileService.primeDroppedPaths(paths);
@@ -286,9 +372,7 @@ Widget buildFilePickerRow(
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  value.isNotEmpty
-                      ? (value.length > 40 ? truncatePath(value) : value)
-                      : hint,
+                  displayValue,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -329,6 +413,9 @@ bool _shouldAcceptDroppedFiles(String label) {
 }
 
 /// 紧凑文本输入框（带标签）
+///
+/// controller 由内部 StatefulWidget 管理并随组件销毁释放，
+/// 避免每次 build 新建 TextEditingController 导致光标跳尾与内存泄漏。
 Widget buildCompactField(
   BuildContext context, {
   required String label,
@@ -338,58 +425,122 @@ Widget buildCompactField(
   required ValueChanged<String> onChanged,
   int maxLines = 1,
 }) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Row(
-        children: [
-          Icon(icon, size: 14, color: context.themeTextTertiary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(fontSize: 13.5, color: context.themeTextTertiary),
-          ),
-        ],
-      ),
-      const SizedBox(height: 6),
-      SizedBox(
-        height: maxLines > 1 ? null : 54,
-        child: TextField(
-          controller: TextEditingController(text: value),
-          style: TextStyle(fontSize: 15, color: context.themeTextPrimary),
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              fontSize: 14.5,
-              color: context.themeTextTertiary,
-            ),
-            filled: true,
-            fillColor: context.themeCard,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 15,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeDividerLight),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeDividerLight),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeAccent, width: 1.5),
-            ),
-          ),
-          onChanged: onChanged,
-        ),
-      ),
-    ],
+  return _CompactField(
+    label: label,
+    value: value,
+    hint: hint,
+    icon: icon,
+    onChanged: onChanged,
+    maxLines: maxLines,
   );
+}
+
+/// buildCompactField 的内部实现（StatefulWidget 管理 controller 生命周期）
+class _CompactField extends StatefulWidget {
+  final String label;
+  final String value;
+  final String hint;
+  final IconData icon;
+  final ValueChanged<String> onChanged;
+  final int maxLines;
+
+  const _CompactField({
+    required this.label,
+    required this.value,
+    required this.hint,
+    required this.icon,
+    required this.onChanged,
+    required this.maxLines,
+  });
+
+  @override
+  State<_CompactField> createState() => _CompactFieldState();
+}
+
+class _CompactFieldState extends State<_CompactField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CompactField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 外部值变化时同步文本；编辑中(光标在内)不打断输入
+    if (widget.value != oldWidget.value &&
+        _controller.text != widget.value &&
+        !_controller.selection.isValid) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(widget.icon, size: 14, color: context.themeTextTertiary),
+            const SizedBox(width: 6),
+            Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: context.themeTextTertiary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: widget.maxLines > 1 ? null : 54,
+          child: TextField(
+            controller: _controller,
+            style: TextStyle(fontSize: 15, color: context.themeTextPrimary),
+            maxLines: widget.maxLines,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              hintStyle: TextStyle(
+                fontSize: 14.5,
+                color: context.themeTextTertiary,
+              ),
+              filled: true,
+              fillColor: context.themeCard,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 15,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                borderSide: BorderSide(color: context.themeDividerLight),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                borderSide: BorderSide(color: context.themeDividerLight),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                borderSide: BorderSide(color: context.themeAccent, width: 1.5),
+              ),
+            ),
+            onChanged: widget.onChanged,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// 紧凑下拉选择器
@@ -468,25 +619,27 @@ Widget buildCompactSelect(
 /// 工具页页头（参考设置页的大标题风格）
 ///
 /// 采用统一的墨色中性风格，保证全篇不出现第二处彩色。
+/// 桌面端字号/图标略大，移动端紧凑。
 Widget buildToolHeader(
   BuildContext context, {
   required IconData icon,
   required String title,
   required String subtitle,
 }) {
+  final wide = MediaQuery.sizeOf(context).width >= 720;
   return Padding(
-    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+    padding: EdgeInsets.fromLTRB(16, wide ? 8 : 6, 16, wide ? 12 : 10),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
-          width: 36,
-          height: 36,
+          width: wide ? 40 : 36,
+          height: wide ? 40 : 36,
           decoration: BoxDecoration(
             color: context.themeAccentLight,
             borderRadius: BorderRadius.circular(AppTheme.radiusS),
           ),
-          child: Icon(icon, color: context.themeAccent, size: 18),
+          child: Icon(icon, color: context.themeAccent, size: wide ? 21 : 18),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -499,7 +652,7 @@ Widget buildToolHeader(
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 17,
+                  fontSize: wide ? 19 : 17,
                   fontWeight: FontWeight.w600,
                   color: context.themeTextPrimary,
                   letterSpacing: 0.2,
@@ -511,7 +664,7 @@ Widget buildToolHeader(
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: wide ? 12.5 : 12,
                   height: 1.4,
                   color: context.themeTextTertiary,
                 ),
@@ -524,7 +677,11 @@ Widget buildToolHeader(
   );
 }
 
-/// 底部固定操作栏（悬浮胶囊风格 - 让纸色背景贯通；加载态为半透明磨砂玻璃）
+/// 底部固定操作栏
+///
+/// 响应式：宽屏(≥720)为右下角悬浮胶囊按钮(不占通栏宽度，内容区不再
+/// 需要底部大留白)；窄屏为通栏大按钮(触控友好)。
+/// 加载态均为半透明磨砂玻璃。
 Widget buildBottomActionBar(
   BuildContext context, {
   required bool loading,
@@ -534,77 +691,94 @@ Widget buildBottomActionBar(
 }) {
   return SafeArea(
     top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: loading
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(AppTheme.radiusM),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: Container(
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: context.themeCard.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                    border: Border.all(
-                      color: context.themeDividerLight.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: context.themeAccent,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        '正在处理，请稍候…',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: context.themeTextSecondary,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 720;
+        final loadingWidget = ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radiusM),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: context.themeCard.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                border: Border.all(
+                  color: context.themeDividerLight.withValues(alpha: 0.6),
                 ),
               ),
-            )
-          : SizedBox(
-              height: 50,
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onPressed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.themeAccent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusL),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 19, color: Colors.white),
-                    const SizedBox(width: 10),
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: context.themeAccent,
                     ),
-                  ],
-                ),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    '正在处理，请稍候…',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: context.themeTextSecondary,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
+        );
+        final actionButton = SizedBox(
+          height: 50,
+          width: wide ? 260 : double.infinity,
+          child: ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.themeAccent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusL),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 19, color: Colors.white),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        if (!wide) {
+          // 移动端：通栏操作栏
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: loading ? loadingWidget : actionButton,
+          );
+        }
+        // 桌面端：右下角悬浮，内容区不再需要底部大留白
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 24, 20),
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: loading ? loadingWidget : actionButton,
+          ),
+        );
+      },
     ),
   );
 }

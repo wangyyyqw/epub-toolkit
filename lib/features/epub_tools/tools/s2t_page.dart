@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../../core/app_version.dart';
+import '../../../core/background_task.dart';
 import '../../../core/file_service.dart';
-import '../../s2t/s2t.dart';
+import '../../s2t/chinese_convert_base.dart';
+import '../../s2t/chinese_converter.dart';
 import '../../../shared/providers/toast_provider.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
@@ -94,22 +97,35 @@ class _S2tPageState extends State<S2tPage> {
     setState(() => _loading = true);
     _logController.clear();
     _logController.append('PROGRESS: 开始执行「简体转繁体」操作...');
+    _logController.append('APP VERSION: $appVersion');
     _logController.append('输入文件：$_epubPath');
     _logController.append('输出文件：$_outputPath');
     _logController.append('正在进行简体转繁体...');
 
     try {
-      final result = await S2tOperation.execute(
-        epubPath: _epubPath,
-        outputPath: _outputPath,
-      );
+      // 简繁转换是 CPU 密集操作,放到后台 isolate 避免大书卡死 UI。
+      // 注意:传给 runBackgroundTask 的必须是顶层函数而非闭包——
+      // 实例方法内定义的闭包会隐式捕获 this(State 及整棵 Widget 树),
+      // Isolate 序列化时抛 "Illegal argument in isolate message: object is unsendable"。
+      // 字典在 UI isolate 加载(依赖 rootBundle),通过消息传入后台 isolate
+      // (后台 isolate 中静态字典字段为 null,不能读取 getter)。
+      await ChineseConverter.initS2T();
+      final result = await runBackgroundTask(runS2tTask, [
+        _epubPath,
+        _outputPath,
+        ChineseConverter.s2tPhrases,
+        ChineseConverter.s2tCharacters,
+        ChineseConverter.s2tPhraseMaxLen,
+        ChineseConverter.s2tCharMaxLen,
+      ]);
       _logAppendLines(result);
       if (mounted) {
         context.read<ToastProvider>().showSuccess('简转繁完成，已保存到 $_outputPath');
       }
       await _copyToPublicDownload();
-    } catch (e) {
+    } catch (e, st) {
       _logController.append('ERROR: 操作失败：$e');
+      _logController.append('STACK: $st');
       if (mounted) {
         context.read<ToastProvider>().showError('操作失败：$e');
       }
@@ -173,9 +189,15 @@ class _S2tPageState extends State<S2tPage> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
                 // EPUB 文件选择
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
+                ResponsiveRow(
+                  children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
                   context,
                   icon: Icons.book_outlined,
                   label: 'EPUB 文件',
@@ -184,12 +206,15 @@ class _S2tPageState extends State<S2tPage> {
                   onTap: _loading ? () {} : _pickEpub,
                   isComplete: _epubPath.isNotEmpty,
                 ),
-
-                // 输出路径
-                const SizedBox(height: 16),
-                buildSectionLabel(context, Icons.save_outlined, '输出路径'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.save_outlined, '输出路径'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
                   context,
                   icon: Icons.save_outlined,
                   label: '输出 EPUB',
@@ -198,6 +223,13 @@ class _S2tPageState extends State<S2tPage> {
                   onTap: _loading ? () {} : _pickOutput,
                   isComplete: _outputPath.isNotEmpty,
                 ),
+                    ],
+                  ),
+                  ],
+                ),
+
+                // 输出路径
+                const SizedBox(height: 16),
 
                 // 日志面板
                 const SizedBox(height: 16),

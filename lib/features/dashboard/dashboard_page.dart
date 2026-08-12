@@ -67,7 +67,7 @@ class DashboardPage extends StatelessWidget {
       physics: const BouncingScrollPhysics(),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 28),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               const _WelcomeCard(),
@@ -79,11 +79,27 @@ class DashboardPage extends StatelessWidget {
                 subtitle: '感谢这些优秀的阅读、制作与分享项目。',
               ),
               const SizedBox(height: 10),
-              for (final item in _recommendations) ...[
-                _RecommendationRow(item: item),
-                const SizedBox(height: 10),
-              ],
-              const SizedBox(height: 10),
+              // 推荐卡片：桌面双列网格，移动端单列
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 720;
+                  final cardWidth = wide
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final item in _recommendations)
+                        SizedBox(
+                          width: cardWidth,
+                          child: _RecommendationRow(item: item),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
               const _SectionHeading(
                 title: '支持的平台与系统',
                 subtitle: '各平台均以本地文件处理为主；Windows 网页推送需要 WebView2。',

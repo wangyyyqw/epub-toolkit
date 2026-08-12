@@ -257,9 +257,15 @@ span.reader:hover:after {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
                 // EPUB 文件选择
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
+                ResponsiveRow(
+                  children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
                   context,
                   icon: Icons.book_outlined,
                   label: 'EPUB 文件',
@@ -267,6 +273,27 @@ span.reader:hover:after {
                   hint: '点击选择 EPUB 文件',
                   onTap: _loading ? () {} : _pickEpub,
                   isComplete: _epubPath.isNotEmpty,
+                ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.save_outlined, '输出路径'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
+                  context,
+                  icon: Icons.save_outlined,
+                  label: '输出 EPUB',
+                  value: _outputPath,
+                  hint: '点击选择输出文件位置',
+                  onTap: _loading ? () {} : _pickOutput,
+                  isComplete: _outputPath.isNotEmpty,
+                ),
+                    ],
+                  ),
+                  ],
                 ),
 
                 const SizedBox(height: 16),
@@ -278,17 +305,6 @@ span.reader:hover:after {
 
                 // 输出路径
                 const SizedBox(height: 16),
-                buildSectionLabel(context, Icons.save_outlined, '输出路径'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
-                  context,
-                  icon: Icons.save_outlined,
-                  label: '输出 EPUB',
-                  value: _outputPath,
-                  hint: '点击选择输出文件位置',
-                  onTap: _loading ? () {} : _pickOutput,
-                  isComplete: _outputPath.isNotEmpty,
-                ),
 
                 // 日志面板
                 const SizedBox(height: 16),

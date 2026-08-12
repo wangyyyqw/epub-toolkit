@@ -10,7 +10,7 @@
 # 用法：bash tool/check_dependencies.sh
 # 退出码：0 = 通过，1 = 有违规
 
-cd /Users/aaa/Documents/github/epub-gadget/flutter
+cd "$(dirname "$0")/../.."
 
 # 业务模块列表（排除 UI 容器和非业务功能页面）
 BUSINESS_MODULES=$(ls -d lib/features/*/ | xargs -n1 basename | grep -vE '^(epub_tools|dashboard|metadata|send_to_kindle|tutorial|txt2epub|shared)$')

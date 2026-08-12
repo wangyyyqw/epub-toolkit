@@ -281,6 +281,16 @@ class FileService {
       pickerDir,
       defaultFileName,
     );
+    // Android：file_picker 8.1.6 的 saveFile 必须传 bytes，
+    // 不传会在原生层 `outputStream.write(null)` 抛 NPE（Dart 无法拦截，
+    // 直接崩 App）；openOutputStream 返回 null 时 Future 永久挂起。
+    // 这里降级为 SAF 目录选择 + 文件名拼接（目录可正常 File API 写入）。
+    if (Platform.isAndroid) {
+      final dir = await pickDirectory(title: '选择保存目录');
+      if (dir == null) return null;
+      final uniqueInDir = await _uniquePath(dir, safeFileName);
+      return uniqueInDir;
+    }
     try {
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '保存文件',

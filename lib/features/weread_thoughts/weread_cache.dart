@@ -36,12 +36,14 @@ class WereadCache {
   /// [bookAuthor] 作者
   /// [totalChapters] 远端总章节数
   /// [chapters] 已拉取的章节数据(全量,包含之前的缓存)
+  /// [bookReviews] 整本书评
   static Future<void> save({
     required String bookId,
     required String bookTitle,
     required String bookAuthor,
     required int totalChapters,
     required List<ChapterData> chapters,
+    List<WereadReview> bookReviews = const [],
   }) async {
     final filePath = await _cacheFile(bookId);
     final json = {
@@ -51,6 +53,7 @@ class WereadCache {
       'totalChapters': totalChapters,
       'syncedChapterUids': chapters.map((c) => c.chapterUid).toList(),
       'chapters': chapters.map((c) => c.toJson()).toList(),
+      'bookReviews': bookReviews.map((r) => r.toJson()).toList(),
       'syncedAt': DateTime.now().toIso8601String(),
     };
     final file = File(filePath);
@@ -79,6 +82,9 @@ class WereadCache {
         syncedChapterUids:
             (json['syncedChapterUids'] as List? ?? []).map((e) => e.toString()).toSet(),
         chapters: chapters,
+        bookReviews: (json['bookReviews'] as List? ?? [])
+            .map((e) => WereadReview.fromJson(e as Map<String, dynamic>))
+            .toList(),
         syncedAt: DateTime.tryParse(json['syncedAt']?.toString() ?? ''),
       );
     } catch (_) {
@@ -123,6 +129,7 @@ class CacheData {
   final int totalChapters;
   final Set<String> syncedChapterUids;
   final List<ChapterData> chapters;
+  final List<WereadReview> bookReviews;
   final DateTime? syncedAt;
 
   CacheData({
@@ -132,6 +139,7 @@ class CacheData {
     required this.totalChapters,
     required this.syncedChapterUids,
     required this.chapters,
+    this.bookReviews = const [],
     this.syncedAt,
   });
 

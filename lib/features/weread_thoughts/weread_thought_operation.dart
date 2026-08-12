@@ -32,6 +32,12 @@ class WereadThoughtOperation {
   /// EPUB 内 CSS 文件的路径(相对于 OPF 目录)
   static const _cssPath = 'weread-thoughts.css';
 
+  /// EPUB 内书评页 XHTML 的文件名(位于 OPF 目录)
+  static const _bookReviewsXhtmlName = 'weread-book-reviews.xhtml';
+
+  /// 书评页 manifest item 的 id
+  static const _bookReviewsManifestId = 'weread-book-reviews';
+
   /// 生成弹窗 CSS 样式(引用外部 note.png 文件,非 base64)
   ///
   /// CSS 文件和 note.png 都放在 OPF 目录下,两者同级,
@@ -68,6 +74,33 @@ $cssMarker
     max-width: 90vw;
     white-space: pre-line;
     text-align: left;
+}
+
+/* 章评/书评区块 */
+.wr-reviews-block {
+    margin-top: 1.8em;
+    padding-top: 0.4em;
+}
+.wr-reviews-title {
+    font-size: 1.05em;
+    font-weight: 700;
+    color: #23745B;
+    margin: 0.4em 0 0.8em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid #dbe2df;
+}
+.wr-review {
+    margin: 0 0 0.9em;
+}
+.wr-review-meta {
+    font-size: 0.8em;
+    color: #6d7874;
+    margin-bottom: 0.2em;
+}
+.wr-review-content {
+    font-size: 0.95em;
+    line-height: 1.65;
+    text-indent: 0em;
 }
 ''';
   }
@@ -172,6 +205,72 @@ $cssMarker
     return opfContent;
   }
 
+  /// 在 OPF 中注册书评页:manifest 条目 + spine 末尾 itemref
+  ///
+  /// [xhtmlHref] 书评页相对于 OPF 的路径(如 weread-book-reviews.xhtml)
+  /// 已注册时原样返回(幂等)。
+  static String _addBookReviewsEntries(
+    String opfContent, {
+    required String xhtmlHref,
+  }) {
+    if (opfContent.contains('weread-book-reviews')) return opfContent;
+
+    final manifestItem = '  <item id="$_bookReviewsManifestId" '
+        'href="$xhtmlHref" media-type="application/xhtml+xml" />';
+
+    // 插入到 </manifest> 前
+    final manifestEnd = RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>')
+        .firstMatch(opfContent);
+    if (manifestEnd != null) {
+      opfContent = opfContent.substring(0, manifestEnd.start) +
+          manifestItem +
+          '\n' +
+          opfContent.substring(manifestEnd.start);
+    }
+
+    // 插入到 </spine> 前(书评页在书末尾)
+    final spineEnd = RegExp(r'</[Ss][Pp][Ii][Nn][Ee]\s*>')
+        .firstMatch(opfContent);
+    if (spineEnd != null) {
+      opfContent = opfContent.substring(0, spineEnd.start) +
+          '  <itemref idref="$_bookReviewsManifestId" />\n' +
+          opfContent.substring(spineEnd.start);
+    }
+
+    return opfContent;
+  }
+
+  /// 生成书评页完整 XHTML(静态内容,引用外部 CSS)
+  ///
+  /// [bookTitle] 书名
+  /// [bookReviews] 整本书评
+  /// [cssHref] CSS 文件相对于本页的路径(书评页与 CSS 同目录,直接用文件名)
+  static String _generateBookReviewsHtml(
+    String bookTitle,
+    List<WereadReview> bookReviews, {
+    required String cssHref,
+  }) {
+    final items = _renderReviewItems(
+      bookReviews.map(_toReviewInput).toList(),
+      maxReviews: 20,
+    );
+    final escapedTitle = _escapeHtml(bookTitle);
+    return '<!DOCTYPE html>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="zh">\n'
+        '<head>\n'
+        '  <meta charset="utf-8" />\n'
+        '  <title>书评</title>\n'
+        '  <link rel="stylesheet" type="text/css" href="$cssHref" />\n'
+        '</head>\n'
+        '<body>\n'
+        '<section class="wr-reviews-block">\n'
+        '  <h2 class="wr-reviews-title">书评 · $escapedTitle</h2>\n'
+        '$items\n'
+        '</section>\n'
+        '</body>\n'
+        '</html>';
+  }
+
   // === HTML 实体映射(移植自 annotations.lua NAMED_ENTITIES) ===
 
   static const _namedEntities = {
@@ -210,6 +309,10 @@ $cssMarker
   /// [outputPath] 输出 EPUB 路径
   /// [chapters] 从读书平台拉取的章节数据(含划线和想法)
   /// [notePngBytes] note.png 图标字节(用于弹窗标记背景)
+  /// [bookTitle] 书名(书评页标题用)
+  /// [bookReviews] 整本书评(独立生成一页,挂在书末尾)
+  /// [enableChapterReviews] 是否在每章末尾注入章评区块
+  /// [enableBookReviews] 是否生成书评页
   /// [onProgress] 进度回调 (phase, current, total, text)
   /// 返回处理结果日志
   static Future<String> execute({
@@ -217,6 +320,10 @@ $cssMarker
     required String outputPath,
     required List<ChapterData> chapters,
     required Uint8List notePngBytes,
+    String bookTitle = '',
+    List<WereadReview> bookReviews = const [],
+    bool enableChapterReviews = true,
+    bool enableBookReviews = true,
     void Function(String phase, int current, int total, String text)?
         onProgress,
   }) async {
@@ -262,14 +369,10 @@ $cssMarker
         reviewMap: ch.reviewMap.map((range, reviews) => MapEntry(
               range,
               reviews
-                  .map((r) => ReviewInput(
-                        content: r.content,
-                        abstract: r.abstract,
-                        author: r.author,
-                        likes: r.likes,
-                      ))
+                  .map(_toReviewInput)
                   .toList(),
             )),
+        chapterReviews: ch.chapterReviews.map(_toReviewInput).toList(),
       ));
     }
 
@@ -316,6 +419,7 @@ $cssMarker
     // 7. 逐文件注入想法
     onProgress('inject', 0, groupsByHref.length, '注入想法');
     var totalInjected = 0;
+    var totalChapterReviews = 0;
     var fileIndex = 0;
 
     for (final entry in groupsByHref.entries) {
@@ -328,23 +432,27 @@ $cssMarker
       if (originalHtml == null) continue;
 
       // 合并同文件多章数据,单次分词+注入
-      final (injectedHtml, count) = _injectFile(
+      final (injectedHtml, count, reviewCount) = _injectFile(
         originalHtml,
         chaptersForFile,
         htmlPath: href,
         opfDir: epubInfo.opfDir,
+        enableChapterReviews: enableChapterReviews,
       );
-      if (count > 0) {
+      if (count > 0 || reviewCount > 0) {
         htmlMap[href] = injectedHtml;
         totalInjected += count;
-        log.writeln('  $href: 注入 $count 个想法锚点');
+        totalChapterReviews += reviewCount;
+        log.writeln('  $href: 注入 $count 个想法锚点'
+            '${reviewCount > 0 ? ', $reviewCount 条章评' : ''}');
       }
     }
 
     onProgress('inject', groupsByHref.length, groupsByHref.length, '完成');
-    log.writeln('共注入 $totalInjected 个想法锚点');
+    log.writeln('共注入 $totalInjected 个想法锚点'
+        '${totalChapterReviews > 0 ? ', $totalChapterReviews 条章评' : ''}');
 
-    if (totalInjected == 0) {
+    if (totalInjected == 0 && totalChapterReviews == 0) {
       log.writeln('警告: 没有成功注入任何想法(引文可能在本地书中被精校修改)');
     }
 
@@ -356,6 +464,8 @@ $cssMarker
     // note.png 和 CSS 在 EPUB 内的完整路径(放在 OPF 目录下)
     final notePngFullPath = '${epubInfo.opfDir}$_notePngPath';
     final cssFullPath = '${epubInfo.opfDir}$_cssPath';
+    final bookReviewsFullPath = '${epubInfo.opfDir}$_bookReviewsXhtmlName';
+    final wantBookReviews = enableBookReviews && bookReviews.isNotEmpty;
 
     for (final file in archive.files) {
       if (file.name.isEmpty || writtenFiles.contains(file.name)) continue;
@@ -366,14 +476,20 @@ $cssMarker
         outputArchive.addFile(mf);
       } else if (file.name == epubInfo.opfPath) {
         // 修改 OPF:添加 manifest 条目
-        final opfContent =
+        var opfContent =
             utf8.decode(file.content as List<int>, allowMalformed: true);
-        final modifiedOpf = _addManifestItems(
+        opfContent = _addManifestItems(
           opfContent,
           notePngFullPath: _notePngPath,
           cssFullPath: _cssPath,
         );
-        final newBytes = Uint8List.fromList(utf8.encode(modifiedOpf));
+        if (wantBookReviews) {
+          opfContent = _addBookReviewsEntries(
+            opfContent,
+            xhtmlHref: _bookReviewsXhtmlName,
+          );
+        }
+        final newBytes = Uint8List.fromList(utf8.encode(opfContent));
         outputArchive.addFile(
           ArchiveFile(file.name, newBytes.length, newBytes),
         );
@@ -411,6 +527,21 @@ $cssMarker
       writtenFiles.add(cssFullPath);
     }
 
+    // 添加书评页(独立 XHTML,挂在 spine 末尾)
+    if (wantBookReviews && !writtenFiles.contains(bookReviewsFullPath)) {
+      final pageContent = _generateBookReviewsHtml(
+        bookTitle,
+        bookReviews,
+        cssHref: _cssPath,
+      );
+      final pageBytes = Uint8List.fromList(utf8.encode(pageContent));
+      outputArchive.addFile(
+        ArchiveFile(bookReviewsFullPath, pageBytes.length, pageBytes),
+      );
+      writtenFiles.add(bookReviewsFullPath);
+      log.writeln('书评页: 生成 ${bookReviews.length} 条书评(显示前 20 条)');
+    }
+
     await EpubPacker.pack(archive: outputArchive, outputPath: outputPath);
     onProgress('pack', 1, 1, '完成');
 
@@ -425,13 +556,16 @@ $cssMarker
   ///
   /// 合并同一文件的多个微信章节数据,进行单次分词和注入。
   /// 多章合并时禁用数字 range 兜底(range 是章内偏移,跨章无意义)。
+  /// 注入完成后,在文件末尾追加章评区块(如启用)。
   /// [htmlPath] HTML 文件在 EPUB 内的路径(用于计算 CSS 相对路径)
   /// [opfDir] OPF 所在目录(用于计算 CSS 相对路径)
-  static (String, int) _injectFile(
+  /// 返回 (注入后的 HTML, 想法锚点数, 章评条数)
+  static (String, int, int) _injectFile(
     String html,
     List<MappedChapter> chaptersForFile, {
     String htmlPath = '',
     String opfDir = '',
+    bool enableChapterReviews = true,
   }) {
     // 合并所有章节的划线和想法
     final allUnderlines = <UnderlineInput>[];
@@ -466,12 +600,127 @@ $cssMarker
     final (rendered, stats) = _inject(html, data);
     final count = stats.quoteAligned + stats.numeric;
 
-    if (count == 0) return (html, 0);
+    // 章评区块(章评没有引文,直接挂在文件末尾;
+    // 即使想法锚点一个都没对齐也保留章评)
+    var reviewCount = 0;
+    var reviewBlocks = '';
+    if (enableChapterReviews) {
+      final blocks = <String>[];
+      for (final ch in chaptersForFile) {
+        if (ch.chapterReviews.isEmpty) continue;
+        final block = _renderChapterReviewsBlock(
+          ch.title,
+          ch.chapterReviews,
+        );
+        if (block.isNotEmpty) {
+          blocks.add(block);
+          reviewCount += ch.chapterReviews.length;
+        }
+      }
+      if (blocks.isNotEmpty) {
+        reviewBlocks = blocks.join('\n');
+      }
+    }
+
+    if (count == 0 && reviewBlocks.isEmpty) return (html, 0, 0);
 
     // 注入外部 CSS 引用(通过 <link> 标签)
+    var resultHtml = count > 0 ? rendered : html;
     final cssHref = _relativeCssHref(htmlPath, opfDir);
-    final withStyle = _ensureStyle(rendered, cssHref);
-    return (withStyle, count);
+    resultHtml = _ensureStyle(resultHtml, cssHref);
+    if (reviewBlocks.isNotEmpty) {
+      resultHtml = _appendBeforeBodyEnd(resultHtml, reviewBlocks);
+    }
+
+    return (resultHtml, count, reviewCount);
+  }
+
+  /// 渲染章评区块(静态 HTML,挂在章节末尾)
+  ///
+  /// 最多展示 [maxReviews] 条章评,按点赞数排序。
+  static String _renderChapterReviewsBlock(
+    String chapterTitle,
+    List<ReviewInput> reviews, {
+    int maxReviews = 5,
+  }) {
+    final items = _renderReviewItems(reviews, maxReviews: maxReviews);
+    if (items.isEmpty) return '';
+    final escapedTitle = _escapeHtml(chapterTitle);
+    return '<section class="wr-reviews-block">'
+        '<h3 class="wr-reviews-title">章评 · $escapedTitle</h3>'
+        '$items'
+        '</section>';
+  }
+
+  /// 渲染单条评论列表的 HTML
+  ///
+  /// 按点赞数降序,最多 [maxReviews] 条;内容去重。
+  static String _renderReviewItems(
+    List<ReviewInput> reviews, {
+    int maxReviews = 20,
+  }) {
+    // 排序:点赞降序,点赞相同则按时间新→旧
+    final sorted = [...reviews]..sort((a, b) {
+        if (b.likes != a.likes) return b.likes.compareTo(a.likes);
+        return b.createTime.compareTo(a.createTime);
+      });
+
+    final items = <String>[];
+    final seen = <String>{};
+    for (final r in sorted) {
+      if (items.length >= maxReviews) break;
+      final content = _cleanThoughtText(r.content);
+      if (content.isEmpty || seen.contains(content)) continue;
+      seen.add(content);
+
+      final meta = <String>[];
+      if (r.author.isNotEmpty) {
+        meta.add('<b>${_escapeHtml(r.author)}</b>');
+      }
+      if (r.createTime > 0) {
+        meta.add(_formatReviewDate(r.createTime));
+      }
+      if (r.likes > 0) {
+        meta.add('赞 ${r.likes}');
+      }
+      items.add('<div class="wr-review">'
+          '<div class="wr-review-meta">${meta.join(' · ')}</div>'
+          '<div class="wr-review-content">${_escapeHtml(content)}</div>'
+          '</div>');
+    }
+    return items.join('\n');
+  }
+
+  /// 格式化评论时间戳(秒)为 YYYY-MM-DD
+  static String _formatReviewDate(int seconds) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+    final y = dt.year;
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  /// 在 </body> 前追加 HTML 片段
+  static String _appendBeforeBodyEnd(String html, String content) {
+    final bodyEnd = RegExp(r'</[Bb][Oo][Dd][Yy]\s*>').firstMatch(html);
+    if (bodyEnd != null) {
+      return html.substring(0, bodyEnd.start) +
+          content +
+          html.substring(bodyEnd.start);
+    }
+    // 兜底:直接追加到末尾
+    return html + content;
+  }
+
+  /// 将 API 想法对象转换为注入输入
+  static ReviewInput _toReviewInput(WereadReview r) {
+    return ReviewInput(
+      content: r.content,
+      abstract: r.abstract,
+      author: r.author,
+      likes: r.likes,
+      createTime: r.createTime,
+    );
   }
 
   // === HTML 分词器(移植自 annotations.lua tokenize) ===

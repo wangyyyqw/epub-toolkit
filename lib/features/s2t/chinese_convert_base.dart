@@ -8,6 +8,27 @@ import '../../core/epub_packer.dart';
 import 'chinese_converter.dart';
 import 'epub_image_helper.dart';
 
+/// 后台 isolate 执行简转繁的顶层函数
+///
+/// 必须为顶层函数而非实例方法内的闭包:实例方法内定义的闭包会隐式捕获
+/// this(State 及整棵 Widget 树),Isolate 序列化时抛 "Illegal argument in
+/// isolate message: object is unsendable"。
+/// 所有数据(路径、字典)通过消息参数传入;后台 isolate 中静态字典字段为
+/// null,不能读取 ChineseConverter 的 getter,字典必须先由 UI isolate 加载。
+///
+/// [args] 顺序:epubPath, outputPath, phrases, characters, phraseMaxLen, charMaxLen
+Future<String> runS2tTask(List<Object?> args) {
+  return ChineseConvertBase.execute(
+    epubPath: args[0] as String,
+    outputPath: args[1] as String,
+    mode: 's2t',
+    phrases: args[2] as Map<String, String>,
+    characters: args[3] as Map<String, String>,
+    phraseMaxLen: args[4] as int,
+    charMaxLen: args[5] as int,
+  );
+}
+
 /// 简繁中文转换操作（共享逻辑）
 ///
 /// 遍历 EPUB 中的 HTML/XHTML/HTM/NCX/OPF 文件，
@@ -21,18 +42,35 @@ class ChineseConvertBase {
   /// [epubPath] 输入 EPUB 路径
   /// [outputPath] 输出 EPUB 路径
   /// [mode] 转换模式：'s2t' 简转繁，'t2s' 繁转简
+  /// [phrases]/[characters]/[phraseMaxLen]/[charMaxLen] 外部字典参数：
+  /// 在后台 Isolate 中 rootBundle 不可用，必须由 UI Isolate 先加载字典
+  /// 再传入；不传时在当前 isolate 内加载（UI isolate 路径）。
   ///
   /// 返回处理结果摘要字符串
   static Future<String> execute({
     required String epubPath,
     required String outputPath,
     required String mode,
+    Map<String, String>? phrases,
+    Map<String, String>? characters,
+    int phraseMaxLen = 1,
+    int charMaxLen = 1,
   }) async {
-    // 初始化对应方向的字典
-    if (mode == 's2t') {
-      await ChineseConverter.initS2T();
-    } else {
-      await ChineseConverter.initT2S();
+    // 未传入字典时在当前 isolate 加载（rootBundle 仅在 UI isolate 可用）
+    if (phrases == null || characters == null) {
+      if (mode == 's2t') {
+        await ChineseConverter.initS2T();
+        phrases = ChineseConverter.s2tPhrases;
+        characters = ChineseConverter.s2tCharacters;
+        phraseMaxLen = ChineseConverter.s2tPhraseMaxLen;
+        charMaxLen = ChineseConverter.s2tCharMaxLen;
+      } else {
+        await ChineseConverter.initT2S();
+        phrases = ChineseConverter.t2sPhrases;
+        characters = ChineseConverter.t2sCharacters;
+        phraseMaxLen = ChineseConverter.t2sPhraseMaxLen;
+        charMaxLen = ChineseConverter.t2sCharMaxLen;
+      }
     }
 
     final bytes = await File(epubPath).readAsBytes();
@@ -67,13 +105,20 @@ class ChineseConvertBase {
 
       try {
         final content = utf8.decode(file.content as List<int>);
-        final converted = _convertHtml(content, mode);
+        final converted = _convertHtml(
+          content,
+          mode,
+          phrases,
+          characters,
+          phraseMaxLen,
+          charMaxLen,
+        );
 
         if (converted != content) {
           convertCount++;
           workingArchive = EpubImageHelper.addOrReplaceFileSafe(
             workingArchive,
-            ArchiveFile(file.name, converted.length, utf8.encode(converted)),
+            ArchiveFile(file.name, utf8.encode(converted).length, utf8.encode(converted)),
           );
         }
       } catch (e) {
@@ -99,14 +144,34 @@ class ChineseConvertBase {
   ///
   /// 使用正则提取标签之间的文本内容和属性值进行转换，
   /// 跳过 <script> 和 <style> 标签内容。
-  static String _convertHtml(String content, String mode) {
+  /// 字典通过参数传入（支持后台 Isolate 场景）。
+  static String _convertHtml(
+    String content,
+    String mode,
+    Map<String, String> phrases,
+    Map<String, String> characters,
+    int phraseMaxLen,
+    int charMaxLen,
+  ) {
     var result = content;
 
-    // 同步转换函数（字典已在 execute() 中初始化）
+    // 同步转换函数（使用外部字典，不依赖当前 isolate 的静态状态）
     String syncConvert(String text) {
       return mode == 's2t'
-          ? ChineseConverter.s2tSync(text)
-          : ChineseConverter.t2sSync(text);
+          ? ChineseConverter.s2tWithDict(
+              text,
+              phrases: phrases,
+              characters: characters,
+              phraseMaxLen: phraseMaxLen,
+              charMaxLen: charMaxLen,
+            )
+          : ChineseConverter.t2sWithDict(
+              text,
+              phrases: phrases,
+              characters: characters,
+              phraseMaxLen: phraseMaxLen,
+              charMaxLen: charMaxLen,
+            );
     }
 
     // 1. 临时替换 script 和 style 内容

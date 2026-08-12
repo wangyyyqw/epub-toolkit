@@ -50,7 +50,8 @@ class _YueweiConverter extends DuokanConverterBase {
       text = addEpubNamespace(text);
 
       // 转换阅微 span 脚注
-      final result = _convertYueweiSpans(text);
+      final notePngSrc = notePngSrcFor(filename);
+      final result = _convertYueweiSpans(text, notePngSrc);
       text = result.$1;
       var footnotes = result.$2;
 
@@ -73,7 +74,10 @@ class _YueweiConverter extends DuokanConverterBase {
 /// 转换阅微 reader span 脚注为多看格式
 ///
 /// 返回 (修改后的内容, 脚注列表)
-(String, List<FootnoteInfo>) _convertYueweiSpans(String text) {
+(String, List<FootnoteInfo>) _convertYueweiSpans(
+  String text,
+  String notePngSrc,
+) {
   // 匹配两种 class 顺序的阅微脚注 span
   final spanPattern1 = RegExp(
     r"""<span[^>]*class="[^"]*reader[^"]*js_readerFooterNote[^"]*"[^>]*data-wr-footernote="([^"]*)"[^>]*>\s*</span>""",
@@ -108,7 +112,7 @@ class _YueweiConverter extends DuokanConverterBase {
     final replacement =
         '      <sup>\n'
         '         <a class="duokan-footnote" epub:type="noteref" href="#$noteId" id="$noteRefId">\n'
-        '           <img alt="note" class="zhangyue-footnote" src="../Images/note.png" zy-footnote="$noteContent"/>\n'
+        '           <img alt="note" class="zhangyue-footnote" src="$notePngSrc" zy-footnote="$noteContent"/>\n'
         '         </a>\n'
         '       </sup>';
 

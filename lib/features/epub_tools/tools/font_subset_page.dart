@@ -152,9 +152,15 @@ class _FontSubsetPageState extends State<FontSubsetPage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
+                ResponsiveRow(
+                  children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
                   context,
                   icon: Icons.book_outlined,
                   label: 'EPUB 文件',
@@ -163,14 +169,15 @@ class _FontSubsetPageState extends State<FontSubsetPage> {
                   onTap: _loading ? () {} : _pickEpub,
                   isComplete: _epubPath.isNotEmpty,
                 ),
-                const SizedBox(height: 16),
-                buildSectionLabel(context, Icons.info_outline, '说明'),
-                const SizedBox(height: 8),
-                buildInfoBar(context, '仅支持 TTF/OTF 格式字体子集化，WOFF/WOFF2 将跳过'),
-                const SizedBox(height: 16),
-                buildSectionLabel(context, Icons.output, '输出路径'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildSectionLabel(context, Icons.output, '输出路径'),
+                      const SizedBox(height: 8),
+                      buildFilePickerRow(
                   context,
                   icon: Icons.save_outlined,
                   label: '输出文件',
@@ -179,6 +186,15 @@ class _FontSubsetPageState extends State<FontSubsetPage> {
                   onTap: _loading ? () {} : _pickOutput,
                   isComplete: _outputPath.isNotEmpty,
                 ),
+                    ],
+                  ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                buildSectionLabel(context, Icons.info_outline, '说明'),
+                const SizedBox(height: 8),
+                buildInfoBar(context, '仅支持 TTF/OTF 格式字体子集化，WOFF/WOFF2 将跳过'),
+                const SizedBox(height: 16),
                 const SizedBox(height: 8),
                 OutputLog(controller: _logController),
               ],

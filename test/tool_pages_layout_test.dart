@@ -26,6 +26,7 @@ import 'package:epub_gadget/features/epub_tools/tools/zhangyue_page.dart';
 import 'package:epub_gadget/features/metadata/metadata_page.dart';
 import 'package:epub_gadget/features/send_to_kindle/send_to_kindle_page.dart';
 import 'package:epub_gadget/features/text_diff/text_diff_page.dart';
+import 'package:epub_gadget/features/epub_tools/tools/weread_thoughts_page.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,11 +61,13 @@ void main() {
     ('元数据编辑', const MetadataPage()),
     ('Kindle 邮箱推送', const SendToKindlePage(tab: KindleTab.email)),
     ('文本对比', const TextDiffPage()),
+    ('读书想法', const WereadThoughtsPage()),
   ];
 
   testWidgets('所有功能页在窄窗口下均可构建且不溢出', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(500, 800);
+    addTearDown(tester.view.reset);
 
     for (final (name, page) in pages) {
       await tester.pumpWidget(
@@ -75,6 +78,23 @@ void main() {
       );
       await tester.pump();
       expect(tester.takeException(), isNull, reason: '$name 页面发生布局异常');
+    }
+  });
+
+  testWidgets('所有功能页在宽屏桌面窗口下均可构建且不溢出', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.reset);
+
+    for (final (name, page) in pages) {
+      await tester.pumpWidget(
+        ChangeNotifierProvider(
+          create: (_) => ToastProvider(),
+          child: MaterialApp(theme: AppTheme.light, home: page),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: '$name 页面(宽屏)发生布局异常');
     }
   });
 }

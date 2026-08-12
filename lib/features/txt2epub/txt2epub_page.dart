@@ -348,12 +348,33 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       setState(() {
         _scanResults = displayedResults;
         if (selectedPresets.isNotEmpty) {
-          for (final level in _levels) {
-            level.dispose();
+          // 仅当用户尚未自定义规则时才替换；否则保留现有配置并追加新预设。
+          // 直接 clear 会静默丢弃用户手工配好的正则/分页开关/级别。
+          final hasCustomRules = _levels.any(
+            (l) =>
+                l.presetName == null &&
+                l.pattern.isNotEmpty &&
+                l.pattern != r'^第.{1,20}章.{0,30}$',
+          );
+          if (!hasCustomRules) {
+            for (final level in _levels) {
+              level.dispose();
+            }
+            _levels
+              ..clear()
+              ..addAll(selectedPresets.map(LevelConfig.fromPreset));
+          } else {
+            // 追加不重复的预设规则(按正则去重)
+            final existingPatterns =
+                _levels.map((l) => l.pattern).toSet();
+            for (final preset in selectedPresets) {
+              if (!existingPatterns.contains(preset.pattern) &&
+                  _levels.length < 15) {
+                _levels.add(LevelConfig.fromPreset(preset));
+                existingPatterns.add(preset.pattern);
+              }
+            }
           }
-          _levels
-            ..clear()
-            ..addAll(selectedPresets.map(LevelConfig.fromPreset));
           _invalidateAnalysis();
         }
       });
@@ -1359,7 +1380,12 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
 
     return ListView(
       controller: _settingsScrollController,
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 100),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        MediaQuery.sizeOf(context).width >= 720 ? 24 : 100,
+      ),
       children: [
         // ---- 文件信息区 ----
         _buildSectionLabel(theme, cs, Icons.folder_open, '文件信息'),
@@ -1372,7 +1398,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                 label: 'TXT 文件',
                 value: _txtPath.isNotEmpty ? p.basename(_txtPath) : '',
                 hint: '点击选择 TXT 文件',
-                onTap: _loading ? () {} : _pickTxt,
+                onTap: (_loading || _scanning) ? () {} : _pickTxt,
                 isComplete: _txtPath.isNotEmpty,
               ),
               const SizedBox(height: 10),
@@ -2445,44 +2471,66 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
             ),
           ),
 
-          // 底部悬浮操作栏（与其他操作页一致的胶囊风格）
+          // 底部悬浮操作栏（与其他操作页一致的胶囊风格；桌面端右对齐限宽）
           SafeArea(
             top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: context.themeCard,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusL),
-                  border: Border.all(color: context.themeDividerLight),
-                  boxShadow: context.themeCardShadowLight,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: BaseButton(
-                        label: '预览分割',
-                        icon: Icons.preview,
-                        onPressed: _loading ? null : _previewSplit,
-                        variant: BaseButtonVariant.secondary,
-                        loading: _loading,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 720;
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    wide ? 24 : 16,
+                    wide ? 16 : 12,
+                  ),
+                  child: Align(
+                    alignment: wide
+                        ? Alignment.bottomRight
+                        : Alignment.bottomCenter,
+                    child: ConstrainedBox(
+                      constraints: wide
+                          ? const BoxConstraints(maxWidth: 520)
+                          : const BoxConstraints(),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: context.themeCard,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                          border: Border.all(
+                            color: context.themeDividerLight,
+                          ),
+                          boxShadow: context.themeCardShadowLight,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: BaseButton(
+                                label: '预览分割',
+                                icon: Icons.preview,
+                                onPressed: _loading ? null : _previewSplit,
+                                variant: BaseButtonVariant.secondary,
+                                loading: _loading,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: BaseButton(
+                                label: '生成 EPUB',
+                                icon: Icons.auto_stories,
+                                onPressed: _loading ? null : _generate,
+                                variant: BaseButtonVariant.primary,
+                                loading: _loading,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 2,
-                      child: BaseButton(
-                        label: '生成 EPUB',
-                        icon: Icons.auto_stories,
-                        onPressed: _loading ? null : _generate,
-                        variant: BaseButtonVariant.primary,
-                        loading: _loading,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ],

@@ -171,7 +171,7 @@ class DownloadImagesOperation {
       if (updated != content) {
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(htmlFile.name, updated.length, utf8.encode(updated)),
+          ArchiveFile(htmlFile.name, utf8.encode(updated).length, utf8.encode(updated)),
         );
       }
     }
@@ -189,7 +189,7 @@ class DownloadImagesOperation {
       if (updated != content) {
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(cssFile.name, updated.length, utf8.encode(updated)),
+          ArchiveFile(cssFile.name, utf8.encode(updated).length, utf8.encode(updated)),
         );
       }
     }
@@ -207,7 +207,7 @@ class DownloadImagesOperation {
         );
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(opfPath, updatedOpf.length, utf8.encode(updatedOpf)),
+          ArchiveFile(opfPath, utf8.encode(updatedOpf).length, utf8.encode(updatedOpf)),
         );
       }
     }

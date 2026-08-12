@@ -99,9 +99,18 @@ class _ToastOverlayState extends State<ToastOverlay>
       _dismissActive(id);
     }
 
-    // 2. 新增的 Toast：插入 Entry 并播放滑入动画
-    for (final toast in widget.provider.toasts) {
-      if (_active.containsKey(toast.id)) continue;
+    // 2. 新增的 Toast：插入 Entry 并播放滑入动画；
+    //    已有 Toast 的纵向位置随列表下标变化时刷新(避免多条重叠)
+    for (var i = 0; i < widget.provider.toasts.length; i++) {
+      final toast = widget.provider.toasts[i];
+      final existing = _active[toast.id];
+      if (existing != null) {
+        if (existing.index != i) {
+          existing.index = i;
+          existing.entry.markNeedsBuild();
+        }
+        continue;
+      }
       final controller = AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 250),
@@ -110,10 +119,15 @@ class _ToastOverlayState extends State<ToastOverlay>
         builder: (context) => _ToastView(
           toast: toast,
           animation: controller,
+          index: i,
           onTap: () => widget.provider.dismiss(toast.id),
         ),
       );
-      _active[toast.id] = _ActiveToast(entry: entry, controller: controller);
+      _active[toast.id] = _ActiveToast(
+        entry: entry,
+        controller: controller,
+        index: i,
+      );
       overlay.insert(entry);
       controller.forward(); // 滑入
     }
@@ -144,25 +158,35 @@ class _ActiveToast {
   final OverlayEntry entry;
   final AnimationController controller;
 
-  _ActiveToast({required this.entry, required this.controller});
+  /// 在 Toast 列表中的下标(用于纵向堆叠)
+  int index;
+
+  _ActiveToast({
+    required this.entry,
+    required this.controller,
+    required this.index,
+  });
 }
 
-/// 单个 Toast 视图：从顶部滑入 / 滑出
+/// 单个 Toast 视图：从顶部滑入 / 滑出，多条按 [index] 纵向堆叠
 class _ToastView extends StatelessWidget {
   final ToastMessage toast;
   final Animation<double> animation;
+  final int index;
   final VoidCallback onTap;
 
   const _ToastView({
     required this.toast,
     required this.animation,
+    required this.index,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: 0,
+      // 每条 toast 按固定步进向下堆叠，避免完全重叠
+      top: 0.0 + index * 66,
       left: 0,
       right: 0,
       child: SafeArea(

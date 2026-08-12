@@ -854,6 +854,8 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 桌面(≥720)双列并排输出路径;窄屏保持纵向原顺序
+    final isWide = MediaQuery.sizeOf(context).width >= 720;
     return Scaffold(
       body: Column(
         children: [
@@ -877,18 +879,23 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                 if (_isLoggedIn || _offlineMode) ...[
                   const SizedBox(height: 10),
 
-                  // === EPUB 文件区 ===
-                  buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                  const SizedBox(height: 6),
-                  buildFilePickerRow(
-                    context,
-                    icon: Icons.book_outlined,
-                    label: 'EPUB 文件',
-                    value: _epubPath,
-                    hint: '点击选择本地 EPUB 文件',
-                    onTap: _loading ? () {} : _pickEpub,
-                    isComplete: _epubPath.isNotEmpty,
-                  ),
+                  // === EPUB 文件区 + 输出路径(桌面双列并排,窄屏保持原顺序)===
+                  if (isWide) ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _buildInputSection()),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _boundBook != null
+                              ? _buildOutputSection()
+                              : _buildOutputPlaceholder(),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    _buildInputSection(),
+                  ],
 
                   // === 数据源选择 ===
                   const SizedBox(height: 10),
@@ -906,29 +913,10 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     _buildCacheStatusCard(),
                   ],
 
-                  // === 输出路径 ===
-                  if (_boundBook != null) ...[
+                  // === 输出路径(窄屏:绑定书目后显示,保持原顺序)===
+                  if (!isWide && _boundBook != null) ...[
                     const SizedBox(height: 10),
-                    buildSectionLabel(context, Icons.save_outlined, '输出路径'),
-                    const SizedBox(height: 6),
-                    buildFilePickerRow(
-                      context,
-                      icon: Icons.save_outlined,
-                      label: '输出 EPUB',
-                      value: _outputPath,
-                      hint: '点击选择输出文件位置',
-                      onTap: _loading ? () {} : _pickOutput,
-                      isComplete: _outputPath.isNotEmpty,
-                    ),
-
-                    const SizedBox(height: 8),
-                    buildHelpInfoBar(
-                      context,
-                      text: _offlineMode
-                          ? '离线重注模式:使用缓存数据,无需网络。选择输出路径后点击重注。'
-                          : '程序会自动根据 EPUB 书名搜索书目。选择对应书目后点击执行,完成后自动清除搜索结果。',
-                      onTap: _showFeatureHelp,
-                    ),
+                    _buildOutputSection(),
                   ],
                 ],
 
@@ -969,6 +957,98 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// 构建数据源选择器
   Widget _buildDataSourceSelector() {
     return const SizedBox.shrink();
+  }
+
+  /// 输入区：EPUB 文件选择
+  Widget _buildInputSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+        const SizedBox(height: 6),
+        buildFilePickerRow(
+          context,
+          icon: Icons.book_outlined,
+          label: 'EPUB 文件',
+          value: _epubPath,
+          hint: '点击选择本地 EPUB 文件',
+          onTap: _loading ? () {} : _pickEpub,
+          isComplete: _epubPath.isNotEmpty,
+        ),
+      ],
+    );
+  }
+
+  /// 输出区：输出路径选择 + 帮助条
+  Widget _buildOutputSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        buildSectionLabel(context, Icons.save_outlined, '输出路径'),
+        const SizedBox(height: 6),
+        buildFilePickerRow(
+          context,
+          icon: Icons.save_outlined,
+          label: '输出 EPUB',
+          value: _outputPath,
+          hint: '点击选择输出文件位置',
+          onTap: _loading ? () {} : _pickOutput,
+          isComplete: _outputPath.isNotEmpty,
+        ),
+        const SizedBox(height: 8),
+        buildHelpInfoBar(
+          context,
+          text: _offlineMode
+              ? '离线重注模式:使用缓存数据,无需网络。选择输出路径后点击重注。'
+              : '程序会自动根据 EPUB 书名搜索书目。选择对应书目后点击执行,完成后自动清除搜索结果。',
+          onTap: _showFeatureHelp,
+        ),
+      ],
+    );
+  }
+
+  /// 输出区占位：桌面双列下尚未绑定书目时的提示
+  Widget _buildOutputPlaceholder() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        buildSectionLabel(context, Icons.save_outlined, '输出路径'),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            color: context.themeCard,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: context.themeDividerLight),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 15,
+                color: context.themeTextTertiary,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  _offlineMode
+                      ? '选择缓存书目后即可在此选择输出路径'
+                      : '搜索并绑定书目后，在此选择输出路径',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: context.themeTextTertiary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   /// 构建登录区域(扫码登录)

@@ -205,22 +205,8 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
 
   // ==================== 参数 UI ====================
 
-  /// 操作特定参数：输出路径选择
-  List<Widget> _buildParams() => [
-    buildSectionLabel(context, Icons.output_outlined, '输出文件'),
-    const SizedBox(height: 8),
-    buildFilePickerRow(
-      context,
-      icon: Icons.description_outlined,
-      label: '输出 TXT',
-      value: _outputPath,
-      hint: '点击选择输出位置（默认自动填充）',
-      onTap: _loading
-          ? () {}
-          : () => _pickOutput(_defaultOutputFilename(_epubPath)),
-      isComplete: _outputPath.isNotEmpty,
-    ),
-  ];
+  /// 操作特定参数（输出路径已并入顶部输入/输出双列）
+  List<Widget> _buildParams() => const [];
 
   // ==================== UI 构建 ====================
 
@@ -243,17 +229,46 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
-                // EPUB 文件选择
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
-                  context,
-                  icon: Icons.book_outlined,
-                  label: 'EPUB 文件',
-                  value: _epubPath,
-                  hint: '点击选择 EPUB 文件',
-                  onTap: _loading ? () {} : _pickEpub,
-                  isComplete: _epubPath.isNotEmpty,
+                // 输入 + 输出（桌面双列并排，移动端单列）
+                ResponsiveRow(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.book_outlined,
+                          label: 'EPUB 文件',
+                          value: _epubPath,
+                          hint: '点击选择 EPUB 文件',
+                          onTap: _loading ? () {} : _pickEpub,
+                          isComplete: _epubPath.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.output_outlined, '输出文件'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.description_outlined,
+                          label: '输出 TXT',
+                          value: _outputPath,
+                          hint: '点击选择输出位置（默认自动填充）',
+                          onTap: _loading
+                              ? () {}
+                              : () => _pickOutput(_defaultOutputFilename(_epubPath)),
+                          isComplete: _outputPath.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
 
                 // 操作特定参数

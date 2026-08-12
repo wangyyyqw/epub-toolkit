@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/file_service.dart';
+import '../../features/epub_tools/epub_tool_widgets.dart';
 import '../../shared/providers/toast_provider.dart';
 import '../../shared/widgets/base_button.dart';
 import '../../shared/widgets/base_card.dart';
@@ -184,13 +185,14 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
   /// 协议自动协商：常见端口与 SSL 设置的对应关系
   ///
   /// - 465/993/995 等：SSL 直连（隐式 TLS）
-  /// - 587/25/2525 等：STARTTLS（明文连接后升级为 TLS）
-  /// - 25/2500/8025 等自定义：信任用户选择
+  /// - 587/25/2525/2526 等：STARTTLS（明文连接后升级为 TLS）
+  /// - 自定义端口：信任用户选择
   static bool _normalizeSslSetting(int port, bool userChoice) {
     // 已知 SSL 直连端口
-    const sslPorts = {465, 993, 995, 2525};
-    // 已知 STARTTLS 端口
-    const startTlsPorts = {25, 587, 2526, 8025};
+    const sslPorts = {465, 993, 995};
+    // 已知 STARTTLS 端口（2525 是 SendGrid 等服务的 STARTTLS 端口，
+    // 误判为 SSL 直连会导致明文 STARTTLS 服务器握手失败）
+    const startTlsPorts = {25, 587, 2525, 2526, 8025};
     if (sslPorts.contains(port)) return true;
     if (startTlsPorts.contains(port)) return false;
     // 未知端口信任用户选择
@@ -408,44 +410,51 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
                 onChanged: (v) => setState(() => _useSsl = v),
               ),
               const SizedBox(height: 12),
-              BaseInput(
-                label: 'SMTP 用户名',
-                value: _smtpUser,
-                hint: '通常是发件邮箱地址',
-                prefixIcon: Icons.alternate_email,
-                onChanged: (v) => setState(() => _smtpUser = v),
-              ),
-              const SizedBox(height: 12),
-              BaseInput(
-                label: 'SMTP 密码/授权码',
-                value: _smtpPassword,
-                obscureText: !_showPassword,
-                prefixIcon: Icons.key_outlined,
-                onChanged: (v) => setState(() => _smtpPassword = v),
-                suffix: IconButton(
-                  tooltip: _showPassword ? '隐藏' : '显示',
-                  icon: Icon(
-                    _showPassword ? Icons.visibility_off : Icons.visibility,
+              // 桌面端字段两两并排
+              ResponsiveRow(
+                children: [
+                  BaseInput(
+                    label: 'SMTP 用户名',
+                    value: _smtpUser,
+                    hint: '通常是发件邮箱地址',
+                    prefixIcon: Icons.alternate_email,
+                    onChanged: (v) => setState(() => _smtpUser = v),
                   ),
-                  onPressed: () =>
-                      setState(() => _showPassword = !_showPassword),
-                ),
+                  BaseInput(
+                    label: 'SMTP 密码/授权码',
+                    value: _smtpPassword,
+                    obscureText: !_showPassword,
+                    prefixIcon: Icons.key_outlined,
+                    onChanged: (v) => setState(() => _smtpPassword = v),
+                    suffix: IconButton(
+                      tooltip: _showPassword ? '隐藏' : '显示',
+                      icon: Icon(
+                        _showPassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
-              BaseInput(
-                label: '发件人邮箱',
-                value: _fromEmail,
-                hint: '留空则使用 SMTP 用户名',
-                prefixIcon: Icons.mail_outline,
-                onChanged: (v) => setState(() => _fromEmail = v),
-              ),
-              const SizedBox(height: 12),
-              BaseInput(
-                label: 'Kindle 接收邮箱',
-                value: _kindleEmail,
-                hint: 'name@kindle.com',
-                prefixIcon: Icons.mark_email_read_outlined,
-                onChanged: (v) => setState(() => _kindleEmail = v),
+              ResponsiveRow(
+                children: [
+                  BaseInput(
+                    label: '发件人邮箱',
+                    value: _fromEmail,
+                    hint: '留空则使用 SMTP 用户名',
+                    prefixIcon: Icons.mail_outline,
+                    onChanged: (v) => setState(() => _fromEmail = v),
+                  ),
+                  BaseInput(
+                    label: 'Kindle 接收邮箱',
+                    value: _kindleEmail,
+                    hint: 'name@kindle.com',
+                    prefixIcon: Icons.mark_email_read_outlined,
+                    onChanged: (v) => setState(() => _kindleEmail = v),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               BaseInput(

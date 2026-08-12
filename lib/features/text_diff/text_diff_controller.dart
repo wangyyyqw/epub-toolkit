@@ -50,6 +50,9 @@ class TextDiffController extends ChangeNotifier {
   /// 计算世代：文本变化时自增，异步结果过期则丢弃
   int _generation = 0;
 
+  /// 是否已 dispose(页面切走后停止剩余块的渐进计算)
+  bool _disposed = false;
+
   String get leftText => _leftText;
   String get rightText => _rightText;
   DiffOptions get options => _options;
@@ -277,6 +280,7 @@ class TextDiffController extends ChangeNotifier {
   Future<void> _computeChunks(int gen) async {
     final chunkCount = _chunks.length;
     for (var k = 0; k < chunkCount; k++) {
+      if (_disposed) return; // 页面已销毁，停止剩余计算
       final start = k * chunkSize;
       final leftChunk = start < _leftLines.length
           ? _leftLines.sublist(
@@ -420,6 +424,7 @@ class TextDiffController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _debounce?.cancel();
     super.dispose();
   }

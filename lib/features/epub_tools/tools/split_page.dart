@@ -130,16 +130,44 @@ class _SplitPageState extends State<SplitPage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
               children: [
-                buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
-                const SizedBox(height: 8),
-                buildFilePickerRow(
-                  context,
-                  icon: Icons.book_outlined,
-                  label: 'EPUB 文件',
-                  value: _epubPath,
-                  hint: '点击选择 EPUB 文件',
-                  onTap: _loading ? () {} : _pickEpub,
-                  isComplete: _epubPath.isNotEmpty,
+                // 输入 + 输出（桌面双列并排，移动端单列）
+                ResponsiveRow(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.book_outlined,
+                          label: 'EPUB 文件',
+                          value: _epubPath,
+                          hint: '点击选择 EPUB 文件',
+                          onTap: _loading ? () {} : _pickEpub,
+                          isComplete: _epubPath.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        buildSectionLabel(context, Icons.folder_open, '输出目录'),
+                        const SizedBox(height: 8),
+                        buildFilePickerRow(
+                          context,
+                          icon: Icons.folder_open,
+                          label: '输出目录',
+                          value: _splitOutputDir,
+                          hint: '点击选择拆分输出目录',
+                          onTap: _loading ? () {} : _pickSplitOutputDir,
+                          isComplete: _splitOutputDir.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 buildSectionLabel(context, Icons.tune, '拆分参数'),
@@ -156,16 +184,6 @@ class _SplitPageState extends State<SplitPage> {
                   hint: '拆分点索引，如 2,5,8',
                   icon: Icons.format_list_numbered,
                   onChanged: _loading ? (_) {} : (v) => _splitPoints = v,
-                ),
-                const SizedBox(height: 12),
-                buildFilePickerRow(
-                  context,
-                  icon: Icons.folder_open,
-                  label: '输出目录',
-                  value: _splitOutputDir,
-                  hint: '点击选择拆分输出目录',
-                  onTap: _loading ? () {} : _pickSplitOutputDir,
-                  isComplete: _splitOutputDir.isNotEmpty,
                 ),
                 const SizedBox(height: 8),
                 OutputLog(controller: _logController),

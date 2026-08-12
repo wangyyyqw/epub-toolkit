@@ -28,6 +28,55 @@ class ChineseConverter {
   static int _t2sPhraseMaxLen = 1;
   static int _t2sCharMaxLen = 1;
 
+  /// 已初始化的简转繁词组字典（须先调用 initS2T()）
+  static Map<String, String> get s2tPhrases => _s2tPhrases!;
+
+  /// 已初始化的简转繁字符字典（须先调用 initS2T()）
+  static Map<String, String> get s2tCharacters => _s2tCharacters!;
+
+  /// 已初始化的繁转简词组字典（须先调用 initT2S()）
+  static Map<String, String> get t2sPhrases => _t2sPhrases!;
+
+  /// 已初始化的繁转简字符字典（须先调用 initT2S()）
+  static Map<String, String> get t2sCharacters => _t2sCharacters!;
+
+  /// 简转繁词组最大 key 长度（须先调用 initS2T()）
+  static int get s2tPhraseMaxLen => _s2tPhraseMaxLen;
+
+  /// 简转繁字符最大 key 长度（须先调用 initS2T()）
+  static int get s2tCharMaxLen => _s2tCharMaxLen;
+
+  /// 繁转简词组最大 key 长度（须先调用 initT2S()）
+  static int get t2sPhraseMaxLen => _t2sPhraseMaxLen;
+
+  /// 繁转简字符最大 key 长度（须先调用 initT2S()）
+  static int get t2sCharMaxLen => _t2sCharMaxLen;
+
+  /// 用外部字典执行简体转繁体（供后台 Isolate 使用）
+  ///
+  /// 后台 Isolate 中 rootBundle 不可用（ServicesBinding 未初始化），
+  /// 字典必须在 UI Isolate 加载后作为参数传入。
+  static String s2tWithDict(
+    String text, {
+    required Map<String, String> phrases,
+    required Map<String, String> characters,
+    required int phraseMaxLen,
+    required int charMaxLen,
+  }) {
+    return _convert(text, phrases, characters, phraseMaxLen, charMaxLen);
+  }
+
+  /// 用外部字典执行繁体转简体（供后台 Isolate 使用）
+  static String t2sWithDict(
+    String text, {
+    required Map<String, String> phrases,
+    required Map<String, String> characters,
+    required int phraseMaxLen,
+    required int charMaxLen,
+  }) {
+    return _convert(text, phrases, characters, phraseMaxLen, charMaxLen);
+  }
+
   /// 初始化简转繁字典
   static Future<void> initS2T() async {
     if (_s2tPhrases != null && _s2tCharacters != null) return;

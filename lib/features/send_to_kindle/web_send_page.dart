@@ -252,38 +252,47 @@ class _WebSendPageState extends State<WebSendPage> {
   }
 
   void _initializeWebView() {
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (progress) {
-            if (mounted) setState(() => _progress = progress / 100);
-          },
-          onPageStarted: (_) {
-            if (mounted) setState(() => _isLoading = true);
-          },
-          onPageFinished: (_) {
-            if (mounted) {
+    try {
+      _controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onProgress: (progress) {
+              if (mounted) setState(() => _progress = progress / 100);
+            },
+            onPageStarted: (_) {
+              if (mounted) setState(() => _isLoading = true);
+            },
+            onPageFinished: (_) {
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                  _webLoadError = null;
+                });
+              }
+              _loadTimeout?.cancel();
+              _scheduleWebContentFit();
+            },
+            onWebResourceError: (error) {
+              // 仅主框架加载失败时提示，避免页面内子资源错误误报
+              if (error.isForMainFrame != true) return;
+              if (!mounted) return;
               setState(() {
-                _isLoading = false;
-                _webLoadError = null;
+                _webLoadError = '网页加载失败：${error.description}，请检查网络连接后点击刷新';
               });
-            }
-            _loadTimeout?.cancel();
-            _scheduleWebContentFit();
-          },
-          onWebResourceError: (error) {
-            // 仅主框架加载失败时提示，避免页面内子资源错误误报
-            if (error.isForMainFrame != true) return;
-            if (!mounted) return;
-            setState(() {
-              _webLoadError = '网页加载失败：${error.description}，请检查网络连接后点击刷新';
-            });
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(_sendToKindleUrl));
-    _startLoadTimeout();
+            },
+          ),
+        )
+        ..loadRequest(Uri.parse(_sendToKindleUrl));
+      _startLoadTimeout();
+    } catch (e) {
+      // WebView 内核初始化失败(少见)：给出可恢复的错误提示而非永久转圈
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _webLoadError = '内嵌网页初始化失败：$e，请点击刷新重试';
+      });
+    }
   }
 
   /// 页面加载超时检测：加载超过 [_pageLoadTimeout] 仍未完成时提示网络问题

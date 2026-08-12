@@ -4,9 +4,8 @@
 GeneratedPluginRegistrant.java
 .cxx/
 
-# 签名密钥随仓库提交：CI 无需配置 Secrets 即可固定签名（支持覆盖更新）。
-# 注意：公开仓库提交密钥意味着任何人可伪造应用签名；如需严格安全，
-# 请改回忽略 key.properties 与 *.jks 并改用 GitHub Secrets 注入签名。
+# 签名文件不入库：CI 通过 GitHub Secrets 注入（ANDROID_KEYSTORE_BASE64 等），
+# 本地构建由本机 key.properties 提供签名。
+key.properties
 **/*.keystore
 **/*.jks
-!**/release-keystore.jks

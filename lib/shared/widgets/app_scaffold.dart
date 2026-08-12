@@ -316,7 +316,12 @@ class AppScaffold extends StatelessWidget {
                       Expanded(
                         child: Center(
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1200),
+                            // 桌面宽屏(>1560)放宽内容区上限,充分利用屏幕;
+                            // 窄屏自然全宽
+                            constraints: BoxConstraints(
+                              maxWidth:
+                                  constraints.maxWidth > 1560 ? 1440 : 1200,
+                            ),
                             child: _SafeContent(child: child),
                           ),
                         ),
@@ -673,7 +678,7 @@ class _Sidebar extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'v1.2.7',
+                  'v1.3.0',
                   style: TextStyle(
                     fontSize: 11,
                     color: context.themeTextTertiary.withValues(alpha: 0.6),

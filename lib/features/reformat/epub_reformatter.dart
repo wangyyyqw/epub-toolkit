@@ -225,28 +225,27 @@ class EpubReformatter {
 
     // 15. 构造目标 archive（重建）
     final tgtArchive = Archive();
-
     // 16. mimetype 强制 STORED
     tgtArchive.addFile(
       ArchiveFile('mimetype', _mimetypeBytes.length, _mimetypeBytes)
         ..compress = false,
     );
 
-    // 17. 写入 container.xml（修正 media-type）
-    final containerXml = utf8.decode(
-      srcArchive.findFile('META-INF/container.xml')!.content as List<int>,
-    );
-    final newContainer = containerXml.replaceAll(
-      RegExp(
-        r'<rootfile[^>]*media-type="application/oebps-[^>]*/>',
-        caseSensitive: false,
-      ),
-      '<rootfile full-path="$_opfOutPath" media-type="application/oebps-package+xml"/>',
-    );
+    // 17. 写入 container.xml（修正 media-type 与 OPF 路径）
+    final containerFile = srcArchive.findFile('META-INF/container.xml');
+    final containerXml = containerFile != null
+        ? utf8.decode(containerFile.content as List<int>)
+        : '<container version="1.0" '
+            'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles>'
+            '<rootfile full-path="$_opfOutPath" '
+            'media-type="application/oebps-package+xml"/>'
+            '</rootfiles></container>';
+    final newContainer = _rewriteContainerXml(containerXml);
     tgtArchive.addFile(
       ArchiveFile(
         'META-INF/container.xml',
-        newContainer.length,
+        utf8.encode(newContainer).length,
         Uint8List.fromList(utf8.encode(newContainer)),
       )..compress = true,
     );
@@ -323,7 +322,7 @@ class EpubReformatter {
       if (file == null) continue;
 
       var css = utf8.decode(file.content as List<int>);
-      css = _rewriteCssImport(css);
+      css = _rewriteCssImport(css, oldPath, rePathMap, lowerPathToOrigin);
       css = _rewriteCssUrl(css, oldPath, rePathMap, lowerPathToOrigin);
 
       final newName = rePathMap['css']![oldPath.toLowerCase()] ?? cssRec.href;
@@ -1044,8 +1043,59 @@ class EpubReformatter {
     });
   }
 
+  /// 重写 container.xml 中的 rootfile 路径与 media-type
+  ///
+  /// 兼容单引号、属性缺失、`>`/`/>` 结尾等各种变体：
+  /// 优先 XML 解析,失败时用宽松正则逐属性替换。
+  String _rewriteContainerXml(String containerXml) {
+    try {
+      final doc = XmlDocument.parse(containerXml);
+      var modified = false;
+      for (final rf in doc.findAllElements('rootfile', namespace: '*')) {
+        rf.setAttribute('full-path', _opfOutPath);
+        rf.setAttribute('media-type', 'application/oebps-package+xml');
+        modified = true;
+      }
+      if (modified) return doc.toXmlString(indent: '  ');
+      return containerXml;
+    } catch (_) {
+      return containerXml.replaceAllMapped(
+        RegExp(r'<rootfile\b[^>]*>', caseSensitive: false),
+        (m) {
+          var tag = m.group(0)!;
+          final selfClosing = tag.endsWith('/>');
+          tag = tag.replaceFirst(RegExp(r'\s*/>$'), '>');
+          tag = tag.replaceAllMapped(
+            RegExp(r"""(full-path\s*=\s*)(["']).*?\2"""),
+            (m2) => '${m2.group(1)}"$_opfOutPath"',
+          );
+          if (!tag.contains('full-path=')) {
+            tag = '$tag full-path="$_opfOutPath"';
+          }
+          tag = tag.replaceAllMapped(
+            RegExp(r"""(media-type\s*=\s*)(["']).*?\2"""),
+            (m2) => '${m2.group(1)}"application/oebps-package+xml"',
+          );
+          if (!tag.contains('media-type=')) {
+            tag = '$tag media-type="application/oebps-package+xml"';
+          }
+          return selfClosing ? '$tag />' : tag;
+        },
+      );
+    }
+  }
+
   /// CSS @import 重写
-  String _rewriteCssImport(String css) {
+  ///
+  /// CSS 文件会被按 id 重命名(如 sub.css → css_1.css),
+  /// 这里把 @import 的 href 解析为书内路径,映射到重命名后的文件名。
+  /// 所有 CSS 统一输出到 _dirCss,因此引用同一目录的新文件名即可。
+  String _rewriteCssImport(
+    String css,
+    String cssPath,
+    Map<String, Map<String, String>> rePathMap,
+    Map<String, String> lowerPathToOrigin,
+  ) {
     final pattern = RegExp(
       r'''@import (["'])(.*?)\1|@import url\(["']?(.*?)["']?\)''',
       dotAll: true,
@@ -1053,8 +1103,15 @@ class EpubReformatter {
     return css.replaceAllMapped(pattern, (m) {
       final href = m.group(2) ?? m.group(3) ?? '';
       if (!href.toLowerCase().endsWith('.css')) return m.group(0)!;
-      final filename = p.basename(href);
-      return '@import "$filename"';
+      final bkpath = _checkLink(
+        fromFile: cssPath,
+        href: href,
+        lowerPathToOrigin: lowerPathToOrigin,
+      );
+      if (bkpath == null) return m.group(0)!;
+      final n = rePathMap['css']![bkpath.toLowerCase()];
+      if (n == null) return m.group(0)!;
+      return '@import "$n"';
     });
   }
 
@@ -1197,6 +1254,8 @@ class EpubReformatter {
     );
 
     // 同时修 OPF 中 <reference href=...> 路径
+    // reference 相对 OPF 所在目录(OEBPS/)解析,重命名后的文件位于
+    // OEBPS/Text/,因此 href 应为 Text/$bn,不能加 ../(会解析到 ZIP 根目录)。
     final fixedRef = replaced.replaceAllMapped(
       RegExp(r'''(<reference[^>]*href=(["\']))(.*?)(\2[^>]*/>)'''),
       (m) {
@@ -1207,7 +1266,7 @@ class EpubReformatter {
         href = href.trim();
         final bn = p.basename(href);
         if (bn.toLowerCase().endsWith('.ncx')) return m.group(0)!;
-        return '${m.group(1)}../Text/$bn${m.group(4)}';
+        return '${m.group(1)}Text/$bn${m.group(4)}';
       },
     );
 

@@ -298,73 +298,83 @@ class _MergePageState extends State<MergePage> {
                 const SizedBox(height: 16),
                 buildSectionLabel(context, Icons.edit_note, '书籍信息'),
                 const SizedBox(height: 8),
-                buildCompactField(
-                  context,
-                  label: '书名',
-                  value: _bookTitle,
-                  hint: '留空则使用第一本书的书名',
-                  icon: Icons.title,
-                  onChanged: (v) => _bookTitle = v,
-                ),
-                const SizedBox(height: 10),
-                buildCompactField(
-                  context,
-                  label: '作者',
-                  value: _author,
-                  hint: '留空则使用第一本书的作者',
-                  icon: Icons.person_outline,
-                  onChanged: (v) => _author = v,
-                ),
-                const SizedBox(height: 10),
-                buildCompactField(
-                  context,
-                  label: '语言',
-                  value: _language,
-                  hint: '如 zh、en、ja',
-                  icon: Icons.language,
-                  onChanged: (v) => _language = v,
-                ),
-                const SizedBox(height: 10),
-                buildCompactField(
-                  context,
-                  label: '出版社',
-                  value: _publisher,
-                  hint: '可选',
-                  icon: Icons.business_outlined,
-                  onChanged: (v) => _publisher = v,
-                ),
-                const SizedBox(height: 10),
-                buildCompactField(
-                  context,
-                  label: '简介',
-                  value: _description,
-                  hint: '可选',
-                  icon: Icons.notes_outlined,
-                  maxLines: 3,
-                  onChanged: (v) => _description = v,
-                ),
-                const SizedBox(height: 10),
-                Row(
+                // 桌面端字段两两并排
+                ResponsiveRow(
                   children: [
-                    Expanded(
-                      child: buildFilePickerRow(
-                        context,
-                        icon: Icons.image_outlined,
-                        label: '封面图片',
-                        value: _coverPath,
-                        hint: '可选，留空则沿用原书封面信息',
-                        onTap: _loading ? () {} : _pickCover,
-                        isComplete: _coverPath.isNotEmpty,
-                      ),
+                    buildCompactField(
+                      context,
+                      label: '书名',
+                      value: _bookTitle,
+                      hint: '留空则使用第一本书的书名',
+                      icon: Icons.title,
+                      onChanged: (v) => _bookTitle = v,
                     ),
-                    if (_coverPath.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: '清除封面',
-                        onPressed: _loading ? null : _clearCover,
-                        icon: Icon(Icons.close, color: cs.error),
-                      ),
-                    ],
+                    buildCompactField(
+                      context,
+                      label: '作者',
+                      value: _author,
+                      hint: '留空则使用第一本书的作者',
+                      icon: Icons.person_outline,
+                      onChanged: (v) => _author = v,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ResponsiveRow(
+                  children: [
+                    buildCompactField(
+                      context,
+                      label: '语言',
+                      value: _language,
+                      hint: '如 zh、en、ja',
+                      icon: Icons.language,
+                      onChanged: (v) => _language = v,
+                    ),
+                    buildCompactField(
+                      context,
+                      label: '出版社',
+                      value: _publisher,
+                      hint: '可选',
+                      icon: Icons.business_outlined,
+                      onChanged: (v) => _publisher = v,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ResponsiveRow(
+                  children: [
+                    buildCompactField(
+                      context,
+                      label: '简介',
+                      value: _description,
+                      hint: '可选',
+                      icon: Icons.notes_outlined,
+                      maxLines: 3,
+                      onChanged: (v) => _description = v,
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: buildFilePickerRow(
+                            context,
+                            icon: Icons.image_outlined,
+                            label: '封面图片',
+                            value: _coverPath,
+                            hint: '可选，留空则沿用原书封面信息',
+                            onTap: _loading ? () {} : _pickCover,
+                            isComplete: _coverPath.isNotEmpty,
+                          ),
+                        ),
+                        if (_coverPath.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: '清除封面',
+                            onPressed: _loading ? null : _clearCover,
+                            icon: Icon(Icons.close, color: cs.error),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

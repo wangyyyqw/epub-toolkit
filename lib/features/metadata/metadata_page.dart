@@ -59,7 +59,7 @@ class _MetadataPageState extends State<MetadataPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+        padding: toolPageContentPadding(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -185,40 +185,56 @@ class _MetadataPageState extends State<MetadataPage> {
           // 封面预览与操作区
           _buildCoverSection(),
           const SizedBox(height: 20),
-          // 表单字段
-          BaseInput(
-            label: '书名',
-            value: _metadata!.title,
-            hint: '请输入书名',
-            onChanged: (v) => _updateField(title: v),
+          // 表单字段（桌面端两两并排，移动端单列）
+          ResponsiveRow(
+            children: [
+              BaseInput(
+                label: '书名',
+                value: _metadata!.title,
+                hint: '请输入书名',
+                onChanged: (v) => _updateField(title: v),
+              ),
+              BaseInput(
+                label: '副标题',
+                value: _metadata!.subtitle,
+                hint: '可选',
+                onChanged: (v) => _updateField(subtitle: v),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          BaseInput(
-            label: '副标题',
-            value: _metadata!.subtitle,
-            hint: '可选',
-            onChanged: (v) => _updateField(subtitle: v),
+          ResponsiveRow(
+            children: [
+              BaseInput(
+                label: '作者',
+                value: _metadata!.author,
+                hint: '请输入作者',
+                onChanged: (v) => _updateField(author: v),
+              ),
+              BaseSelect(
+                label: '语言',
+                value: _metadata!.language,
+                items: _languageItems,
+                onChanged: _onLanguageChanged,
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          BaseInput(
-            label: '作者',
-            value: _metadata!.author,
-            hint: '请输入作者',
-            onChanged: (v) => _updateField(author: v),
-          ),
-          const SizedBox(height: 12),
-          BaseSelect(
-            label: '语言',
-            value: _metadata!.language,
-            items: _languageItems,
-            onChanged: _onLanguageChanged,
-          ),
-          const SizedBox(height: 12),
-          BaseInput(
-            label: '出版者',
-            value: _metadata!.publisher,
-            hint: '可选',
-            onChanged: (v) => _updateField(publisher: v),
+          ResponsiveRow(
+            children: [
+              BaseInput(
+                label: '出版者',
+                value: _metadata!.publisher,
+                hint: '可选',
+                onChanged: (v) => _updateField(publisher: v),
+              ),
+              BaseInput(
+                label: '标识符',
+                value: _metadata!.identifier,
+                hint: '如 ISBN、UUID',
+                onChanged: (v) => _updateField(identifier: v),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           BaseInput(
@@ -226,13 +242,6 @@ class _MetadataPageState extends State<MetadataPage> {
             value: _metadata!.description,
             hint: '可选，书籍简介',
             onChanged: (v) => _updateField(description: v),
-          ),
-          const SizedBox(height: 12),
-          BaseInput(
-            label: '标识符',
-            value: _metadata!.identifier,
-            hint: '如 ISBN、UUID',
-            onChanged: (v) => _updateField(identifier: v),
           ),
           const SizedBox(height: 12),
           BaseInput(
@@ -534,34 +543,9 @@ class _MetadataPageState extends State<MetadataPage> {
   ///
   /// 返回用户输入的语言代码，取消则返回 null
   Future<String?> _showLanguageInputDialog() async {
-    final controller = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('输入语言代码'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: '如 fr、de、es',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop(controller.text.trim());
-              },
-              child: const Text('确定'),
-            ),
-          ],
-        );
-      },
+      builder: (ctx) => const _LanguageInputDialog(),
     );
   }
 
@@ -624,5 +608,50 @@ class _MetadataPageState extends State<MetadataPage> {
         });
       }
     }
+  }
+}
+
+/// 语言代码输入对话框（StatefulWidget 管理 controller 生命周期）
+class _LanguageInputDialog extends StatefulWidget {
+  const _LanguageInputDialog();
+
+  @override
+  State<_LanguageInputDialog> createState() => _LanguageInputDialogState();
+}
+
+class _LanguageInputDialogState extends State<_LanguageInputDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('输入语言代码'),
+      content: TextField(
+        controller: _controller,
+        decoration: const InputDecoration(
+          hintText: '如 fr、de、es',
+          border: OutlineInputBorder(),
+        ),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(_controller.text.trim());
+          },
+          child: const Text('确定'),
+        ),
+      ],
+    );
   }
 }
