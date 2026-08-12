@@ -69,6 +69,13 @@ jobs:
     name: Android APK
     runs-on: ubuntu-latest
     needs: [version, test]
+    # 签名凭据统一映射到 job 环境变量（secrets 不可直接用于 if 条件）。
+    # 未配置 Secrets 时各变量为空字符串，Gradle 自动回退 debug 签名。
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,21 +98,16 @@ jobs:
       - name: Import Android signing keystore
         # 从仓库 Secrets 解密 keystore；未配置时跳过，自动回退 debug 签名
         # （fork / PR / 未配置 Secrets 的仓库仍可正常构建）。
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/android/app"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
           test -s "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
 
       - name: Build APK
         env:
-          ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/android/app/keystore-release.jks', github.workspace) || '' }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_FILE: ${{ format('{0}/android/app/keystore-release.jks', github.workspace) }}
         run: >
           flutter build apk --release
           --build-name "${{ needs.version.outputs.app_version }}"
