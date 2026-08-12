@@ -147,7 +147,10 @@ class BaseButton extends StatelessWidget {
       case BaseButtonVariant.accent:
         return Colors.white;
       case BaseButtonVariant.danger:
-        return Colors.white;
+        // 暗色下危险色为浅红，白色转圈对比不足，改用深色前景
+        return context.isDarkMode
+            ? const Color(0xFF141416)
+            : Colors.white;
     }
   }
 }

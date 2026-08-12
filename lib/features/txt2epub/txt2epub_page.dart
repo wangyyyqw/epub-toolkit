@@ -2379,7 +2379,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                 ),
                 dividerColor: Colors.transparent,
                 indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: Colors.white,
+                labelColor: context.themeAccentFg,
                 unselectedLabelColor: context.themeTextTertiary,
                 labelStyle: const TextStyle(
                   fontSize: 14,
@@ -2942,7 +2942,7 @@ class _TypographyPreviewState extends State<_TypographyPreview> {
               fontWeight: FontWeight.w600,
               fontFamily: fontFamily,
               color: w.titleDecoration == TitleDecoration.boxed
-                  ? Colors.white
+                  ? context.themeAccentFg
                   : context.themeTextPrimary,
             ),
           );

@@ -721,7 +721,7 @@ Widget buildBottomActionBar(
             onPressed: onPressed,
             style: ElevatedButton.styleFrom(
               backgroundColor: context.themeAccent,
-              foregroundColor: Colors.white,
+              foregroundColor: context.themeAccentFg,
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppTheme.radiusL),
@@ -730,14 +730,14 @@ Widget buildBottomActionBar(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 19, color: Colors.white),
+                Icon(icon, size: 19, color: context.themeAccentFg),
                 const SizedBox(width: 10),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: context.themeAccentFg,
                   ),
                 ),
               ],

@@ -667,6 +667,9 @@ extension AppThemeExt on BuildContext {
   Color get themeAccent => isDarkMode ? AppTheme.darkAccent : AppTheme.accent;
   Color get themeAccentDark =>
       isDarkMode ? AppTheme.darkAccentDark : AppTheme.accentDark;
+
+  /// 强调色背景上使用的文字/图标前景色（亮色黑底白字，暗色浅底深字）
+  Color get themeAccentFg => isDarkMode ? const Color(0xFF141416) : Colors.white;
   Color get themeAccentLight =>
       isDarkMode ? AppTheme.darkAccentLight : AppTheme.accentLight;
   Color get themeAccentSoft =>
