@@ -16,12 +16,16 @@ import '../../../shared/widgets/base_button.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
 import '../../weread_thoughts/weread_api.dart';
+import '../../weread_thoughts/weread_guest_captcha.dart';
+import '../../weread_thoughts/weread_guest_signature.dart';
 import '../../weread_thoughts/weread_thought_operation.dart';
 
 /// 读书想法注入页面
 ///
-/// 从读书平台拉取热门划线和个人想法，注入到本地 EPUB 文件中。
-/// 流程：输入 API Key → 选择 EPUB → 根据书名自动搜索 → 绑定书目 → 注入想法。
+/// 从读书平台拉取热门划线、公开想法(段评/章评/书评),注入到本地 EPUB 文件中。
+/// 支持两种登录:扫码登录(Web Cookie + API Key)或游客登录(APP 直连,
+/// 无需微信账号;可能触发腾讯验证码,由系统浏览器完成)。
+/// 流程:登录 → 选择 EPUB → 根据书名自动搜索 → 绑定书目 → 注入想法。
 class WereadThoughtsPage extends StatefulWidget {
   const WereadThoughtsPage({super.key});
 
@@ -52,6 +56,12 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 是否正在轮询登录状态
   bool _polling = false;
+
+  /// 是否正在执行游客登录
+  bool _guestLoading = false;
+
+  /// 是否正在等待浏览器完成安全验证(游客登录)
+  bool _guestCaptchaWaiting = false;
 
   /// 当前绑定的书目
   WereadBook? _boundBook;
@@ -234,6 +244,84 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     setState(() {
       _polling = false;
       _qrUrl = null;
+    });
+  }
+
+  /// 开始游客登录。
+  ///
+  /// 无需微信账号:APP 直连 + 签名登录。预登录被安全验证拦截时,
+  /// 打开系统浏览器完成腾讯验证码(本机回环服务器接收结果),再继续登录。
+  Future<void> _startGuestLogin() async {
+    if (_guestLoading || _loading) return;
+    setState(() {
+      _guestLoading = true;
+      _guestCaptchaWaiting = false;
+    });
+
+    try {
+      final message = await _api.startGuestLogin();
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = true;
+        _polling = false;
+        _qrUrl = null;
+      });
+      context.read<ToastProvider>().showSuccess(message);
+    } on GuestCaptchaRequiredException catch (e) {
+      // 需要安全验证:在系统浏览器中打开验证码页
+      if (!mounted) return;
+      setState(() => _guestCaptchaWaiting = true);
+      context.read<ToastProvider>().showInfo('请在浏览器中完成微信读书安全验证');
+      final captcha = await WereadGuestCaptcha.run(
+        appId: wereadCaptchaAppId,
+      );
+      if (!mounted) return;
+      if (captcha == null) {
+        setState(() => _guestCaptchaWaiting = false);
+        context.read<ToastProvider>().showWarning('安全验证等待超时或已取消,请重试');
+        return;
+      }
+      setState(() {
+        _guestCaptchaWaiting = false;
+        _guestLoading = true;
+      });
+      try {
+        final message = await _api.completeGuestLogin(
+          e.session,
+          captcha.ticket,
+          captcha.randstr,
+        );
+        if (!mounted) return;
+        setState(() {
+          _isLoggedIn = true;
+          _polling = false;
+          _qrUrl = null;
+        });
+        context.read<ToastProvider>().showSuccess(message);
+      } catch (err) {
+        if (mounted) {
+          context.read<ToastProvider>().showError('游客登录失败: $err');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.read<ToastProvider>().showError('游客登录失败: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _guestLoading = false;
+          _guestCaptchaWaiting = false;
+        });
+      }
+    }
+  }
+
+  /// 取消等待安全验证(浏览器页面仍会等待,超时后自动关闭)
+  void _cancelGuestCaptcha() {
+    setState(() {
+      _guestCaptchaWaiting = false;
+      _guestLoading = false;
     });
   }
 
@@ -439,7 +527,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 执行完整同步流程
   ///
-  /// 通过 SKILL API 拉取热门划线和个人想法,注入到 EPUB 中。
+  /// 通过 SKILL API / APP 直连拉取热门划线和公开想法,注入到 EPUB 中。
   /// 完成后自动保存缓存,方便离线重注。
   Future<void> _execute() async {
     if (!_isLoggedIn) {
@@ -468,7 +556,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     try {
       // 1. 拉取数据
       setState(() => _progressText = '正在拉取数据...');
-      _logController.append('PROGRESS: 拉取章节列表、热门划线与个人想法...');
+      _logController.append('PROGRESS: 拉取章节列表、热门划线与公开想法...');
 
       final fetchResult = await _api.fetchBookData(
         _boundBook!.bookId,
@@ -602,7 +690,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         ToolHelpSection(
           title: '使用流程',
           content:
-              '1. 扫码登录读书账号\n'
+              '1. 扫码登录或游客登录(无需微信账号;游客登录可能需在浏览器中完成安全验证)\n'
               '2. 选择本地 EPUB 文件\n'
               '3. 程序自动根据书名搜索书目\n'
               '4. 在搜索结果中选择对应书目\n'
@@ -939,6 +1027,59 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                 ],
               ),
             ),
+          ] else if (_guestLoading || _guestCaptchaWaiting) ...[
+            // 游客登录进行中
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: context.themeDividerLight),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _guestCaptchaWaiting
+                              ? '请在浏览器中完成微信读书安全验证(3 分钟内)...'
+                              : '正在游客登录...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.themeTextSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_guestCaptchaWaiting) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '若浏览器未自动打开,请检查默认浏览器设置后重试。'
+                      '验证完成后本页面会自动继续。',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.themeTextTertiary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    BaseButton(
+                      label: '取消等待',
+                      size: BaseButtonSize.sm,
+                      variant: BaseButtonVariant.secondary,
+                      onPressed: _cancelGuestCaptcha,
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ] else ...[
             // 初始状态:显示登录按钮
             Row(
@@ -949,6 +1090,16 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     icon: Icons.qr_code_scanner,
                     size: BaseButtonSize.sm,
                     onPressed: _loading ? null : _startQrLogin,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: BaseButton(
+                    label: '游客登录',
+                    icon: Icons.person_outline,
+                    size: BaseButtonSize.sm,
+                    variant: BaseButtonVariant.secondary,
+                    onPressed: _loading ? null : _startGuestLogin,
                   ),
                 ),
                 const SizedBox(width: 6),
