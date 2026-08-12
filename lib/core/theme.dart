@@ -1,50 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
-/// 应用主题配置 —「新中式极简」（Neo-Chinese Minimalism）
+/// 应用主题配置 —「极简生产力工具」（Minimal Productivity）
 ///
-/// 设计理念：
-/// - 冷调浅灰蓝页面底色，文人书房般的冷静氛围
-/// - 纯白圆角卡片（12px）浮于背景，极轻投影
-/// - 唯一强调色：柔粉蓝 #A8C5D8，仅用于等级徽章、进度高亮
-/// - 语义色：暗红仅用于破坏性操作
-/// - 组件形态采用 TDesign Flutter（腾讯设计体系）
-/// - 拒绝高饱和、渐变、粗投影、毛玻璃等强装饰
+/// 设计理念（参考 Linear / Notion / Figma 的桌面工作台风格）：
+/// - 中性灰页面底色 + 纯白卡片，卡片以 1px 细分隔线区隔而非投影
+/// - 主操作统一墨黑（高对比黑白），唯一强调色为靛蓝（聚焦边框、链接、进度高亮）
+/// - 强调色靛蓝仅用于焦点/选中/进度，不喧宾夺主
+/// - 组件形态采用 TDesign Flutter（腾讯设计体系），圆角收敛（6-10px），间距紧凑
+/// - 拒绝高饱和渐变、粗投影、毛玻璃等强装饰
+///
+/// 注意：修改色板时保持 [AppThemeExt] 上的 getter 名称不变，所有页面依赖其稳定。
 
 /// 启用 TDesign 多主题：组件按 context 读取注入的主题（品牌色）
 void initTDesignTheme() => TDTheme.needMultiTheme();
 
-/// TDesign 品牌色配置：亮色为墨色、暗色为柔粉蓝，与全局配色一致
+/// TDesign 品牌色配置：亮色为墨黑、暗色为浅靛蓝，与全局配色一致
 const String _tdThemeConfig = '''
 {
   "epubGadget": {
     "color": {
-      "brandNormalColor": "#1A1A1A",
-      "brandNormalColorLight": "#F0F3F6",
-      "brandNormalColorFocused": "#F0F3F6",
-      "brandNormalColorDisabled": "#EFEFEF",
-      "textColorPrimary": "#1A1A1A",
-      "textColorSecondary": "#646464",
-      "textColorTertiary": "#8E8E8E",
-      "bgColorPage": "#E8ECF0",
+      "brandNormalColor": "#18181B",
+      "brandNormalColorLight": "#F0F0F2",
+      "brandNormalColorFocused": "#F0F0F2",
+      "brandNormalColorDisabled": "#F0F0F2",
+      "textColorPrimary": "#18181B",
+      "textColorSecondary": "#52525B",
+      "textColorTertiary": "#A1A1AA",
+      "bgColorPage": "#F7F7F8",
       "bgColorContainer": "#FFFFFF",
-      "borderColor": "#E5E5E5",
-      "dangerColor": "#B33A3A"
+      "borderColor": "#E4E4E7",
+      "dangerColor": "#DC2626"
     }
   },
   "epubGadgetDark": {
     "color": {
-      "brandNormalColor": "#A8C5D8",
-      "brandNormalColorLight": "#232A33",
-      "brandNormalColorFocused": "#232A33",
-      "brandNormalColorDisabled": "#2C333B",
-      "textColorPrimary": "#E8E8E8",
-      "textColorSecondary": "#A0A8B0",
-      "textColorTertiary": "#6E7680",
-      "bgColorPage": "#171A1E",
-      "bgColorContainer": "#1F242A",
-      "borderColor": "#2C333B",
-      "dangerColor": "#D97A7A"
+      "brandNormalColor": "#7C86EE",
+      "brandNormalColorLight": "#272B45",
+      "brandNormalColorFocused": "#272B45",
+      "brandNormalColorDisabled": "#2A2A2E",
+      "textColorPrimary": "#EDEDEF",
+      "textColorSecondary": "#A6A6AC",
+      "textColorTertiary": "#70707A",
+      "bgColorPage": "#161618",
+      "bgColorContainer": "#1E1E21",
+      "borderColor": "#2E2E33",
+      "dangerColor": "#F87171"
     }
   }
 }
@@ -55,6 +56,22 @@ TDThemeData? _cachedTdTheme;
 /// 解析后的 TDesign 主题数据（含亮/暗两套）
 TDThemeData get _tdTheme =>
     _cachedTdTheme ??= TDThemeData.fromJson('epubGadget', _tdThemeConfig)!;
+
+/// 内置思源宋体字体名（仅供 EPUB 内容预览使用）
+const String appFontFamily = 'SourceHanSerifApp';
+
+/// 衬线字体回退链（EPUB 内容预览用）
+const List<String> _serifFallback = [
+  'Source Han Serif SC',
+  'Source Han Serif CN',
+  'Noto Serif CJK SC',
+  'Noto Serif SC',
+  'Songti SC',
+  'STSong',
+  'SimSun',
+  'PingFang SC',
+  'serif',
+];
 
 /// UI 无衬线字体回退链（工具界面用）
 const List<String> _sansFallback = [
@@ -68,79 +85,86 @@ const List<String> _sansFallback = [
   'sans-serif',
 ];
 
+/// 为 TextStyle 注入衬线字体（EPUB 内容预览用）
+TextStyle withSerifFont(TextStyle style) => style.copyWith(
+      fontFamily: appFontFamily,
+      fontFamilyFallback: _serifFallback,
+    );
+
 class AppTheme {
   AppTheme._();
 
   // ==================== 亮色色板 ====================
 
-  /// 主色：墨色（主按钮、激活态、图标，中性近黑）
-  static const Color accent = Color(0xFF1A1A1A);
+  /// 主色：墨黑（主按钮、激活态、图标，高对比黑白）
+  static const Color accent = Color(0xFF18181B);
   static const Color accentDark = Color(0xFF000000);
-  static const Color accentLight = Color(0xFFE9EEF4);
-  static const Color accentSoft = Color(0xFFF4F7FA);
+  static const Color accentLight = Color(0xFFF0F0F2);
+  static const Color accentSoft = Color(0xFFF6F6F7);
 
-  /// 强调色：柔粉蓝（唯一彩色，仅用于等级徽章、进度高亮）
-  static const Color warm = Color(0xFFA8C5D8);
-  static const Color warmLight = Color(0xFFEAF0F5);
+  /// 强调色：靛蓝（唯一彩色，仅用于聚焦、选中、链接、进度高亮）
+  static const Color warm = Color(0xFF5661D6);
+  static const Color warmLight = Color(0xFFEDEFFB);
 
-  /// 背景：冷调浅灰蓝
-  static const Color bgBase = Color(0xFFE8ECF0);
-  static const Color bgWarm = Color(0xFFE1E6EB);
-  static const Color bgPaper = Color(0xFFE8ECF0);
+  /// 背景：中性浅灰（生产力工具底色）
+  static const Color bgBase = Color(0xFFF7F7F8);
+  static const Color bgWarm = Color(0xFFEFEFF1);
+  static const Color bgPaper = Color(0xFFF7F7F8);
 
-  /// 卡片：纯白
+  /// 卡片：纯白 + 细分隔线
   static const Color card = Color(0xFFFFFFFF);
-  static const Color cardSoft = Color(0xFFFAFBFC);
+  static const Color cardSoft = Color(0xFFFAFAFB);
 
   /// 文字
-  static const Color textPrimary = Color(0xFF1A1A1A);
-  static const Color textSecondary = Color(0xFF646464);
-  static const Color textTertiary = Color(0xFF8E8E8E);
+  static const Color textPrimary = Color(0xFF18181B);
+  static const Color textSecondary = Color(0xFF52525B);
+  static const Color textTertiary = Color(0xFFA1A1AA);
 
   /// 分隔线
-  static const Color divider = Color(0xFFE5E5E5);
-  static const Color dividerLight = Color(0xFFEFEFEF);
+  static const Color divider = Color(0xFFE4E4E7);
+  static const Color dividerLight = Color(0xFFECECEF);
 
   /// 标签/芯片背景
-  static const Color chipBg = Color(0xFFF2F4F7);
+  static const Color chipBg = Color(0xFFF4F4F5);
 
   /// 功能色（克制低调）
-  static const Color success = Color(0xFF5C7A8C);
-  static const Color warning = Color(0xFFB08D4E);
-  static const Color error = Color(0xFFB33A3A);
-  static const Color info = Color(0xFF8CA5B8);
+  static const Color success = Color(0xFF16A34A);
+  static const Color warning = Color(0xFFD97706);
+  static const Color error = Color(0xFFDC2626);
+  static const Color info = Color(0xFF2563EB);
 
   // ==================== 暗色色板 ====================
 
-  static const Color darkAccent = Color(0xFFA8C5D8);
-  static const Color darkAccentDark = Color(0xFF8FAFCC);
-  static const Color darkAccentLight = Color(0xFF232A33);
-  static const Color darkAccentSoft = Color(0xFF1B2128);
-  static const Color darkWarm = Color(0xFF9DBAD0);
-  static const Color darkWarmLight = Color(0xFF22303C);
-  static const Color darkBgBase = Color(0xFF171A1E);
-  static const Color darkBgWarm = Color(0xFF1C2126);
-  static const Color darkBgPaper = Color(0xFF171A1E);
-  static const Color darkCard = Color(0xFF1F242A);
-  static const Color darkCardSoft = Color(0xFF262C33);
-  static const Color darkTextPrimary = Color(0xFFE8E8E8);
-  static const Color darkTextSecondary = Color(0xFFA0A8B0);
-  static const Color darkTextTertiary = Color(0xFF6E7680);
-  static const Color darkDivider = Color(0xFF2C333B);
-  static const Color darkDividerLight = Color(0xFF262D34);
-  static const Color darkChipBg = Color(0xFF232830);
-  static const Color darkSuccess = Color(0xFF9DB8C9);
-  static const Color darkWarning = Color(0xFFC9A86A);
-  static const Color darkError = Color(0xFFD97A7A);
-  static const Color darkInfo = Color(0xFF8FAFCC);
+  /// 主色：亮墨（暗色下主按钮反转为浅色）
+  static const Color darkAccent = Color(0xFFF4F4F5);
+  static const Color darkAccentDark = Color(0xFFE4E4E7);
+  static const Color darkAccentLight = Color(0xFF2A2A2E);
+  static const Color darkAccentSoft = Color(0xFF242428);
+  static const Color darkWarm = Color(0xFF7C86EE);
+  static const Color darkWarmLight = Color(0xFF252A44);
+  static const Color darkBgBase = Color(0xFF161618);
+  static const Color darkBgWarm = Color(0xFF1C1C1F);
+  static const Color darkBgPaper = Color(0xFF161618);
+  static const Color darkCard = Color(0xFF1E1E21);
+  static const Color darkCardSoft = Color(0xFF232327);
+  static const Color darkTextPrimary = Color(0xFFEDEDEF);
+  static const Color darkTextSecondary = Color(0xFFA6A6AC);
+  static const Color darkTextTertiary = Color(0xFF70707A);
+  static const Color darkDivider = Color(0xFF2E2E33);
+  static const Color darkDividerLight = Color(0xFF26262B);
+  static const Color darkChipBg = Color(0xFF26262B);
+  static const Color darkSuccess = Color(0xFF4ADE80);
+  static const Color darkWarning = Color(0xFFFBBF24);
+  static const Color darkError = Color(0xFFF87171);
+  static const Color darkInfo = Color(0xFF818CF8);
 
   // ==================== 阴影 ====================
 
-  /// 极轻投影（0 1px 3px rgba(0,0,0,0.04)）
+  /// 极轻投影（生产力风格：以描边为主，投影仅作浮起提示）
   static List<BoxShadow> get cardShadow => [
         BoxShadow(
-          color: const Color(0xFF000000).withValues(alpha: 0.04),
-          blurRadius: 3,
+          color: const Color(0xFF000000).withValues(alpha: 0.035),
+          blurRadius: 2,
           offset: const Offset(0, 1),
         ),
       ];
@@ -148,8 +172,8 @@ class AppTheme {
   /// 轻浮起（用于内嵌卡片）
   static List<BoxShadow> get cardShadowLight => [
         BoxShadow(
-          color: const Color(0xFF000000).withValues(alpha: 0.03),
-          blurRadius: 2,
+          color: const Color(0xFF000000).withValues(alpha: 0.025),
+          blurRadius: 1.5,
           offset: const Offset(0, 1),
         ),
       ];
@@ -165,6 +189,7 @@ class AppTheme {
 
   // ==================== 圆角 ====================
 
+  /// 生产力风格圆角：输入 8、卡片 10、浮层 14
   static const double radiusXL = 14;
   static const double radiusL = 12;
   static const double radiusM = 10;
@@ -182,9 +207,9 @@ class AppTheme {
 
   // ==================== 动效时长 ====================
 
-  static const Duration durFast = Duration(milliseconds: 150);
-  static const Duration durBase = Duration(milliseconds: 220);
-  static const Duration durSlow = Duration(milliseconds: 320);
+  static const Duration durFast = Duration(milliseconds: 120);
+  static const Duration durBase = Duration(milliseconds: 180);
+  static const Duration durSlow = Duration(milliseconds: 260);
 
   // ==================== 响应式断点 ====================
 
@@ -206,7 +231,7 @@ class AppTheme {
           primary: accent,
           onPrimary: Colors.white,
           secondary: warm,
-          onSecondary: Color(0xFF2A3B47),
+          onSecondary: Colors.white,
           surface: card,
           onSurface: textPrimary,
           surfaceContainerHighest: bgWarm,
@@ -218,25 +243,26 @@ class AppTheme {
           elevation: 0,
           color: card,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusL),
+            borderRadius: BorderRadius.circular(radiusM),
+            side: const BorderSide(color: dividerLight, width: 1),
           ),
         ),
         appBarTheme: const AppBarTheme(
-          centerTitle: true,
+          centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
           backgroundColor: Colors.transparent,
           foregroundColor: textPrimary,
           titleTextStyle: TextStyle(
-            fontSize: 17,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
             color: textPrimary,
-            letterSpacing: 0.3,
+            letterSpacing: 0.1,
           ),
         ),
         listTileTheme: ListTileThemeData(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusM),
+            borderRadius: BorderRadius.circular(radiusS),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -244,7 +270,7 @@ class AppTheme {
           fillColor: card,
           isDense: true,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
             borderSide: const BorderSide(color: divider, width: 1),
@@ -255,7 +281,8 @@ class AppTheme {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: accent, width: 1.5),
+            // 强焦点边框：靛蓝 1.5px
+            borderSide: const BorderSide(color: warm, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
@@ -265,7 +292,7 @@ class AppTheme {
             borderRadius: BorderRadius.circular(radiusS),
             borderSide: const BorderSide(color: error, width: 1.5),
           ),
-          hintStyle: const TextStyle(fontSize: 13.5, color: textTertiary),
+          hintStyle: const TextStyle(fontSize: 13, color: textTertiary),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -273,38 +300,40 @@ class AppTheme {
             foregroundColor: Colors.white,
             elevation: 0,
             padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radiusS),
             ),
             textStyle: const TextStyle(
-              fontSize: 14,
+              fontSize: 13.5,
               fontWeight: FontWeight.w500,
-              letterSpacing: 0.3,
+              letterSpacing: 0.1,
             ),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
-            foregroundColor: accent,
+            foregroundColor: warm,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radiusXS),
             ),
+            textStyle: const TextStyle(fontSize: 13),
           ),
         ),
         chipTheme: ChipThemeData(
           backgroundColor: chipBg,
           selectedColor: warmLight,
-          labelStyle: const TextStyle(fontSize: 13, color: textSecondary),
+          labelStyle: const TextStyle(fontSize: 12.5, color: textSecondary),
           padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusXS),
+            side: const BorderSide(color: dividerLight, width: 1),
           ),
         ),
         tabBarTheme: const TabBarThemeData(
           dividerColor: Colors.transparent,
-          labelColor: accent,
+          labelColor: warm,
           unselectedLabelColor: textTertiary,
           labelStyle: TextStyle(fontWeight: FontWeight.w600),
           indicatorSize: TabBarIndicatorSize.label,
@@ -314,7 +343,7 @@ class AppTheme {
           thickness: 0.5,
           space: 1,
         ),
-        // 精致开关：柔粉蓝选中轨道 + 白色圆钮，无描边
+        // 精致开关：靛蓝选中轨道 + 白色圆钮，无描边
         switchTheme: SwitchThemeData(
           trackOutlineWidth: const WidgetStatePropertyAll(0.0),
           trackColor: WidgetStateProperty.resolveWith(
@@ -327,7 +356,7 @@ class AppTheme {
             warm.withValues(alpha: 0.10),
           ),
         ),
-        // 精致滑块：细轨道 + 圆钮，进度高亮用柔粉蓝
+        // 精致滑块：细轨道 + 圆钮，进度高亮用靛蓝
         sliderTheme: SliderThemeData(
           trackHeight: 3,
           activeTrackColor: warm,
@@ -350,62 +379,62 @@ class AppTheme {
         ),
         textTheme: const TextTheme(
           displayLarge: TextStyle(
-            fontSize: 28,
+            fontSize: 26,
             fontWeight: FontWeight.w600,
             color: textPrimary,
-            letterSpacing: -0.5,
-            height: 1.2,
+            letterSpacing: -0.4,
+            height: 1.25,
           ),
           headlineLarge: TextStyle(
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: FontWeight.w600,
             color: textPrimary,
             letterSpacing: -0.3,
             height: 1.3,
           ),
           headlineMedium: TextStyle(
-            fontSize: 20,
+            fontSize: 19,
             fontWeight: FontWeight.w600,
             color: textPrimary,
             letterSpacing: -0.2,
             height: 1.3,
           ),
           headlineSmall: TextStyle(
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: FontWeight.w600,
             color: textPrimary,
             letterSpacing: -0.1,
             height: 1.3,
           ),
           titleLarge: TextStyle(
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: textPrimary,
-            letterSpacing: 0.2,
+            letterSpacing: 0.1,
           ),
           titleMedium: TextStyle(
-            fontSize: 15,
+            fontSize: 14.5,
             fontWeight: FontWeight.w500,
+            color: textPrimary,
+            letterSpacing: 0.1,
+          ),
+          titleSmall: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
             color: textPrimary,
             letterSpacing: 0.2,
           ),
-          titleSmall: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: 0.3,
-          ),
           bodyLarge: TextStyle(
-              fontSize: 16, color: textSecondary, height: 1.5),
+              fontSize: 15, color: textSecondary, height: 1.5),
           bodyMedium: TextStyle(
-              fontSize: 14, color: textSecondary, height: 1.5),
+              fontSize: 13.5, color: textSecondary, height: 1.5),
           bodySmall: TextStyle(
-              fontSize: 12, color: textTertiary, letterSpacing: 0.2),
+              fontSize: 12, color: textTertiary, letterSpacing: 0.1),
           labelLarge: TextStyle(
-            fontSize: 14,
+            fontSize: 13.5,
             fontWeight: FontWeight.w500,
             color: textSecondary,
-            letterSpacing: 0.3,
+            letterSpacing: 0.1,
           ),
         ),
       );
@@ -420,9 +449,9 @@ class AppTheme {
         extensions: [_tdTheme.dark!],
         colorScheme: const ColorScheme.dark(
           primary: darkAccent,
-          onPrimary: Color(0xFF101418),
+          onPrimary: Color(0xFF141416),
           secondary: darkWarm,
-          onSecondary: Color(0xFF101418),
+          onSecondary: Color(0xFF141416),
           surface: darkCard,
           onSurface: darkTextPrimary,
           surfaceContainerHighest: darkBgWarm,
@@ -434,20 +463,26 @@ class AppTheme {
           elevation: 0,
           color: darkCard,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusL),
+            borderRadius: BorderRadius.circular(radiusM),
+            side: const BorderSide(color: darkDividerLight, width: 1),
           ),
         ),
         appBarTheme: const AppBarTheme(
-          centerTitle: true,
+          centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
           backgroundColor: Colors.transparent,
           foregroundColor: darkTextPrimary,
           titleTextStyle: TextStyle(
-            fontSize: 17,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
-            letterSpacing: 0.3,
+            letterSpacing: 0.1,
+          ),
+        ),
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusS),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -455,7 +490,7 @@ class AppTheme {
           fillColor: darkCard,
           isDense: true,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
             borderSide: const BorderSide(color: darkDivider, width: 1),
@@ -466,7 +501,7 @@ class AppTheme {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkAccent, width: 1.5),
+            borderSide: const BorderSide(color: darkWarm, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(radiusS),
@@ -476,46 +511,48 @@ class AppTheme {
             borderRadius: BorderRadius.circular(radiusS),
             borderSide: const BorderSide(color: darkError, width: 1.5),
           ),
-          hintStyle: const TextStyle(fontSize: 13.5, color: darkTextTertiary),
+          hintStyle: const TextStyle(fontSize: 13, color: darkTextTertiary),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: darkAccent,
-            foregroundColor: const Color(0xFF101418),
+            foregroundColor: const Color(0xFF141416),
             elevation: 0,
             padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radiusS),
             ),
             textStyle: const TextStyle(
-              fontSize: 14,
+              fontSize: 13.5,
               fontWeight: FontWeight.w500,
-              letterSpacing: 0.3,
+              letterSpacing: 0.1,
             ),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
-            foregroundColor: darkAccent,
+            foregroundColor: darkWarm,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radiusXS),
             ),
+            textStyle: const TextStyle(fontSize: 13),
           ),
         ),
         chipTheme: ChipThemeData(
           backgroundColor: darkChipBg,
           selectedColor: darkWarmLight,
-          labelStyle: const TextStyle(fontSize: 13, color: darkTextSecondary),
+          labelStyle: const TextStyle(fontSize: 12.5, color: darkTextSecondary),
           padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusXS),
+            side: const BorderSide(color: darkDividerLight, width: 1),
           ),
         ),
         tabBarTheme: const TabBarThemeData(
           dividerColor: Colors.transparent,
-          labelColor: darkAccent,
+          labelColor: darkWarm,
           unselectedLabelColor: darkTextTertiary,
           labelStyle: TextStyle(fontWeight: FontWeight.w600),
           indicatorSize: TabBarIndicatorSize.label,
@@ -534,8 +571,8 @@ class AppTheme {
           ),
           thumbColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.selected)
-                ? const Color(0xFF101418)
-                : const Color(0xFF6E7680),
+                ? const Color(0xFF141416)
+                : const Color(0xFF70707A),
           ),
           overlayColor: WidgetStatePropertyAll(
             darkWarm.withValues(alpha: 0.12),
@@ -545,7 +582,7 @@ class AppTheme {
           trackHeight: 3,
           activeTrackColor: darkWarm,
           inactiveTrackColor: darkDivider,
-          thumbColor: const Color(0xFFE8E8E8),
+          thumbColor: const Color(0xFFEDEDEF),
           overlayColor: darkWarm.withValues(alpha: 0.14),
           overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           thumbShape: const RoundSliderThumbShape(
@@ -558,67 +595,67 @@ class AppTheme {
           valueIndicatorColor: darkAccent,
           valueIndicatorTextStyle: const TextStyle(
             fontSize: 11,
-            color: Color(0xFF101418),
+            color: Color(0xFF141416),
           ),
         ),
         textTheme: const TextTheme(
           displayLarge: TextStyle(
-            fontSize: 28,
+            fontSize: 26,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
-            letterSpacing: -0.5,
-            height: 1.2,
+            letterSpacing: -0.4,
+            height: 1.25,
           ),
           headlineLarge: TextStyle(
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
             letterSpacing: -0.3,
             height: 1.3,
           ),
           headlineMedium: TextStyle(
-            fontSize: 20,
+            fontSize: 19,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
             letterSpacing: -0.2,
             height: 1.3,
           ),
           headlineSmall: TextStyle(
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
             letterSpacing: -0.1,
             height: 1.3,
           ),
           titleLarge: TextStyle(
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: darkTextPrimary,
-            letterSpacing: 0.2,
+            letterSpacing: 0.1,
           ),
           titleMedium: TextStyle(
-            fontSize: 15,
+            fontSize: 14.5,
             fontWeight: FontWeight.w500,
+            color: darkTextPrimary,
+            letterSpacing: 0.1,
+          ),
+          titleSmall: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
             color: darkTextPrimary,
             letterSpacing: 0.2,
           ),
-          titleSmall: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: 0.3,
-          ),
           bodyLarge: TextStyle(
-              fontSize: 16, color: darkTextSecondary, height: 1.5),
+              fontSize: 15, color: darkTextSecondary, height: 1.5),
           bodyMedium: TextStyle(
-              fontSize: 14, color: darkTextSecondary, height: 1.5),
+              fontSize: 13.5, color: darkTextSecondary, height: 1.5),
           bodySmall: TextStyle(
-              fontSize: 12, color: darkTextTertiary, letterSpacing: 0.2),
+              fontSize: 12, color: darkTextTertiary, letterSpacing: 0.1),
           labelLarge: TextStyle(
-            fontSize: 14,
+            fontSize: 13.5,
             fontWeight: FontWeight.w500,
             color: darkTextSecondary,
-            letterSpacing: 0.3,
+            letterSpacing: 0.1,
           ),
         ),
       );
@@ -675,7 +712,7 @@ extension AppThemeExt on BuildContext {
       MediaQuery.of(this).size.width < AppTheme.tabletBreakpoint;
 }
 
-/// 高质感白卡（极轻投影 + 弱描边）
+/// 高质感白卡（细分隔线描边 + 极轻投影）
 class PremiumCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -698,22 +735,22 @@ class PremiumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusL),
+      borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusM),
       child: InkWell(
         onTap: onTap,
-        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusL),
-        splashColor: Colors.black.withValues(alpha: 0.04),
-        highlightColor: Colors.black.withValues(alpha: 0.03),
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusM),
+        splashColor: Colors.black.withValues(alpha: 0.03),
+        highlightColor: Colors.black.withValues(alpha: 0.02),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
             color: color ?? context.themeCard,
             borderRadius:
-                borderRadius ?? BorderRadius.circular(AppTheme.radiusL),
+                borderRadius ?? BorderRadius.circular(AppTheme.radiusM),
             boxShadow: context.themeCardShadow,
             border: Border.all(
               color: selected
-                  ? context.themeWarm.withValues(alpha: 0.55)
+                  ? context.themeWarm.withValues(alpha: 0.6)
                   : context.themeDividerLight,
               width: selected ? 1.5 : 1,
             ),
@@ -725,7 +762,7 @@ class PremiumCard extends StatelessWidget {
   }
 }
 
-/// 应用背景 — 纯色浅灰蓝（亮色）/ 深墨灰（暗色），不做渐变
+/// 应用背景 — 中性浅灰（亮色）/ 深墨灰（暗色），不做渐变
 ///
 /// 用法：
 /// - 作为整页背景：`PaperBackground(child: ...)` 直接包裹

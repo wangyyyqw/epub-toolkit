@@ -148,7 +148,7 @@ class _BaseInputState extends State<BaseInput> {
               borderSide: BorderSide(
                 color: hasError
                     ? context.themeError
-                    : context.themeAccent,
+                    : context.themeWarm,
                 width: 1.5,
               ),
             ),

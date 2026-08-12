@@ -28,7 +28,7 @@ class BaseSelect extends StatelessWidget {
     );
     final OutlineInputBorder focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppTheme.radiusS),
-      borderSide: BorderSide(color: context.themeAccent, width: 1.5),
+      borderSide: BorderSide(color: context.themeWarm, width: 1.5),
     );
 
     return Column(

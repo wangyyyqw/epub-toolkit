@@ -33,8 +33,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
   static const String _monoFamily = 'monospace';
   static const double _lineHeight = 1.5;
 
-  /// 窄屏（移动端）布局断点：小于该宽度时切换为紧凑布局
-  static const double _narrowBreakpoint = 640;
+  /// 窄屏（移动端）布局断点：小于该宽度时切换为紧凑布局（与全局 720 对齐）
+  static const double _narrowBreakpoint = 720;
 
   // 差异色（亮色）
   static const _delBg = Color(0xFFF7E3E1);
@@ -1236,8 +1236,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
                   tooltip: '打开${isLeft ? '左侧' : '右侧'}',
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints(
-                    minWidth: 30,
-                    minHeight: 30,
+                    minWidth: 40,
+                    minHeight: 40,
                   ),
                   onPressed: () => _pickSide(isLeft),
                   icon: Icon(
@@ -1250,8 +1250,8 @@ class _TextDiffPageState extends State<TextDiffPage> {
                   tooltip: '保存${isLeft ? '左侧' : '右侧'}',
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints(
-                    minWidth: 30,
-                    minHeight: 30,
+                    minWidth: 40,
+                    minHeight: 40,
                   ),
                   onPressed: () => _saveSide(isLeft),
                   icon: Icon(
@@ -1343,13 +1343,11 @@ class _TextDiffPageState extends State<TextDiffPage> {
         bg = isDark ? _repBgDark : _repBg;
     }
     if (ignored) {
-      bg = isDark
-          ? const Color(0xFF23262B)
-          : const Color(0xFFF2F3F5);
+      bg = context.themeBgWarm;
     }
     if (row.op == DiffOp.unknown) {
       // 未对比区域：中性底色 + 分隔线，弱化显示
-      bg = isDark ? const Color(0xFF1E2126) : const Color(0xFFF4F5F7);
+      bg = context.themeBgWarm.withValues(alpha: 0.7);
     }
 
     final inlineColor = (row.op == DiffOp.replace)
@@ -1390,9 +1388,7 @@ class _TextDiffPageState extends State<TextDiffPage> {
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: _isNarrow ? 10 : 10.5,
-                    color: ignored
-                        ? context.themeTextTertiary
-                        : const Color(0xFF9AA0A6),
+                    color: context.themeTextTertiary,
                   ),
                 ),
               ),
@@ -1488,13 +1484,13 @@ class _TextDiffPageState extends State<TextDiffPage> {
     }
     if (matched) {
       style = (style ?? const TextStyle()).copyWith(
-        backgroundColor: const Color(0xFFB3D4F0),
+        backgroundColor: context.themeInfo.withValues(alpha: 0.2),
         decoration: TextDecoration.underline,
-        decorationColor: const Color(0xFF2E7AB8),
+        decorationColor: context.themeInfo,
       );
       if (isCurrentMatch) {
         style = style.copyWith(
-          backgroundColor: const Color(0xFFFFC857),
+          backgroundColor: context.themeWarm.withValues(alpha: 0.32),
           fontWeight: FontWeight.w700,
         );
       }

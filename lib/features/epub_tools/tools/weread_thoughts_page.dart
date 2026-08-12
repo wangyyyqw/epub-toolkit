@@ -643,35 +643,15 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     }
   }
 
-  /// 把生成的 EPUB 复制到公共 Download/books/ 目录
-  ///
-  /// 仅 Android 生效。统一走流式复制(原生端 FileInputStream 分块写入
-  /// MediaStore),避免 Dart 堆持有完整文件字节 + MethodChannel 序列化副本
-  /// 导致移动端大书 OOM 闪退。
+    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
     if (!mounted) return;
-    if (_outputPath.isEmpty) return;
-    if (!Platform.isAndroid) return;
-    if (!await File(_outputPath).exists()) return;
-    try {
-      final filename = p.basename(_outputPath);
-      _logController.append('PROGRESS: 复制到公共 Download...');
-      final publicPath = await FileService.copyFileToPublicDownload(
-        sourcePath: _outputPath,
-        filename: filename,
-      );
-      if (mounted) {
-        _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
-        try {
-          await File(_outputPath).delete();
-        } catch (_) {}
-        _outputPath = publicPath;
-      }
-    } catch (e) {
-      if (mounted) {
-        _logController.append('WARN: 复制到公共 Download 失败：$e');
-      }
-    }
+    _outputPath = await FileService.copyGeneratedFileToPublicDownload(
+      sourcePath: _outputPath,
+      log: (line) {
+        if (mounted) _logController.append(line);
+      },
+    );
   }
 
   /// 显示功能说明
@@ -781,12 +761,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
                 // 日志面板
                 const SizedBox(height: 10),
-                buildLogPanel(
-                  context,
-                  OutputLog(
-                    key: const ValueKey('weread-output-log'),
-                    controller: _logController,
-                  ),
+                OutputLog(
+                  key: const ValueKey('weread-output-log'),
+                  controller: _logController,
                 ),
               ],
             ),
@@ -989,6 +966,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     version: QrVersions.auto,
                     size: 200,
                     backgroundColor: Colors.white,
+                    semanticsLabel: '登录二维码',
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -1216,21 +1194,27 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                         horizontal: 10,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusS,
+                        ),
                         borderSide: BorderSide(
                           color: context.themeDividerLight,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusS,
+                        ),
                         borderSide: BorderSide(
                           color: context.themeDividerLight,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusS,
+                        ),
                         borderSide: BorderSide(
-                          color: context.themeDivider,
+                          color: context.themeWarm,
                           width: 1.5,
                         ),
                       ),
@@ -1280,17 +1264,18 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       padding: const EdgeInsets.only(bottom: 3),
       child: InkWell(
         onTap: _loading ? null : () => _bindBook(book),
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             border: Border.all(color: context.themeDividerLight),
+            borderRadius: BorderRadius.circular(AppTheme.radiusS),
           ),
           child: Row(
             children: [
               // 封面缩略图
               ClipRRect(
-                borderRadius: BorderRadius.zero,
+                borderRadius: BorderRadius.circular(AppTheme.radiusXS),
                 child: SizedBox(
                   width: 28,
                   height: 40,

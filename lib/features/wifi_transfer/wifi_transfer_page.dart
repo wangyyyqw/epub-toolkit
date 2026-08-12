@@ -276,7 +276,7 @@ class _WifiTransferPageState extends State<WifiTransferPage> {
                                   icon: const Icon(Icons.copy_rounded, size: 18),
                                   tooltip: '复制地址',
                                   constraints: const BoxConstraints.tightFor(
-                                    width: 32,
+                                    width: 40,
                                     height: 40,
                                   ),
                                   padding: EdgeInsets.zero,
@@ -518,7 +518,7 @@ class _BookRow extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.edit_outlined, size: 18),
             tooltip: '重命名',
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
             padding: EdgeInsets.zero,
             onPressed: onRename,
           ),
@@ -529,7 +529,7 @@ class _BookRow extends StatelessWidget {
               color: context.themeError,
             ),
             tooltip: '删除',
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
             padding: EdgeInsets.zero,
             onPressed: onDelete,
           ),

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../core/file_service.dart';
+import '../../core/theme.dart';
 import '../../shared/providers/toast_provider.dart';
 import '../../shared/widgets/base_button.dart';
 import '../../shared/widgets/base_card.dart';
@@ -59,7 +60,8 @@ class _MetadataPageState extends State<MetadataPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
-        padding: toolPageContentPadding(context),
+        padding: EdgeInsets.fromLTRB(
+            16, 4, 16, MediaQuery.sizeOf(context).width >= 720 ? 24 : 80),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -91,7 +93,6 @@ class _MetadataPageState extends State<MetadataPage> {
   ///
   /// 提供 EPUB 文件选择按钮，选择后自动设置输出路径并加载元数据。
   Widget _buildFileSelectionCard() {
-    final theme = Theme.of(context);
     return BaseCard(
       title: '文件选择',
       child: Column(
@@ -106,13 +107,16 @@ class _MetadataPageState extends State<MetadataPage> {
                   Icon(
                     Icons.book_outlined,
                     size: 18,
-                    color: theme.colorScheme.primary,
+                    color: context.themeAccent,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       p.basename(_epubPath!),
-                      style: theme.textTheme.bodyMedium,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: context.themeTextSecondary,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -138,8 +142,9 @@ class _MetadataPageState extends State<MetadataPage> {
                 const SizedBox(width: 8),
                 Text(
                   '正在加载…',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.themeTextTertiary,
                   ),
                 ),
               ],
@@ -156,13 +161,14 @@ class _MetadataPageState extends State<MetadataPage> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
+                  color: context.themeBgWarm,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '输出：${p.basename(_outputPath!)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.themeTextTertiary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -259,7 +265,6 @@ class _MetadataPageState extends State<MetadataPage> {
   ///
   /// XML 按需读取，避免仅编辑常规元数据时额外渲染完整 OPF 文档。
   Widget _buildOpfCard() {
-    final theme = Theme.of(context);
     final content = _opfContent;
 
     return BaseCard(
@@ -292,23 +297,28 @@ class _MetadataPageState extends State<MetadataPage> {
       child: content == null
           ? Text(
               '查看 EPUB 包中的完整 OPF XML，包括 metadata、manifest 和 spine。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              style: TextStyle(
+                fontSize: 12,
+                color: context.themeTextTertiary,
               ),
             )
           : Container(
               width: double.infinity,
               constraints: const BoxConstraints(maxHeight: 360),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLowest,
+                color: context.themeBgWarm,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: theme.colorScheme.outlineVariant),
+                border: Border.all(color: context.themeDividerLight),
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(12),
                 child: SelectableText(
                   content,
-                  style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: context.themeTextSecondary,
+                  ),
                 ),
               ),
             ),
@@ -319,7 +329,6 @@ class _MetadataPageState extends State<MetadataPage> {
   ///
   /// 左侧显示封面图片预览，右侧提供「替换封面」和「移除封面」按钮。
   Widget _buildCoverSection() {
-    final theme = Theme.of(context);
     // 判断当前是否有封面可显示
     final hasNewCover = _coverPath != null;
     final hasOriginalCover = _metadata?.coverBytes != null && !_coverRemoved;
@@ -333,9 +342,9 @@ class _MetadataPageState extends State<MetadataPage> {
           width: 120,
           height: 180,
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
+            color: context.themeBgWarm,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: theme.colorScheme.outline),
+            border: Border.all(color: context.themeDivider),
           ),
           clipBehavior: Clip.antiAlias,
           child: hasCover
@@ -343,14 +352,14 @@ class _MetadataPageState extends State<MetadataPage> {
                     ? Image.file(
                         File(_coverPath!),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _coverPlaceholder(theme),
+                        errorBuilder: (_, _, _) => _coverPlaceholder(),
                       )
                     : Image.memory(
                         _metadata!.coverBytes!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _coverPlaceholder(theme),
+                        errorBuilder: (_, _, _) => _coverPlaceholder(),
                       ))
-              : _coverPlaceholder(theme),
+              : _coverPlaceholder(),
         ),
         const SizedBox(width: 16),
         // 封面操作按钮
@@ -360,8 +369,9 @@ class _MetadataPageState extends State<MetadataPage> {
             children: [
               Text(
                 '封面图片',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: context.themeTextTertiary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -386,12 +396,12 @@ class _MetadataPageState extends State<MetadataPage> {
   }
 
   /// 构建封面占位图标
-  Widget _coverPlaceholder(ThemeData theme) {
+  Widget _coverPlaceholder() {
     return Center(
       child: Icon(
         Icons.menu_book_outlined,
         size: 48,
-        color: theme.colorScheme.outline,
+        color: context.themeDivider,
       ),
     );
   }
@@ -623,30 +633,11 @@ class _MetadataPageState extends State<MetadataPage> {
   Future<void> _copyToPublicDownload() async {
     final outputPath = _outputPath;
     if (outputPath == null || outputPath.isEmpty) return;
-    if (!Platform.isAndroid) return;
-    if (!await File(outputPath).exists()) return;
-    try {
-      final filename = p.basename(outputPath);
-      String publicPath;
-      if (await File(outputPath).length() > 10 * 1024 * 1024) {
-        publicPath = await FileService.copyFileToPublicDownload(
-          sourcePath: outputPath,
-          filename: filename,
-        );
-      } else {
-        final bytes = await File(outputPath).readAsBytes();
-        publicPath = await FileService.writeToPublicDownload(
-          filename: filename,
-          bytes: bytes,
-        );
-      }
-      try {
-        await File(outputPath).delete();
-      } catch (_) {}
-      _outputPath = publicPath;
-    } catch (e) {
-      debugPrint('[MetadataPage] 复制到公共 Download 失败：$e');
-    }
+    if (!mounted) return;
+    _outputPath = await FileService.copyGeneratedFileToPublicDownload(
+      sourcePath: outputPath,
+      log: (line) => debugPrint('[MetadataPage] $line'),
+    );
   }
 }
 

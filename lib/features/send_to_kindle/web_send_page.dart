@@ -636,7 +636,7 @@ class _WebSendPageState extends State<WebSendPage> {
     final windowsController = _windowsController;
     final size = compact ? 19.0 : 20.0;
     final constraints = compact
-        ? const BoxConstraints.tightFor(width: 36, height: 36)
+        ? const BoxConstraints.tightFor(width: 40, height: 40)
         : null;
     return [
       IconButton(

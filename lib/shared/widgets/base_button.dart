@@ -109,9 +109,7 @@ class BaseButton extends StatelessWidget {
     final style = switch (variant) {
       BaseButtonVariant.accent => TDButtonStyle(
           backgroundColor: context.themeWarm,
-          textColor: context.isDarkMode
-              ? const Color(0xFF101418)
-              : const Color(0xFF2A3B47),
+          textColor: Colors.white,
           frameColor: Colors.transparent,
         ),
       _ => null,
@@ -147,9 +145,7 @@ class BaseButton extends StatelessWidget {
       case BaseButtonVariant.secondary:
         return context.themeTextSecondary;
       case BaseButtonVariant.accent:
-        return context.isDarkMode
-            ? const Color(0xFF101418)
-            : const Color(0xFF2A3B47);
+        return Colors.white;
       case BaseButtonVariant.danger:
         return Colors.white;
     }

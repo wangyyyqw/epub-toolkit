@@ -1564,7 +1564,6 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                       builder: (context, constraints) {
                         const spacing = 8.0;
                         const cardWidth = 104.0;
-                            (cardWidth + spacing);
                         return Wrap(
                           spacing: spacing,
                           runSpacing: 8,
@@ -3207,7 +3206,8 @@ class _LabeledTextFieldState extends State<_LabeledTextField> {
         ),
         const SizedBox(height: 7),
         SizedBox(
-          height: 52,
+          height: (52 * MediaQuery.textScalerOf(context).scale(1.0))
+              .clamp(52.0, 88.0),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,

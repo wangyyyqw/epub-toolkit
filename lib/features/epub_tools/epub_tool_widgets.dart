@@ -96,31 +96,6 @@ class ResponsiveRow extends StatelessWidget {
   }
 }
 
-/// 便捷函数：两个子项响应式并排（桌面双列、移动单列）
-Widget buildResponsivePair({
-  required Widget first,
-  required Widget second,
-  double breakpoint = 720,
-  double spacing = 12,
-  List<int> flexes = const [1, 1],
-}) {
-  return ResponsiveRow(
-    breakpoint: breakpoint,
-    spacing: spacing,
-    flexes: flexes,
-    children: [first, second],
-  );
-}
-
-/// 工具页内容区边距
-///
-/// 桌面端(≥720)底部操作栏为悬浮按钮,内容区不需要大留白;
-/// 移动端保留 80 底部空间给通栏按钮。
-EdgeInsets toolPageContentPadding(BuildContext context) {
-  final wide = MediaQuery.sizeOf(context).width >= 720;
-  return EdgeInsets.fromLTRB(16, 4, 16, wide ? 24 : 80);
-}
-
 /// 信息提示条
 Widget buildInfoBar(BuildContext context, String text) {
   return Container(
@@ -485,6 +460,9 @@ class _CompactFieldState extends State<_CompactField> {
 
   @override
   Widget build(BuildContext context) {
+    // 按系统文字缩放自适应高度（封顶 88，避免超大缩放下溢出）
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final fieldHeight = (54 * textScale).clamp(54.0, 88.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -504,7 +482,7 @@ class _CompactFieldState extends State<_CompactField> {
         ),
         const SizedBox(height: 6),
         SizedBox(
-          height: widget.maxLines > 1 ? null : 54,
+          height: widget.maxLines > 1 ? null : fieldHeight,
           child: TextField(
             controller: _controller,
             style: TextStyle(fontSize: 15, color: context.themeTextPrimary),
@@ -532,7 +510,7 @@ class _CompactFieldState extends State<_CompactField> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppTheme.radiusS),
-                borderSide: BorderSide(color: context.themeAccent, width: 1.5),
+                borderSide: BorderSide(color: context.themeWarm, width: 1.5),
               ),
             ),
             onChanged: widget.onChanged,
@@ -561,7 +539,8 @@ Widget buildCompactSelect(
       ),
       const SizedBox(height: 6),
       SizedBox(
-        height: 54,
+        height: (54 * MediaQuery.textScalerOf(context).scale(1.0))
+            .clamp(54.0, 88.0),
         child: DropdownButtonFormField<String>(
           key: ValueKey('$label-$value'),
           initialValue: value,
@@ -601,7 +580,7 @@ Widget buildCompactSelect(
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusS),
-              borderSide: BorderSide(color: context.themeAccent, width: 1.5),
+              borderSide: BorderSide(color: context.themeWarm, width: 1.5),
             ),
           ),
           icon: Icon(
@@ -694,12 +673,15 @@ Widget buildBottomActionBar(
     child: LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 720;
+        // 按系统文字缩放自适应高度（封顶 84）
+        final barHeight = (50 * MediaQuery.textScalerOf(context).scale(1.0))
+            .clamp(50.0, 84.0);
         final loadingWidget = ClipRRect(
           borderRadius: BorderRadius.circular(AppTheme.radiusM),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
             child: Container(
-              height: 50,
+              height: barHeight,
               decoration: BoxDecoration(
                 color: context.themeCard.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(AppTheme.radiusM),
@@ -733,7 +715,7 @@ Widget buildBottomActionBar(
           ),
         );
         final actionButton = SizedBox(
-          height: 50,
+          height: barHeight,
           width: wide ? 260 : double.infinity,
           child: ElevatedButton(
             onPressed: onPressed,
@@ -781,11 +763,6 @@ Widget buildBottomActionBar(
       },
     ),
   );
-}
-
-/// 日志按钮入口。日志组件会在弹窗中提供滚动、选择、复制和清空操作。
-Widget buildLogPanel(BuildContext context, Widget logController) {
-  return logController;
 }
 
 /// 设置项行（TDesign TDCell 风格：左图标 + 标签 + 右值 + 右箭头，全行可点）

@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -78,21 +77,15 @@ class _ZipPasswordPageState extends State<ZipPasswordPage> {
     if (mounted) setState(() {});
   }
 
+    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
-    if (!Platform.isAndroid || _outputPath.isEmpty) return;
-    final output = File(_outputPath);
-    if (!await output.exists()) return;
-    try {
-      final publicPath = await FileService.copyFileToPublicDownload(
-        sourcePath: _outputPath,
-        filename: p.basename(_outputPath),
-      );
-      await output.delete();
-      _outputPath = publicPath;
-      _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
-    } catch (error) {
-      _logController.append('WARN: 复制到公共 Download 失败：$error');
-    }
+    if (!mounted) return;
+    _outputPath = await FileService.copyGeneratedFileToPublicDownload(
+      sourcePath: _outputPath,
+      log: (line) {
+        if (mounted) _logController.append(line);
+      },
+    );
   }
 
   Future<void> _execute() async {

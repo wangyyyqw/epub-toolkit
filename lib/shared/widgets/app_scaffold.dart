@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tdesign_flutter/tdesign_flutter.dart';
 
+import '../../core/app_version.dart';
 import '../../core/theme.dart';
 
 /// 侧边栏导航项
@@ -678,10 +679,10 @@ class _Sidebar extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'v1.3.0',
+                  'v${appVersion.split('+').first}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: context.themeTextTertiary.withValues(alpha: 0.6),
+                    color: context.themeTextTertiary.withValues(alpha: 0.7),
                     letterSpacing: 0.3,
                   ),
                 ),

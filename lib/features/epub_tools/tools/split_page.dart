@@ -304,10 +304,15 @@ class _SplitPageState extends State<SplitPage> {
         return CheckboxListTile(
           value: checked,
           dense: true,
-          visualDensity: const VisualDensity(vertical: -2),
+          // 保持 40px+ 触控高度：不压缩垂直密度，用 contentPadding 控制紧凑
+          visualDensity: VisualDensity.standard,
           controlAffinity: ListTileControlAffinity.leading,
           activeColor: theme.colorScheme.primary,
-          contentPadding: EdgeInsets.only(left: 12 + (target.level - 1) * 16),
+          contentPadding: EdgeInsets.only(
+            left: 12 + (target.level - 1) * 16,
+            top: 2,
+            bottom: 2,
+          ),
           title: Text(
             target.title,
             maxLines: 1,

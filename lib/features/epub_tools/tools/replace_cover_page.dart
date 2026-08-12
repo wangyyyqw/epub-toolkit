@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -28,9 +27,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
   static const _subtitle = '将 EPUB 的封面图片替换为新图片';
   static const _icon = Icons.image_outlined;
 
-  bool get _returnsText => false;
-  String get _resultTitle => '提取的文本';
-
   // ==================== 状态 ====================
 
   String _epubPath = '';
@@ -38,7 +34,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
   String _coverPath = '';
   bool _userPickedOutput = false;
   bool _loading = false;
-  String _resultText = '';
   final OutputLogController _logController = OutputLogController();
 
   @override
@@ -154,7 +149,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
 
     setState(() {
       _loading = true;
-      _resultText = '';
     });
     await _ensureOutputPath();
     _logController.clear();
@@ -172,51 +166,15 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
     }
   }
 
-  /// 把生成的输出文件复制到公共 Download/books/ 目录（仅 Android）
+    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
-    if (_outputPath.isEmpty) return;
-    if (!Platform.isAndroid) return;
-    if (!await File(_outputPath).exists()) return;
-
-    const streamThreshold = 10 * 1024 * 1024;
-    final fileSize = await File(_outputPath).length();
-    final useStream = fileSize > streamThreshold;
-
-    try {
-      final filename = p.basename(_outputPath);
-      String publicPath;
-
-      if (useStream) {
-        _logController.append(
-          'PROGRESS: 大文件（${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB），使用流式复制...',
-        );
-        publicPath = await FileService.copyFileToPublicDownload(
-          sourcePath: _outputPath,
-          filename: filename,
-        );
-      } else {
-        final bytes = await File(_outputPath).readAsBytes();
-        publicPath = await FileService.writeToPublicDownload(
-          filename: filename,
-          bytes: bytes,
-        );
-      }
-
-      _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
-
-      try {
-        final tempFile = File(_outputPath);
-        if (await tempFile.exists()) {
-          await tempFile.delete();
-        }
-      } catch (e) {
-        _logController.append('WARN: 清理临时文件失败：$e');
-      }
-
-      _outputPath = publicPath;
-    } catch (e) {
-      _logController.append('WARN: 复制到公共 Download 失败：$e');
-    }
+    if (!mounted) return;
+    _outputPath = await FileService.copyGeneratedFileToPublicDownload(
+      sourcePath: _outputPath,
+      log: (line) {
+        if (mounted) _logController.append(line);
+      },
+    );
   }
 
   // ==================== 参数 UI ====================
@@ -241,9 +199,6 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
     return Scaffold(
       body: Column(
         children: [
@@ -306,31 +261,9 @@ class _ReplaceCoverPageState extends State<ReplaceCoverPage> {
                   ..._buildParams(),
                 ],
 
-                // 文本结果
-                if (_returnsText && _resultText.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  buildSectionLabel(context, Icons.text_snippet, _resultTitle),
-                  const SizedBox(height: 8),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: cs.outlineVariant),
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(12),
-                      child: SelectableText(
-                        _resultText,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ),
-                ],
-
                 // 日志
                 const SizedBox(height: 8),
-                buildLogPanel(context, OutputLog(controller: _logController)),
+                OutputLog(controller: _logController),
               ],
             ),
           ),

@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -73,38 +72,15 @@ class _EncryptPageState extends State<EncryptPage> {
     }
   }
 
-  /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android）
+    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
-    if (_outputPath.isEmpty) return;
-    if (!Platform.isAndroid) return;
-    if (!await File(_outputPath).exists()) return;
-    const streamThreshold = 10 * 1024 * 1024;
-    final fileSize = await File(_outputPath).length();
-    final useStream = fileSize > streamThreshold;
-    try {
-      final filename = p.basename(_outputPath);
-      String publicPath;
-      if (useStream) {
-        _logController.append('PROGRESS: 大文件，使用流式复制...');
-        publicPath = await FileService.copyFileToPublicDownload(
-          sourcePath: _outputPath,
-          filename: filename,
-        );
-      } else {
-        final bytes = await File(_outputPath).readAsBytes();
-        publicPath = await FileService.writeToPublicDownload(
-          filename: filename,
-          bytes: bytes,
-        );
-      }
-      _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
-      try {
-        await File(_outputPath).delete();
-      } catch (_) {}
-      _outputPath = publicPath;
-    } catch (e) {
-      _logController.append('WARN: 复制到公共 Download 失败：$e');
-    }
+    if (!mounted) return;
+    _outputPath = await FileService.copyGeneratedFileToPublicDownload(
+      sourcePath: _outputPath,
+      log: (line) {
+        if (mounted) _logController.append(line);
+      },
+    );
   }
 
   /// 执行名称混淆加密操作

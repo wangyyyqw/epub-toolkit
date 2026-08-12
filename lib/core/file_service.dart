@@ -508,4 +508,50 @@ class FileService {
     await File(sourcePath).copy(destPath);
     return destPath;
   }
+
+  /// 生成文件输出后的公共目录处理：复制到 Download/books/ 并删除源文件。
+  ///
+  /// 各工具页输出 EPUB 后统一调用此方法（此前在 26 个页面重复实现）。
+  /// 大文件（>10MB）走流式复制避免 OOM，小文件直接写字节；
+  /// 成功后删除私有目录源文件并返回公共路径，失败时返回原路径，
+  /// 进度与错误经 [log] 回调输出。
+  ///
+  /// 仅 Android 实际发生「复制到公共目录 + 删除源文件」；
+  /// 其余平台输出本就写在与用户可见的位置，直接返回 [sourcePath]。
+  static Future<String> copyGeneratedFileToPublicDownload({
+    required String sourcePath,
+    required void Function(String line) log,
+  }) async {
+    if (sourcePath.isEmpty) return sourcePath;
+    if (!Platform.isAndroid) return sourcePath;
+    if (!await File(sourcePath).exists()) return sourcePath;
+    const streamThreshold = 10 * 1024 * 1024;
+    final fileSize = await File(sourcePath).length();
+    final useStream = fileSize > streamThreshold;
+    try {
+      final filename = p.basename(sourcePath);
+      String publicPath;
+      if (useStream) {
+        log('PROGRESS: 大文件，使用流式复制...');
+        publicPath = await copyFileToPublicDownload(
+          sourcePath: sourcePath,
+          filename: filename,
+        );
+      } else {
+        final bytes = await File(sourcePath).readAsBytes();
+        publicPath = await writeToPublicDownload(
+          filename: filename,
+          bytes: bytes,
+        );
+      }
+      log('PROGRESS: 已复制到公共 Download: $publicPath');
+      try {
+        await File(sourcePath).delete();
+      } catch (_) {}
+      return publicPath;
+    } catch (e) {
+      log('WARN: 复制到公共 Download 失败：$e');
+      return sourcePath;
+    }
+  }
 }

@@ -42,7 +42,10 @@ class BaseCard extends StatelessWidget {
     final shadows = switch (elevation) {
       CardElevation.flat => const <BoxShadow>[],
       CardElevation.normal => context.themeCardShadow,
-      CardElevation.raised => context.themeCardShadow,
+      CardElevation.raised => AppTheme.glow(
+          context.themeAccent.withValues(alpha: 0.10),
+          alpha: 1,
+        ),
     };
 
     final showBorder = elevation != CardElevation.raised;

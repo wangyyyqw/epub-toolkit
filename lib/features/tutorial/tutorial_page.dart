@@ -123,8 +123,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Card(
+      elevation: 0,
+      color: context.themeCard,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        side: BorderSide(color: context.themeDividerLight, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -137,8 +143,10 @@ class _SectionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: context.themeTextPrimary,
                     ),
                   ),
                 ),
@@ -166,7 +174,11 @@ class _BodyText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.55),
+      style: TextStyle(
+        fontSize: 13.5,
+        height: 1.55,
+        color: context.themeTextSecondary,
+      ),
     );
   }
 }
@@ -178,23 +190,31 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Container(
-      width: 190,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant),
+        color: context.themeBgWarm,
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        border: Border.all(color: context.themeDividerLight),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: context.themeTextPrimary,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             text,
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.themeTextTertiary,
+            ),
           ),
         ],
       ),
@@ -209,7 +229,6 @@ class _StepText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -225,8 +244,10 @@ class _StepText extends StatelessWidget {
             ),
             child: Text(
               number,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: context.isDarkMode
+                    ? const Color(0xFF141416)
+                    : Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -236,7 +257,10 @@ class _StepText extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(height: 1.45, color: cs.onSurface),
+              style: TextStyle(
+                height: 1.45,
+                color: context.themeTextSecondary,
+              ),
             ),
           ),
         ],
@@ -252,17 +276,26 @@ class _QaText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(question, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            question,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+              color: context.themeTextPrimary,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             answer,
-            style: TextStyle(color: cs.onSurfaceVariant, height: 1.45),
+            style: TextStyle(
+              color: context.themeTextSecondary,
+              height: 1.45,
+            ),
           ),
         ],
       ),
