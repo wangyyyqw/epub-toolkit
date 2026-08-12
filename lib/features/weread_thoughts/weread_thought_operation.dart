@@ -17,7 +17,7 @@ import 'weread_api.dart';
 /// 3. 引文定位(locate_quote):用划线引文在文本索引中查找,找到最佳匹配位置
 /// 4. 区间计算(intervals):排序、去重、合并重叠划线
 /// 5. 渲染(render):在引文位置包裹 .reader 锚点 span,嵌入想法弹窗内容
-/// 6. 注入内联样式(ensure_style):在 <head> 中注入 CSS(含 note.png data URI)
+/// 6. 注入内联样式(ensure_style):在 `<head>` 中注入 CSS(含 note.png data URI)
 ///
 /// 产物是标准 EPUB,任何阅读器 hover 划线处即可查看想法弹窗。
 class WereadThoughtOperation {
@@ -149,7 +149,7 @@ $cssMarker
     return parts.join('/');
   }
 
-  /// 在 OPF 的 <manifest> 中添加 note.png 和 CSS 文件的条目
+  /// 在 OPF 的 `<manifest>` 中添加 note.png 和 CSS 文件的条目
   ///
   /// [opfContent] OPF XML 原文
   /// [notePngFullPath] note.png 相对于 OPF 的路径(如 weread-note.png)
@@ -186,20 +186,14 @@ $cssMarker
     final manifestEnd = RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>')
         .firstMatch(opfContent);
     if (manifestEnd != null) {
-      return opfContent.substring(0, manifestEnd.start) +
-          insertStr +
-          '\n' +
-          opfContent.substring(manifestEnd.start);
+      return '${opfContent.substring(0, manifestEnd.start)}$insertStr\n${opfContent.substring(manifestEnd.start)}';
     }
 
     // 兜底:无 </manifest> 标签,尝试 </package> 前
     final packageEnd =
         RegExp(r'</[Pp][Aa][Cc][Kk][Aa][Gg][Ee]\s*>').firstMatch(opfContent);
     if (packageEnd != null) {
-      return opfContent.substring(0, packageEnd.start) +
-          insertStr +
-          '\n' +
-          opfContent.substring(packageEnd.start);
+      return '${opfContent.substring(0, packageEnd.start)}$insertStr\n${opfContent.substring(packageEnd.start)}';
     }
 
     return opfContent;
@@ -222,19 +216,14 @@ $cssMarker
     final manifestEnd = RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>')
         .firstMatch(opfContent);
     if (manifestEnd != null) {
-      opfContent = opfContent.substring(0, manifestEnd.start) +
-          manifestItem +
-          '\n' +
-          opfContent.substring(manifestEnd.start);
+      opfContent = '${opfContent.substring(0, manifestEnd.start)}$manifestItem\n${opfContent.substring(manifestEnd.start)}';
     }
 
     // 插入到 </spine> 前(书评页在书末尾)
     final spineEnd = RegExp(r'</[Ss][Pp][Ii][Nn][Ee]\s*>')
         .firstMatch(opfContent);
     if (spineEnd != null) {
-      opfContent = opfContent.substring(0, spineEnd.start) +
-          '  <itemref idref="$_bookReviewsManifestId" />\n' +
-          opfContent.substring(spineEnd.start);
+      opfContent = '${opfContent.substring(0, spineEnd.start)}  <itemref idref="$_bookReviewsManifestId" />\n${opfContent.substring(spineEnd.start)}';
     }
 
     return opfContent;
@@ -700,7 +689,7 @@ $cssMarker
     return '$y-$m-$d';
   }
 
-  /// 在 </body> 前追加 HTML 片段
+  /// 在 `</body>` 前追加 HTML 片段
   static String _appendBeforeBodyEnd(String html, String content) {
     final bodyEnd = RegExp(r'</[Bb][Oo][Dd][Yy]\s*>').firstMatch(html);
     if (bodyEnd != null) {
@@ -1359,10 +1348,10 @@ $cssMarker
 
   // === 样式注入(外部 CSS 文件引用) ===
 
-  /// 在 HTML 的 <head> 中注入 <link> 标签引用外部 CSS 文件
+  /// 在 HTML 的 `<head>` 中注入 `<link>` 标签引用外部 CSS 文件
   ///
   /// [cssHref] CSS 文件相对于 HTML 文件的路径(如 ../weread-thoughts.css)
-  /// 如果已有样式标记则跳过,否则插入到 </head> 前。
+  /// 如果已有样式标记则跳过,否则插入到 `</head>` 前。
   static String _ensureStyle(String html, String cssHref) {
     if (html.contains(cssMarker)) return html;
 
@@ -1511,15 +1500,11 @@ class _Token {
         skip = false;
 
   _Token.text({
-    required String raw,
-    required List<String> units,
-    required int start,
-    required bool skip,
-  })  : isTag = false,
-        raw = raw,
-        units = units,
-        start = start,
-        skip = skip;
+    required this.raw,
+    required List<String> this.units,
+    required this.start,
+    required this.skip,
+  })  : isTag = false;
 }
 
 /// 文本索引

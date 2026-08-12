@@ -840,7 +840,6 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Container(
@@ -1624,9 +1623,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                       builder: (context, constraints) {
                         const spacing = 8.0;
                         const cardWidth = 104.0;
-                        final columns = (constraints.maxWidth + spacing) ~/
                             (cardWidth + spacing);
-                        final count = columns < 1 ? 1 : columns;
                         return Wrap(
                           spacing: spacing,
                           runSpacing: 8,
@@ -2415,9 +2412,6 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
     return Scaffold(
       body: Column(
         children: [
@@ -2821,6 +2815,10 @@ class _TypographyPreviewState extends State<_TypographyPreview> {
 
   Future<String> _buildHtml() async {
     final w = widget;
+    // 背景与文字颜色跟随日夜间模式(在首个 await 前取值,避免跨 async 使用 context)
+    final bg = _hex(context.themeCard);
+    final textColor = _hex(context.themeTextSecondary);
+    final titleColor = _hex(context.themeTextPrimary);
     final css = EpubGenerator.generateCss(
       headerImageStyle: w.headerImagePath?.isNotEmpty == true
           ? w.headerImageStyle
@@ -2864,11 +2862,6 @@ class _TypographyPreviewState extends State<_TypographyPreview> {
             '<span class="chapter-name">初入江湖</span>'
             '</h1>'
         : '<h1>第一章  初入江湖</h1>';
-
-    // 背景与文字颜色跟随日夜间模式
-    final bg = _hex(context.themeCard);
-    final textColor = _hex(context.themeTextSecondary);
-    final titleColor = _hex(context.themeTextPrimary);
 
     return '<!doctype html>\n'
         '<html>\n'

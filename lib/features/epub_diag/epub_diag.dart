@@ -67,7 +67,6 @@ class EpubDiagnoseOperation {
       lines.add('[ERROR] OPF 中缺少 package 根元素');
       return lines.join('\n');
     }
-    final opfDir = p.dirname(opfPath);
 
     // metadata
     lines.add('── 元数据 ──');
@@ -111,7 +110,6 @@ class EpubDiagnoseOperation {
         lines.add('[WARN] item「$id」缺少 href');
         continue;
       }
-      final resolved = p.posix.normalize('${p.posix.dirname(opfDir)}/$href');
       final target = _normalizeArchivePath(
         p.posix.join(p.posix.dirname(opfPath), href),
       );

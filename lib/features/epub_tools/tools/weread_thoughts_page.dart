@@ -51,7 +51,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   String? _qrUrl;
 
   /// 从 QR URL 提取的 uid
-  String? _loginUid;
 
   /// 是否正在轮询登录状态
   bool _polling = false;
@@ -78,8 +77,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   String _progressText = '';
 
   /// 缓存的书目列表(用于离线重注)
-  List<CacheData> _cachedBooks = [];
-
   /// 当前绑定书目的缓存数据
   CacheData? _cacheData;
 
@@ -156,7 +153,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       });
 
       if (mounted) {
-        setState(() => _cachedBooks = books);
       }
     } catch (_) {}
   }
@@ -175,38 +171,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     }
   }
 
-  /// 选择缓存书目进行离线重注
-  ///
-  /// 设置绑定书目为缓存数据,用户只需选择 EPUB 文件即可重注。
-  Future<void> _selectCachedBook(CacheData cache) async {
-    setState(() {
-      _boundBook = WereadBook(
-        bookId: cache.bookId,
-        title: cache.bookTitle,
-        author: cache.bookAuthor,
-      );
-      _cacheData = cache;
-      _offlineMode = true;
-      _searchResults = [];
-      _searchController.text = cache.bookTitle;
-    });
-    if (!mounted) return;
-    context.read<ToastProvider>().showSuccess(
-      '已选择缓存书目：${cache.bookTitle}（${cache.syncedCount}/${cache.totalChapters} 章）',
-    );
-  }
-
-  /// 清除某本书的缓存
-  Future<void> _clearCache(String bookId) async {
-    await WereadCache.clear(bookId);
-    await _loadCachedBooks();
-    if (_cacheData?.bookId == bookId) {
-      setState(() => _cacheData = null);
-    }
-    if (!mounted) return;
-    context.read<ToastProvider>().showSuccess('已清除缓存');
-  }
-
   /// 清除登录状态
   Future<void> _clearLogin() async {
     await _api.clear();
@@ -216,7 +180,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       _searchResults = [];
       _searchController.clear();
       _qrUrl = null;
-      _loginUid = null;
     });
     if (!mounted) return;
     context.read<ToastProvider>().showSuccess('已退出登录');
@@ -234,7 +197,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     setState(() {
       _qrLoading = true;
       _qrUrl = null;
-      _loginUid = null;
     });
 
     try {
@@ -246,7 +208,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       if (!mounted) return;
       setState(() {
         _qrUrl = url;
-        _loginUid = uid;
         _qrLoading = false;
         _polling = true;
       });
@@ -287,7 +248,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             setState(() {
               _isLoggedIn = true;
               _qrUrl = null;
-              _loginUid = null;
             });
             context.read<ToastProvider>().showSuccess('登录成功: $userName');
           } catch (e) {
@@ -304,7 +264,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
           setState(() {
             _polling = false;
             _qrUrl = null;
-            _loginUid = null;
           });
           context.read<ToastProvider>().showWarning('二维码已过期,请重新获取');
           return;
@@ -322,7 +281,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     setState(() {
       _polling = false;
       _qrUrl = null;
-      _loginUid = null;
     });
     context.read<ToastProvider>().showWarning('登录超时,请重试');
   }
@@ -332,7 +290,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     setState(() {
       _polling = false;
       _qrUrl = null;
-      _loginUid = null;
     });
   }
 
@@ -1393,7 +1350,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                       ? Image.network(
                           book.cover,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _buildCoverPlaceholder(),
+                          errorBuilder: (_, _, _) => _buildCoverPlaceholder(),
                         )
                       : _buildCoverPlaceholder(),
                 ),
@@ -1458,142 +1415,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// 构建缓存书目列表区域
   ///
   /// 显示所有已缓存的书目,用户可选择进行离线重注。
-  Widget _buildCacheSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.cached, size: 16, color: context.themeTextTertiary),
-            const SizedBox(width: 6),
-            Text(
-              '缓存书目',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: context.themeTextTertiary,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${_cachedBooks.length} 本',
-              style: TextStyle(
-                fontSize: 12,
-                color: context.themeTextTertiary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ..._cachedBooks.map((cache) => _buildCacheTile(cache)),
-      ],
-    );
-  }
-
   /// 构建单个缓存书目条目
-  Widget _buildCacheTile(CacheData cache) {
-    final isComplete = cache.isComplete;
-    final isSelected = _cacheData?.bookId == cache.bookId && _offlineMode;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: InkWell(
-        onTap: _loading ? null : () => _selectCachedBook(cache),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? context.themeAccent.withValues(alpha: 0.06)
-                : context.themeCard,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected
-                  ? context.themeAccent.withValues(alpha: 0.2)
-                  : context.themeDividerLight,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isComplete ? Icons.check_circle : Icons.sync,
-                size: 18,
-                color: isComplete
-                    ? context.themeSuccess
-                    : context.themeAccent,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      cache.bookTitle,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: context.themeTextPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${cache.syncedCount}/${cache.totalChapters} 章'
-                      '${cache.remainingCount > 0 ? ' · 剩余 ${cache.remainingCount}' : ' · 已完成'}'
-                      '${cache.syncedAt != null ? ' · ${_formatDate(cache.syncedAt!)}' : ''}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: context.themeTextTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              // 清除缓存按钮
-              IconButton(
-                onPressed: _loading
-                    ? null
-                    : () => _clearCache(cache.bookId),
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: context.themeTextTertiary,
-                ),
-                tooltip: '清除缓存',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 28,
-                  minHeight: 28,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_forward_ios,
-                size: 12,
-                color: context.themeTextTertiary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 格式化日期为简短显示
-  String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
-    if (diff.inDays < 1) return '${diff.inHours} 小时前';
-    if (diff.inDays < 30) return '${diff.inDays} 天前';
-    return '${dt.month}/${dt.day}';
-  }
-
-  /// 构建缓存状态卡片(离线模式下显示)
   Widget _buildCacheStatusCard() {
     final cache = _cacheData!;
     return Container(

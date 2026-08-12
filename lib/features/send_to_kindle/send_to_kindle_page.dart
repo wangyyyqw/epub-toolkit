@@ -17,7 +17,6 @@ import '../../shared/widgets/base_card.dart';
 import '../../shared/widgets/base_input.dart';
 import '../../shared/widgets/base_select.dart';
 import '../../shared/widgets/output_log.dart';
-import '../epub_tools/epub_tool_widgets.dart';
 
 enum KindleTab { email, web }
 

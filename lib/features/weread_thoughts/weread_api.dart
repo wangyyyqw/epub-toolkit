@@ -254,7 +254,6 @@ class WereadApi {
   static const _skillVersion = '1.0.5';
 
   /// 最大分页拉取次数(安全阀,防止无限循环)
-  static const _maxFetchPages = 50;
 
   /// 请求超时时间(毫秒)
   static const _timeoutMs = 30000;
@@ -305,12 +304,6 @@ class WereadApi {
     _apiKey = apiKey.trim();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_apiKeyPref, _apiKey);
-  }
-
-  /// 保存 Cookie 到本地存储
-  Future<void> _saveCookies() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cookiesPref, json.encode(_cookies));
   }
 
   /// 保存登录信息(API Key + Cookie + 用户名)
@@ -884,7 +877,7 @@ class WereadApi {
     }
 
     var out =
-        '${digest.substring(0, 3)}$kind' + '2${digest.substring(digest.length - 2)}';
+        '${digest.substring(0, 3)}$kind' '2${digest.substring(digest.length - 2)}';
     for (var i = 0; i < chunks.length; i++) {
       final c = chunks[i];
       out += c.length.toRadixString(16).padLeft(2, '0') + c;
@@ -1333,7 +1326,7 @@ class WereadApi {
             }
           }
         }
-        if (chapterList == null) chapterList = d;
+        chapterList ??= d;
       } else if (d is Map) {
         chapterList = d['chapters'] ?? d['updated'];
       }

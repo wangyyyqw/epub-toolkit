@@ -125,7 +125,6 @@ class BaseButton extends StatelessWidget {
       disabled: disabled,
       isBlock: expanded,
       icon: loading ? null : icon,
-      child: child,
       height: switch (size) {
         BaseButtonSize.sm => 32,
         BaseButtonSize.md => 40,
@@ -137,6 +136,7 @@ class BaseButton extends StatelessWidget {
       ),
       style: style,
       onTap: disabled ? null : onPressed,
+      child: child,
     );
   }
 

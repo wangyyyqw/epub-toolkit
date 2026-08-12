@@ -480,9 +480,7 @@ class EpubImageHelper {
     var result = content;
     // 文件名前后边界:前面排除文件名/路径/URL 编码字符,后面排除文件名续接字符
     final pattern = RegExp(
-      '(?<![A-Za-z0-9._%#-])' +
-          RegExp.escape(oldBn) +
-          '(?![A-Za-z0-9._%-])',
+      '(?<![A-Za-z0-9._%#-])${RegExp.escape(oldBn)}(?![A-Za-z0-9._%-])',
     );
     result = result.replaceAll(pattern, newBn);
 
@@ -490,9 +488,7 @@ class EpubImageHelper {
     final encoded = Uri.encodeComponent(oldBn);
     if (encoded != oldBn) {
       final encodedPattern = RegExp(
-        '(?<![A-Za-z0-9._%#-])' +
-            RegExp.escape(encoded) +
-            '(?![A-Za-z0-9._%-])',
+        '(?<![A-Za-z0-9._%#-])${RegExp.escape(encoded)}(?![A-Za-z0-9._%-])',
       );
       result = result.replaceAll(encodedPattern, Uri.encodeComponent(newBn));
     }

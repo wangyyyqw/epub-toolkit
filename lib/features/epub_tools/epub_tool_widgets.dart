@@ -105,10 +105,10 @@ Widget buildResponsivePair({
   List<int> flexes = const [1, 1],
 }) {
   return ResponsiveRow(
-    children: [first, second],
     breakpoint: breakpoint,
     spacing: spacing,
     flexes: flexes,
+    children: [first, second],
   );
 }
 
@@ -823,7 +823,7 @@ Widget buildSettingRow({
     rightIconWidget: trailing,
     arrow: showArrow,
     showBottomBorder: showDivider,
-    onClick: showArrow ? (cell) => onTap!() : null,
+    onClick: showArrow ? (cell) => onTap() : null,
     style: style,
   );
 }
