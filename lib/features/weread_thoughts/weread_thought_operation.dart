@@ -68,7 +68,7 @@ $cssMarker
     color: white;
     padding: 0.5em;
     font-size: 1em;
-    font-family: "SourceHanSerifApp", sans-serif;
+    font-family: sans-serif;
     z-index: 10;
     text-indent: 0em;
     max-width: 90vw;

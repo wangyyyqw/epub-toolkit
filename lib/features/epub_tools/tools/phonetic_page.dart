@@ -267,7 +267,7 @@ class _PhoneticPageState extends State<PhoneticPage> {
                 const SizedBox(height: 8),
                 SettingSwitchRow(
                   title: '全文注音',
-                  subtitle: '关闭则仅标注生僻字',
+                  subtitle: '关闭则仅标注生僻字（不在常用字表的汉字）',
                   value: _annotateAll,
                   onChanged: (v) => setState(() => _annotateAll = v),
                 ),

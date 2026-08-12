@@ -133,9 +133,27 @@ class EpubToTxtOperation {
 
     final text = buffer.toString().trim();
     if (outputPath != null && outputPath.trim().isNotEmpty) {
-      await File(outputPath).writeAsString(text);
+      final normalized = _normalizeTxtOutputPath(outputPath);
+      await File(normalized).writeAsString(text);
     }
     return text;
+  }
+
+  /// 规范化 TXT 输出路径，确保扩展名为 .txt。
+  ///
+  /// 修复历史 bug：部分平台保存对话框或旧逻辑把输出写成了
+  /// `xxx.txt.epub`。这里统一处理：
+  /// - `xxx.txt.epub` → `xxx.txt`
+  /// - 无 .txt 扩展名 → 追加 `.txt`
+  static String _normalizeTxtOutputPath(String path) {
+    var result = path;
+    final lower = result.toLowerCase();
+    if (lower.endsWith('.txt.epub')) {
+      result = result.substring(0, result.length - '.epub'.length);
+    } else if (!lower.endsWith('.txt')) {
+      result = '$result.txt';
+    }
+    return result;
   }
 
   /// 将 HTML 内容转换为纯文本

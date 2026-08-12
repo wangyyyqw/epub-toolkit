@@ -56,22 +56,6 @@ TDThemeData? _cachedTdTheme;
 TDThemeData get _tdTheme =>
     _cachedTdTheme ??= TDThemeData.fromJson('epubGadget', _tdThemeConfig)!;
 
-/// 内置思源宋体字体名（仅供 EPUB 内容预览使用）
-const String appFontFamily = 'SourceHanSerifApp';
-
-/// 衬线字体回退链（EPUB 内容预览用）
-const List<String> _serifFallback = [
-  'Source Han Serif SC',
-  'Source Han Serif CN',
-  'Noto Serif CJK SC',
-  'Noto Serif SC',
-  'Songti SC',
-  'STSong',
-  'SimSun',
-  'PingFang SC',
-  'serif',
-];
-
 /// UI 无衬线字体回退链（工具界面用）
 const List<String> _sansFallback = [
   'PingFang SC',
@@ -83,12 +67,6 @@ const List<String> _sansFallback = [
   'Heiti SC',
   'sans-serif',
 ];
-
-/// 为 TextStyle 注入衬线字体（EPUB 内容预览用）
-TextStyle withSerifFont(TextStyle style) => style.copyWith(
-      fontFamily: appFontFamily,
-      fontFamilyFallback: _serifFallback,
-    );
 
 class AppTheme {
   AppTheme._();

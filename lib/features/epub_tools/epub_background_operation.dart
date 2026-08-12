@@ -214,6 +214,13 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
       return {
         'formatted': ListSplitTargetsOperation.formatTargets(targets),
         'length': targets.length,
+        'data': targets
+            .map((t) => {
+                  'title': t.title,
+                  'level': t.level,
+                  'href': t.href,
+                })
+            .toList(),
       };
     case 'comment':
       return CommentOperation.execute(

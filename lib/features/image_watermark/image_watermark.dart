@@ -81,7 +81,7 @@ class ImageWatermarkOperation {
 
         final watermarked = _embedPayload(decoded, payload);
         final encoded = Uint8List.fromList(
-          img.encodePng(watermarked, level: 9),
+          img.encodePng(watermarked, level: 6),
         );
         final newArcname = '${p.withoutExtension(arcname)}.png';
         if (newArcname != arcname) {
@@ -170,32 +170,35 @@ class ImageWatermarkOperation {
     return payload.toBytes();
   }
 
+  /// 将水印负载逐位写入图片 RGB 通道最低有效位。
+  ///
+  /// 直接操作 image.data（Uint32 打包的 #AABBGGRR）的像素数组，
+  /// 避免逐像素 getPixel/setPixelRgba 的函数调用与 img.Image.from 的全图拷贝。
+  /// 水印负载很小（几百字节），写入像素数 = 负载字节数 * 8 / 3，
+  /// 远小于整图，因此只改动前若干像素。
   static img.Image _embedPayload(img.Image source, Uint8List payload) {
-    final image = img.Image.from(source);
+    final data = source.data;
     var bitIndex = 0;
     final totalBits = payload.length * 8;
+    final pixelCount = source.width * source.height;
 
-    for (var y = 0; y < image.height && bitIndex < totalBits; y++) {
-      for (var x = 0; x < image.width && bitIndex < totalBits; x++) {
-        final pixel = image.getPixel(x, y);
-        var r = img.getRed(pixel);
-        var g = img.getGreen(pixel);
-        var b = img.getBlue(pixel);
-        final a = img.getAlpha(pixel);
-
-        if (bitIndex < totalBits) {
-          r = _withLsb(r, _bitAt(payload, bitIndex++));
+    for (var i = 0; i < pixelCount && bitIndex < totalBits; i++) {
+      var pixel = data[i];
+      for (var channel = 0; channel < 3 && bitIndex < totalBits; channel++) {
+        final bit = _bitAt(payload, bitIndex++);
+        if (channel == 0) {
+          pixel = (pixel & 0xffffff00) | ((pixel & 0xfe) | bit);
+        } else if (channel == 1) {
+          final g = ((pixel >> 8) & 0xfe) | bit;
+          pixel = (pixel & 0xffff00ff) | (g << 8);
+        } else {
+          final b = ((pixel >> 16) & 0xfe) | bit;
+          pixel = (pixel & 0xff00ffff) | (b << 16);
         }
-        if (bitIndex < totalBits) {
-          g = _withLsb(g, _bitAt(payload, bitIndex++));
-        }
-        if (bitIndex < totalBits) {
-          b = _withLsb(b, _bitAt(payload, bitIndex++));
-        }
-        image.setPixelRgba(x, y, r, g, b, a);
       }
+      data[i] = pixel;
     }
-    return image;
+    return source;
   }
 
   static String? _extractText(img.Image image) {
@@ -222,8 +225,6 @@ class ImageWatermarkOperation {
   static int _capacityBytes(img.Image image) =>
       (image.width * image.height * 3) ~/ 8;
 
-  static int _withLsb(int value, int bit) => (value & 0xfe) | bit;
-
   static int _bitAt(Uint8List bytes, int bitIndex) {
     final byte = bytes[bitIndex ~/ 8];
     final shift = 7 - (bitIndex % 8);
@@ -245,10 +246,15 @@ class ImageWatermarkOperation {
       0xffffffff;
 }
 
+/// 逐位读取图片 RGB 通道最低有效位。
+///
+/// 直接操作 image.data（Uint32 打包的 #AABBGGRR）的像素数组，
+/// 避免逐像素 getPixel 的函数调用开销。
 class _LsbReader {
-  _LsbReader(this.image);
+  _LsbReader(this.image) : _data = image.data;
 
   final img.Image image;
+  final Uint32List _data;
   var _bitIndex = 0;
 
   Uint8List? readBytes(int count) {
@@ -269,12 +275,11 @@ class _LsbReader {
     final pixelIndex = _bitIndex ~/ 3;
     if (pixelIndex >= image.width * image.height) return null;
     final channel = _bitIndex % 3;
-    final x = pixelIndex % image.width;
-    final y = pixelIndex ~/ image.width;
-    final pixel = image.getPixel(x, y);
     _bitIndex++;
-    if (channel == 0) return img.getRed(pixel) & 1;
-    if (channel == 1) return img.getGreen(pixel) & 1;
-    return img.getBlue(pixel) & 1;
+    // 每像素取 R/G/B 三个通道的 LSB，跳过 Alpha（与写入顺序一致）
+    final pixel = _data[pixelIndex];
+    if (channel == 0) return pixel & 1;
+    if (channel == 1) return (pixel >> 8) & 1;
+    return (pixel >> 16) & 1;
   }
 }

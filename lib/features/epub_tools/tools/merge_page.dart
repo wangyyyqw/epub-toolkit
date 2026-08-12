@@ -44,20 +44,27 @@ class _MergePageState extends State<MergePage> {
     super.dispose();
   }
 
+  /// 默认输出文件名：第一个文件的 basename + _merged.epub（不再用硬编码 merged.epub）
+  String _defaultOutputFilename() {
+    if (_mergeInputPaths.isEmpty) return 'merged.epub';
+    final base = p.basenameWithoutExtension(_mergeInputPaths.first);
+    return '${base}_merged.epub';
+  }
+
   /// 自动填充输出路径
   Future<void> _autoFillOutputPath() async {
     _outputPath = await FileService.getDefaultOutputPathInDirectory(
       directoryPath: _mergeInputPaths.isNotEmpty
           ? p.dirname(_mergeInputPaths.first)
           : '',
-      filename: 'merged.epub',
+      filename: _defaultOutputFilename(),
     );
   }
 
   /// 手动选择输出路径
   Future<void> _pickOutput() async {
     final path = await FileService.saveFile(
-      defaultFileName: 'merged.epub',
+      defaultFileName: _defaultOutputFilename(),
       initialDirectory: _mergeInputPaths.isNotEmpty
           ? p.dirname(_mergeInputPaths.first)
           : null,
@@ -81,6 +88,7 @@ class _MergePageState extends State<MergePage> {
     final paths = await FileService.pickMultipleEpubs();
     if (paths == null) return;
     _mergeInputPaths = paths;
+    // 用户未手动指定输出路径时，随输入文件刷新默认输出名（基于第一个文件）
     _outputPath = '';
     await _autoFillOutputPath();
     if (mounted) setState(() {});

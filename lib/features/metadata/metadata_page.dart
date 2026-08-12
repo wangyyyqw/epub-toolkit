@@ -592,11 +592,15 @@ class _MetadataPageState extends State<MetadataPage> {
         coverPath: _coverPath,
         removeCover: _coverRemoved,
       );
+      // 确认输出文件真实存在，避免"提示成功但没找到文件"
+      if (!await File(_outputPath!).exists()) {
+        throw Exception('输出文件未生成：$_outputPath');
+      }
+      // Android：复制到公共 Download/books/，否则用户看不到输出文件
+      await _copyToPublicDownload();
       if (!mounted) return;
-      // 保存成功提示
-      context.read<ToastProvider>().showSuccess(
-        '元数据已保存：${p.basename(_outputPath!)}',
-      );
+      // 保存成功提示（显示完整路径，便于用户找到文件）
+      context.read<ToastProvider>().showSuccess('元数据已保存：$_outputPath');
     } catch (e) {
       if (!mounted) return;
       // 保存失败提示
@@ -607,6 +611,41 @@ class _MetadataPageState extends State<MetadataPage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  /// 把生成的 EPUB 复制到公共 Download/books/ 目录（仅 Android）。
+  ///
+  /// 之前缺失此步骤：Android 上输出写在应用专属目录
+  /// （/storage/emulated/0/Android/data/`<pkg>`/files/books/），用户无法访问，
+  /// 表现为"修改后没有输出修改后的文件"。与其他工具页保持一致，
+  /// 输出后复制到公共 Download 并删除临时文件。
+  Future<void> _copyToPublicDownload() async {
+    final outputPath = _outputPath;
+    if (outputPath == null || outputPath.isEmpty) return;
+    if (!Platform.isAndroid) return;
+    if (!await File(outputPath).exists()) return;
+    try {
+      final filename = p.basename(outputPath);
+      String publicPath;
+      if (await File(outputPath).length() > 10 * 1024 * 1024) {
+        publicPath = await FileService.copyFileToPublicDownload(
+          sourcePath: outputPath,
+          filename: filename,
+        );
+      } else {
+        final bytes = await File(outputPath).readAsBytes();
+        publicPath = await FileService.writeToPublicDownload(
+          filename: filename,
+          bytes: bytes,
+        );
+      }
+      try {
+        await File(outputPath).delete();
+      } catch (_) {}
+      _outputPath = publicPath;
+    } catch (e) {
+      debugPrint('[MetadataPage] 复制到公共 Download 失败：$e');
     }
   }
 }

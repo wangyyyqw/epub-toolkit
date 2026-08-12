@@ -70,8 +70,18 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
     );
     if (path != null) {
       _userPickedOutput = true;
-      setState(() => _outputPath = path);
+      setState(() => _outputPath = _normalizeTxtPath(path));
     }
+  }
+
+  /// 规范化输出路径，确保以 .txt 结尾（修复历史 bug：xxx.txt.epub）
+  String _normalizeTxtPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.txt')) return path;
+    if (lower.endsWith('.txt.epub')) {
+      return path.substring(0, path.length - '.epub'.length);
+    }
+    return '$path.txt';
   }
 
   /// 根据输入文件名自动生成输出路径

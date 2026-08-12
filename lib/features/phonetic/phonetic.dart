@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import '../../core/epub_packer.dart';
 import 'package:pinyin/pinyin.dart';
 
+import 'common_chars.dart';
 import 'epub_image_helper.dart';
 
 /// 拼音标注操作
@@ -212,7 +213,7 @@ class PhoneticOperation {
   ///
   /// 遍历文本中的每个字符，对中文字符添加 `ruby` 标签。
   /// [annotateAll] 为 true 时所有中文字符都标注；
-  /// 为 false 时仅标注生僻字（GB2312 一级字 U+4E00-U+5535 之外的字符）。
+  /// 为 false 时仅标注生僻字（不在 GB2312 一级字表中的字符）。
   ///
   /// 返回 (标注后的文本, 标注字符数)
   static (String, int) _annotateText(
@@ -223,11 +224,12 @@ class PhoneticOperation {
     final result = StringBuffer();
     var count = 0;
 
-    // GB2312 一级字范围（U+4E00-U+5535），是「仅生僻字」模式下要跳过的部分。
-    // 注：CJK 扩展 A 区（U+3400-U+4DBF）虽然码点 < 0x5535，但属于生僻字，
-    // 应被标注，不能简单按码点大小比较，否则会被错误跳过。
-    const commonCharStart = 0x4E00;
-    const commonCharEnd = 0x5535;
+    // 「仅生僻字」模式：常见字集合（GB2312 一级字，3755 字）只初始化一次。
+    // 之前用码点范围 [0x4E00, 0x5535] 近似「常用字」，但 GB2312 一级字
+    // 在 Unicode 中并不连续（如「大 U+5927」「好 U+597D」「图 U+56FE」
+    // 都 > 0x5535 却非常常用），导致大部分汉字被误标，用户反馈"注音了
+    // 大部分汉字"。改为真实字典后只有生僻字才会被注音。
+    final commonRunes = annotateAll ? null : _commonRunes;
 
     final runes = text.runes.toList();
     var i = 0;
@@ -238,11 +240,8 @@ class PhoneticOperation {
 
       // 判断是否为中文字符
       if (_isChinese(char)) {
-        // 仅生僻字模式：跳过 GB2312 一级字（必须同时是 CJK 基本区，
-        // 否则扩展 A 区字会被错误当作「常用字」跳过）
-        if (!annotateAll &&
-            runes[i] >= commonCharStart &&
-            runes[i] <= commonCharEnd) {
+        // 仅生僻字模式：跳过 GB2312 一级常用字（如「大」「好」「图」）
+        if (commonRunes != null && commonRunes.contains(runes[i])) {
           result.write(char);
           i++;
           continue;
@@ -272,6 +271,12 @@ class PhoneticOperation {
 
     return (result.toString(), count);
   }
+
+  /// 常用字集合（惰性初始化，仅生僻字模式使用）
+  static Set<int>? _cachedCommonRunes;
+
+  static Set<int> get _commonRunes =>
+      _cachedCommonRunes ??= kCommonHanzi.runes.toSet();
 
   /// 判断字符是否为中文
   ///

@@ -10,8 +10,9 @@ import '../epub_tool_widgets.dart';
 
 /// 拆分 EPUB 页面
 ///
-/// 按 TOC 章节拆分点将一个 EPUB 拆分为多个 EPUB。
-/// 保留原 EPUB 版本（EPUB2 输出带 NCX，EPUB3 输出带 nav）。
+/// 扫描 EPUB 的 TOC 章节目录并列出，用户通过勾选章节手动插入分割点，
+/// 每个被勾选的章节作为下一分卷的起点。保留原 EPUB 版本
+/// （EPUB2 输出带 NCX，EPUB3 输出带 nav）。
 class SplitPage extends StatefulWidget {
   const SplitPage({super.key});
 
@@ -19,18 +20,35 @@ class SplitPage extends StatefulWidget {
   State<SplitPage> createState() => _SplitPageState();
 }
 
+/// 拆分目标条目（与后台返回的 data 字段对应）
+class _SplitTargetUi {
+  final String title;
+  final int level;
+  final String href;
+
+  const _SplitTargetUi({
+    required this.title,
+    required this.level,
+    required this.href,
+  });
+}
+
 class _SplitPageState extends State<SplitPage> {
   String _epubPath = '';
-  String _outputPath = '';
   bool _loading = false;
-  final OutputLogController _logController = OutputLogController();
-
-  /// 拆分点索引（逗号分隔，如 2,5,8）
-  String _splitPoints = '';
 
   /// 拆分输出目录
   String _splitOutputDir = '';
   bool _userPickedOutputDir = false;
+
+  /// 章节目标列表
+  List<_SplitTargetUi> _targets = [];
+  bool _targetsLoading = false;
+
+  /// 被勾选作为分割点的章节索引
+  final Set<int> _selected = {};
+
+  final OutputLogController _logController = OutputLogController();
 
   @override
   void dispose() {
@@ -38,27 +56,53 @@ class _SplitPageState extends State<SplitPage> {
     super.dispose();
   }
 
-  /// 选择 EPUB 文件
+  /// 选择 EPUB 文件，随后自动扫描章节目录
   Future<void> _pickEpub() async {
     final path = await FileService.pickEpub();
     if (path == null) return;
-    _epubPath = path;
-    _outputPath = '';
-    await _autoFillOutputPath();
+    setState(() {
+      _epubPath = path;
+      _targets = [];
+      _selected.clear();
+    });
     if (!_userPickedOutputDir) {
       _splitOutputDir = p.dirname(path);
     }
+    await _loadTargets();
     if (mounted) setState(() {});
   }
 
-  /// 自动填充输出路径
-  Future<void> _autoFillOutputPath() async {
-    if (_epubPath.isEmpty) return;
-    final base = p.basenameWithoutExtension(_epubPath);
-    _outputPath = await FileService.getDefaultOutputPathForInput(
-      inputPath: _epubPath,
-      filename: '${base}_output.epub',
-    );
+  /// 扫描 EPUB 的 TOC 章节目录
+  Future<void> _loadTargets() async {
+    if (_epubPath.isEmpty || _targetsLoading) return;
+    setState(() => _targetsLoading = true);
+    try {
+      final result = await runEpubBackgroundOperation<Map>(
+        EpubBackgroundOperation.listSplitTargets,
+        {'epubPath': _epubPath},
+      );
+      final data = (result['data'] as List?) ?? const [];
+      if (!mounted) return;
+      setState(() {
+        _targets = data
+            .map((e) => _SplitTargetUi(
+                  title: (e as Map)['title'] as String? ?? '',
+                  level: (e['level'] as num?)?.toInt() ?? 1,
+                  href: e['href'] as String? ?? '',
+                ))
+            .toList();
+        // 保留仍然有效的勾选
+        _selected.removeWhere((i) => i < 0 || i >= _targets.length);
+      });
+      if (_targets.isEmpty) {
+        context.read<ToastProvider>().showWarning('未解析到章节目录，无法设置分割点');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      context.read<ToastProvider>().showError('读取章节目录失败：$e');
+    } finally {
+      if (mounted) setState(() => _targetsLoading = false);
+    }
   }
 
   /// 选择拆分输出目录
@@ -82,8 +126,8 @@ class _SplitPageState extends State<SplitPage> {
       context.read<ToastProvider>().showWarning('请先选择 EPUB 文件');
       return;
     }
-    if (_splitPoints.trim().isEmpty) {
-      context.read<ToastProvider>().showWarning('请输入拆分点索引');
+    if (_selected.isEmpty) {
+      context.read<ToastProvider>().showWarning('请在章节目录中勾选至少 1 个分割点');
       return;
     }
     setState(() => _loading = true);
@@ -91,15 +135,9 @@ class _SplitPageState extends State<SplitPage> {
     _logController.append('PROGRESS: 开始执行「拆分 EPUB」操作...');
     _logController.append('输入文件：$_epubPath');
     try {
-      // 解析拆分点索引
-      final points = _splitPoints
-          .split(',')
-          .map((s) => int.tryParse(s.trim()) ?? -1)
-          .where((i) => i >= 0)
-          .toList();
-      // 输出目录：优先用用户选择的目录，否则用输出文件所在目录
+      final points = _selected.toList()..sort();
       final outputDir = _splitOutputDir.isEmpty
-          ? p.dirname(_outputPath)
+          ? p.dirname(_epubPath)
           : _splitOutputDir;
       final result = await runEpubBackgroundOperation<String>(
         EpubBackgroundOperation.split,
@@ -117,6 +155,8 @@ class _SplitPageState extends State<SplitPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return Scaffold(
       body: Column(
         children: [
@@ -124,7 +164,7 @@ class _SplitPageState extends State<SplitPage> {
             context,
             icon: Icons.call_split,
             title: '拆分 EPUB',
-            subtitle: '按章节拆分点将 EPUB 拆分为多个',
+            subtitle: '列出章节目录，勾选章节作为分割点拆分为多个 EPUB',
           ),
           Expanded(
             child: ListView(
@@ -170,21 +210,45 @@ class _SplitPageState extends State<SplitPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                buildSectionLabel(context, Icons.tune, '拆分参数'),
+                // 章节目录
+                buildSectionLabel(context, Icons.list_alt_outlined, '章节目录'),
                 const SizedBox(height: 8),
                 buildInfoBar(
                   context,
-                  '按 TOC 章节拆分点将 EPUB 拆分为多个，保留原版本格式。可先用「列出拆分目标」查看章节索引。',
+                  '勾选章节作为分割点：每个被勾选的章节将作为下一分卷的起点（默认从第一段开始）。',
                 ),
-                const SizedBox(height: 12),
-                buildCompactField(
-                  context,
-                  label: '拆分点索引（逗号分隔）',
-                  value: _splitPoints,
-                  hint: '拆分点索引，如 2,5,8',
-                  icon: Icons.format_list_numbered,
-                  onChanged: _loading ? (_) {} : (v) => _splitPoints = v,
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 340),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cs.outline),
+                  ),
+                  child: _buildTargetList(),
                 ),
+                if (_targets.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '已勾选 ${_selected.length} 个分割点，可拆分为 ${_selected.length + 1} 卷',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _selected.isEmpty
+                            ? null
+                            : () => setState(_selected.clear),
+                        child: const Text('清空勾选'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 8),
                 OutputLog(controller: _logController),
               ],
@@ -194,9 +258,83 @@ class _SplitPageState extends State<SplitPage> {
             context,
             loading: _loading,
             onPressed: _loading ? () {} : _execute,
+            label: '按分割点拆分',
+            icon: Icons.call_split,
           ),
         ],
       ),
+    );
+  }
+
+  /// 章节目标勾选列表
+  Widget _buildTargetList() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    if (_targetsLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    if (_targets.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _epubPath.isEmpty ? '选择 EPUB 后自动扫描章节目录' : '未解析到章节目录',
+            style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      itemCount: _targets.length,
+      itemBuilder: (context, index) {
+        final target = _targets[index];
+        final checked = _selected.contains(index);
+        return CheckboxListTile(
+          value: checked,
+          dense: true,
+          visualDensity: const VisualDensity(vertical: -2),
+          controlAffinity: ListTileControlAffinity.leading,
+          activeColor: theme.colorScheme.primary,
+          contentPadding: EdgeInsets.only(left: 12 + (target.level - 1) * 16),
+          title: Text(
+            target.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: checked ? FontWeight.w600 : FontWeight.w400,
+              color: checked
+                  ? theme.colorScheme.primary
+                  : cs.onSurface,
+            ),
+          ),
+          subtitle: target.href.isNotEmpty
+              ? Text(
+                  '${index + 1} · ${target.href}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                )
+              : null,
+          onChanged: _loading
+              ? null
+              : (v) {
+                  setState(() {
+                    if (v ?? false) {
+                      _selected.add(index);
+                    } else {
+                      _selected.remove(index);
+                    }
+                  });
+                },
+        );
+      },
     );
   }
 }
