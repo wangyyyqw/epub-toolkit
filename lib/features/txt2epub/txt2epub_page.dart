@@ -156,6 +156,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
     final previousTitleWasAutomatic =
         _txtPath.isNotEmpty &&
         _title.trim() == p.basenameWithoutExtension(_txtPath).trim();
+    if (!mounted) return;
     setState(() {
       _txtPath = path;
       _scanResults = [];
@@ -175,7 +176,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
 
   Future<void> _pickCover() async {
     final path = await FileService.pickImage();
-    if (path == null) return;
+    if (path == null || !mounted) return;
     setState(() => _coverPath = path);
   }
 
@@ -189,6 +190,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       }
       return;
     }
+    if (!mounted) return;
     setState(() => _headerImagePath = path);
   }
 
@@ -202,6 +204,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       }
       return;
     }
+    if (!mounted) return;
     setState(() => _fullScreenCoverImagePath = path);
   }
 
@@ -215,7 +218,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
       defaultFileName: defaultName,
       initialDirectory: _txtPath.isNotEmpty ? p.dirname(_txtPath) : null,
     );
-    if (path == null) return;
+    if (path == null || !mounted) return;
     setState(() {
       _outputPath = path;
       _outputPathManuallySelected = true;
@@ -629,12 +632,13 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
           initialDirectory: _txtPath.isNotEmpty ? p.dirname(_txtPath) : null,
         );
         if (selectedPath == null || selectedPath.isEmpty) {
-          _logController.append('ERROR: 未选择输出路径，生成取消');
           if (mounted) {
+            _logController.append('ERROR: 未选择输出路径，生成取消');
             context.read<ToastProvider>().showWarning('未选择输出路径，生成已取消');
           }
           return;
         }
+        if (!mounted) return;
         outputPath = selectedPath;
         setState(() {
           _outputPath = outputPath;
@@ -675,6 +679,7 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         chapterNumberColor: _chapterNumberColor,
         chapterNameColor: _chapterNameColor,
       );
+      if (!mounted) return;
 
       outputPath = userVisiblePath;
       _outputPath = userVisiblePath;
@@ -686,8 +691,10 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
         context.read<ToastProvider>().showSuccess('EPUB 生成成功，已保存到 $outputPath');
       }
     } catch (e) {
-      _logController.append('ERROR: 生成失败：$e');
-      if (mounted) context.read<ToastProvider>().showError('生成失败：$e');
+      if (mounted) {
+        _logController.append('ERROR: 生成失败：$e');
+        context.read<ToastProvider>().showError('生成失败：$e');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -894,72 +901,6 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
                 },
           trackOnColor: context.themeWarm,
           trackOffColor: context.themeDividerLight,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTextField({
-    required String label,
-    required String value,
-    required String hint,
-    required IconData icon,
-    required ValueChanged<String> onChanged,
-    bool required = false,
-  }) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: cs.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Text(
-              required ? '$label *' : label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 7),
-        SizedBox(
-          height: 52,
-          child: TextField(
-            controller: TextEditingController(text: value),
-            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 15),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: TextStyle(
-                fontSize: 14.5,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-              ),
-              filled: true,
-              fillColor: context.themeCard,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: cs.outline),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: cs.outline),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                borderSide: BorderSide(color: context.themeDivider, width: 1.5),
-              ),
-            ),
-            onChanged: onChanged,
-          ),
         ),
       ],
     );
@@ -1402,14 +1343,14 @@ class _Txt2EpubPageState extends State<Txt2EpubPage>
               ),
               const SizedBox(height: 10),
               _buildResponsivePair(
-                _buildTextField(
+                _LabeledTextField(
                   label: '书名',
                   value: _title,
                   hint: '输入书名（留空则使用原文件名）',
                   icon: Icons.book,
                   onChanged: _updateTitle,
                 ),
-                _buildTextField(
+                _LabeledTextField(
                   label: '作者',
                   value: _author,
                   hint: '输入作者（可选）',
@@ -3190,5 +3131,117 @@ class _TypographyPreviewState extends State<_TypographyPreview> {
     if (raw.length != 6) return null;
     final value = int.tryParse('FF$raw', radix: 16);
     return value == null ? null : Color(value);
+  }
+}
+
+/// 带标签的输入框。
+///
+/// 独立 State 持有 [TextEditingController] 与 [FocusNode]，避免父组件每次
+/// rebuild 都重建 Controller 导致光标跳位、IME 组合状态丢失（中文输入被打断），
+/// 并在 [dispose] 中释放。
+class _LabeledTextField extends StatefulWidget {
+  final String label;
+  final String value;
+  final String hint;
+  final IconData icon;
+  final ValueChanged<String> onChanged;
+
+  const _LabeledTextField({
+    required this.label,
+    required this.value,
+    required this.hint,
+    required this.icon,
+    required this.onChanged,
+  });
+
+  @override
+  State<_LabeledTextField> createState() => _LabeledTextFieldState();
+}
+
+class _LabeledTextFieldState extends State<_LabeledTextField> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LabeledTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 外部值变化时同步，但用户正在输入/聚焦时不覆盖
+    if (widget.value != _controller.text && !_focusNode.hasFocus) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(widget.icon, size: 14, color: cs.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Text(
+              widget.label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        SizedBox(
+          height: 52,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 15),
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              hintStyle: TextStyle(
+                fontSize: 14.5,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+              ),
+              filled: true,
+              fillColor: context.themeCard,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                borderSide: BorderSide(color: cs.outline),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                borderSide: BorderSide(color: cs.outline),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                borderSide: BorderSide(color: context.themeDivider, width: 1.5),
+              ),
+            ),
+            onChanged: widget.onChanged,
+          ),
+        ),
+      ],
+    );
   }
 }

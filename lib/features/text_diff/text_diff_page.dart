@@ -1049,8 +1049,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
         ),
       );
     }
-    final selectedBlock = _controller.selectedBlock >= 0
-        ? _controller.activeBlocks[_controller.selectedBlock]
+    final selectedIndex = _controller.selectedBlock;
+    final selectedBlock = selectedIndex >= 0 &&
+            selectedIndex < _controller.activeBlocks.length
+        ? _controller.activeBlocks[selectedIndex]
         : null;
     return Padding(
       padding: EdgeInsets.fromLTRB(_isNarrow ? 10 : 16, 0, _isNarrow ? 10 : 16, 0),
@@ -1540,6 +1542,10 @@ class _TextDiffPageState extends State<TextDiffPage> {
           children: [
             TextButton.icon(
               onPressed: () {
+                if (selected < 0 ||
+                    selected >= _controller.activeBlocks.length) {
+                  return;
+                }
                 final block = _controller.activeBlocks[selected];
                 _editRow(_controller.rows[block.startRow]);
               },

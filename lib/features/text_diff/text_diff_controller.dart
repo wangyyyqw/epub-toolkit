@@ -320,6 +320,8 @@ class TextDiffController extends ChangeNotifier {
       _computing = k < chunkCount - 1;
       _rowsCache = null;
       _blocksCache = null;
+      // 块集合已变化（合并/重排），旧选中索引可能越界，放弃选中
+      _selectedBlock = -1;
       notifyListeners();
     }
   }

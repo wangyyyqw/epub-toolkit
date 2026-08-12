@@ -73,16 +73,20 @@ class _SplitPageState extends State<SplitPage> {
   }
 
   /// 扫描 EPUB 的 TOC 章节目录
+  ///
+  /// 记录发起扫描时的文件路径；扫描期间若用户改选了其他文件，
+  /// 结果返回时路径不匹配则丢弃旧结果，避免用错误的章节列表拆分。
   Future<void> _loadTargets() async {
-    if (_epubPath.isEmpty || _targetsLoading) return;
+    if (_epubPath.isEmpty) return;
+    final scanPath = _epubPath;
     setState(() => _targetsLoading = true);
     try {
       final result = await runEpubBackgroundOperation<Map>(
         EpubBackgroundOperation.listSplitTargets,
-        {'epubPath': _epubPath},
+        {'epubPath': scanPath},
       );
       final data = (result['data'] as List?) ?? const [];
-      if (!mounted) return;
+      if (!mounted || scanPath != _epubPath) return;
       setState(() {
         _targets = data
             .map((e) => _SplitTargetUi(
@@ -98,10 +102,12 @@ class _SplitPageState extends State<SplitPage> {
         context.read<ToastProvider>().showWarning('未解析到章节目录，无法设置分割点');
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || scanPath != _epubPath) return;
       context.read<ToastProvider>().showError('读取章节目录失败：$e');
     } finally {
-      if (mounted) setState(() => _targetsLoading = false);
+      if (mounted && scanPath == _epubPath) {
+        setState(() => _targetsLoading = false);
+      }
     }
   }
 

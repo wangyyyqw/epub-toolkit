@@ -6,7 +6,6 @@ import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -17,7 +16,6 @@ import '../../../shared/widgets/base_button.dart';
 import '../../../shared/widgets/output_log.dart';
 import '../epub_tool_widgets.dart';
 import '../../weread_thoughts/weread_api.dart';
-import '../../weread_thoughts/weread_cache.dart';
 import '../../weread_thoughts/weread_thought_operation.dart';
 
 /// 读书想法注入页面
@@ -76,13 +74,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// 当前进度文本
   String _progressText = '';
 
-  /// 缓存的书目列表(用于离线重注)
-  /// 当前绑定书目的缓存数据
-  CacheData? _cacheData;
-
-  /// 是否离线模式(使用缓存数据,不走网络)
-  bool _offlineMode = false;
-
   /// note.png 图标字节(用于弹窗标记)
   Uint8List? _notePngBytes;
 
@@ -90,7 +81,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   void initState() {
     super.initState();
     _loadApiState();
-    _loadCachedBooks();
     _loadNotePng();
   }
 
@@ -125,55 +115,10 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     }
   }
 
-  /// 加载所有缓存书目列表
-  ///
-  /// 扫描缓存目录,列出所有已缓存的书目供离线重注使用。
-  Future<void> _loadCachedBooks() async {
-    try {
-      final dir = await _getCacheDir();
-      final directory = Directory(dir);
-      if (!await directory.exists()) return;
-
-      final books = <CacheData>[];
-      await for (final entity in directory.list()) {
-        if (entity is File && entity.path.endsWith('.json')) {
-          final bookId = p.basenameWithoutExtension(entity.path);
-          final cache = await WereadCache.load(bookId);
-          if (cache != null && cache.chapters.isNotEmpty) {
-            books.add(cache);
-          }
-        }
-      }
-
-      // 按同步时间倒序排列
-      books.sort((a, b) {
-        final aTime = a.syncedAt ?? DateTime(2000);
-        final bTime = b.syncedAt ?? DateTime(2000);
-        return bTime.compareTo(aTime);
-      });
-
-      if (mounted) {
-      }
-    } catch (_) {}
-  }
-
-  /// 获取缓存目录路径
-  Future<String> _getCacheDir() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return p.join(dir.path, 'weread_cache');
-  }
-
-  /// 加载绑定书目的缓存数据
-  Future<void> _loadCacheForBook(String bookId) async {
-    final cache = await WereadCache.load(bookId);
-    if (mounted) {
-      setState(() => _cacheData = cache);
-    }
-  }
-
   /// 清除登录状态
   Future<void> _clearLogin() async {
     await _api.clear();
+    if (!mounted) return;
     setState(() {
       _isLoggedIn = false;
       _boundBook = null;
@@ -181,7 +126,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       _searchController.clear();
       _qrUrl = null;
     });
-    if (!mounted) return;
     context.read<ToastProvider>().showSuccess('已退出登录');
   }
 
@@ -379,22 +323,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     _searchController.clear();
     await _autoFillOutputPath();
 
-    // 离线模式下不需要搜索
-    if (_offlineMode) {
-      // 恢复绑定信息
-      if (_cacheData != null) {
-        setState(() {
-          _boundBook = WereadBook(
-            bookId: _cacheData!.bookId,
-            title: _cacheData!.bookTitle,
-            author: _cacheData!.bookAuthor,
-          );
-        });
-      }
-      if (mounted) setState(() {});
-      return;
-    }
-
     if (!_isLoggedIn) {
       if (mounted) setState(() {});
       return;
@@ -402,10 +330,11 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
     // 提取书名并自动搜索
     final title = await _extractEpubTitle(_epubPath);
+    if (!mounted) return;
     // 清理标题:去掉括号内的副标题/宣传语,只用核心书名搜索
     final cleanTitle = _cleanSearchKeyword(title);
     _searchController.text = cleanTitle;
-    if (mounted) setState(() {});
+    setState(() {});
     await _search();
   }
 
@@ -429,11 +358,13 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       initialDirectory: _epubPath.isNotEmpty ? p.dirname(_epubPath) : null,
     );
     if (path == null) return;
+    if (!mounted) return;
     setState(() => _outputPath = path);
   }
 
   /// 搜索书目
   Future<void> _search() async {
+    if (_searching) return; // 防重入：避免并发搜索结果乱序覆盖
     final keyword = _searchController.text.trim();
     if (keyword.isEmpty) {
       context.read<ToastProvider>().showWarning('请输入书名或关键词');
@@ -448,12 +379,13 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     _logController.append('搜索关键词：「$keyword」');
     try {
       final results = await _api.search(keyword, onDebug: (raw) {
+        if (!mounted) return;
         _logController.append('API 原始响应：$raw');
       });
+      if (!mounted) return;
       setState(() {
         _searchResults = results;
       });
-      if (!mounted) return;
       if (results.isEmpty) {
         _logController.append('搜索结果：未找到匹配书目');
         context.read<ToastProvider>().showInfo('未找到匹配书目');
@@ -474,15 +406,20 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 绑定选中的书目
   Future<void> _bindBook(WereadBook book) async {
-    await _api.saveBook(book);
+    try {
+      await _api.saveBook(book);
+    } catch (e) {
+      _logController.append('ERROR: 绑定书目失败：$e');
+      if (mounted) {
+        context.read<ToastProvider>().showError('绑定书目失败：$e');
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _boundBook = book;
       _searchResults = [];
-      _offlineMode = false;
     });
-    // 加载该书目的缓存数据
-    await _loadCacheForBook(book.bookId);
-    if (!mounted) return;
     context.read<ToastProvider>().showSuccess('已绑定：${book.title}');
   }
 
@@ -490,13 +427,12 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   Future<void> _unbindBook() async {
     setState(() {
       _boundBook = null;
-      _cacheData = null;
-      _offlineMode = false;
     });
   }
 
   /// 将进度回调写入日志
   void _logProgress(String phase, int current, int total, String text) {
+    if (!mounted) return;
     final progress = total > 0 ? '($current/$total)' : '';
     _logController.append('PROGRESS: [$phase] $text $progress');
   }
@@ -506,11 +442,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// 通过 SKILL API 拉取热门划线和个人想法,注入到 EPUB 中。
   /// 完成后自动保存缓存,方便离线重注。
   Future<void> _execute() async {
-    if (_offlineMode) {
-      await _executeOffline();
-      return;
-    }
-
     if (!_isLoggedIn) {
       context.read<ToastProvider>().showWarning('请先登录');
       return;
@@ -543,6 +474,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         _boundBook!.bookId,
         onProgress: _logProgress,
       );
+      if (!mounted) return;
 
       final allChapters = fetchResult.chapters;
 
@@ -562,18 +494,10 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         'PROGRESS: 拉取完成 - ${allChapters.length}/${fetchResult.totalChapters} 章有数据, '
         '$totalUnderlines 条划线, $totalThoughts 条想法',
       );
+      if (!mounted) return;
 
-      // 2. 保存缓存
-      await WereadCache.save(
-        bookId: _boundBook!.bookId,
-        bookTitle: _boundBook!.title,
-        bookAuthor: _boundBook!.author,
-        totalChapters: fetchResult.totalChapters,
-        chapters: allChapters,
-      );
-      await _loadCachedBooks();
-
-      // 3. 注入想法到 EPUB
+      // 注入想法到 EPUB
+      if (!mounted) return;
       setState(() => _progressText = '正在注入想法到 EPUB...');
       _logController.append('PROGRESS: 开始注入想法到 EPUB...');
 
@@ -588,6 +512,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         notePngBytes: _notePngBytes!,
         onProgress: _logProgress,
       );
+      if (!mounted) return;
 
       _logController.appendLines(
         result.split('\n').where((l) => l.trim().isNotEmpty),
@@ -603,6 +528,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             '想法注入完成，已保存到 $_outputPath',
           );
         }
+        if (!mounted) return;
         await _copyToPublicDownload();
 
         // 输出完成后清除书目绑定和搜索结果(缓存保留)
@@ -615,114 +541,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         }
       }
     } catch (e) {
-      _logController.append('ERROR: 同步失败：$e');
       if (mounted) {
+        _logController.append('ERROR: 同步失败：$e');
         context.read<ToastProvider>().showError('同步失败：$e');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _progressText = '';
-        });
-      }
-    }
-  }
-
-  /// 离线重注:使用缓存数据重新注入,零网络请求
-  ///
-  /// 适用于换了本地书版本、还原后想重打等场景。
-  /// 要求已有完整或部分缓存,无需登录。
-  Future<void> _executeOffline() async {
-    if (_cacheData == null || _cacheData!.chapters.isEmpty) {
-      context.read<ToastProvider>().showWarning('无可用缓存数据');
-      return;
-    }
-    if (_epubPath.isEmpty) {
-      context.read<ToastProvider>().showWarning('请先选择 EPUB 文件');
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _progressText = '离线重注中...';
-    });
-    _logController.clear();
-    _logController.append('PROGRESS: 离线重注(使用缓存数据,零网络)...');
-    _logController.append('缓存书目：${_cacheData!.bookTitle} (${_cacheData!.bookId})');
-    _logController.append(
-      '缓存章节：${_cacheData!.syncedCount}/${_cacheData!.totalChapters} 章',
-    );
-    if (_cacheData!.syncedAt != null) {
-      _logController.append('缓存时间：${_cacheData!.syncedAt}');
-    }
-    _logController.append('输入文件：$_epubPath');
-    _logController.append('输出文件：$_outputPath');
-
-    try {
-      // 直接使用缓存章节数据
-      final filteredChapters = _cacheData!.chapters;
-
-      final totalUnderlines = filteredChapters.fold<int>(
-        0,
-        (sum, ch) => sum + ch.underlines.length,
-      );
-      final totalThoughts = filteredChapters.fold<int>(
-        0,
-        (sum, ch) => sum + ch.reviewMap.values.fold<int>(
-          0,
-          (s, list) => s + list.length,
-        ),
-      );
-      _logController.append(
-        'PROGRESS: 缓存数据 - ${filteredChapters.length} 章, '
-        '$totalUnderlines 条划线, $totalThoughts 条想法',
-      );
-
-      setState(() => _progressText = '正在注入想法到 EPUB...');
-      _logController.append('PROGRESS: 开始注入想法到 EPUB...');
-
-      if (_notePngBytes == null) {
-        throw Exception('note.png 资源加载失败,请重启应用');
-      }
-
-      final result = await WereadThoughtOperation.execute(
-        epubPath: _epubPath,
-        outputPath: _outputPath,
-        chapters: filteredChapters,
-        notePngBytes: _notePngBytes!,
-        onProgress: _logProgress,
-      );
-
-      _logController.appendLines(
-        result.split('\n').where((l) => l.trim().isNotEmpty),
-      );
-
-      if (result.contains('错误')) {
-        if (mounted) {
-          context.read<ToastProvider>().showError('重注失败，请查看日志');
-        }
-      } else {
-        if (mounted) {
-          context.read<ToastProvider>().showSuccess(
-            '离线重注完成，已保存到 $_outputPath',
-          );
-        }
-        await _copyToPublicDownload();
-
-        // 重注完成后清除书目绑定(缓存保留)
-        if (mounted) {
-          setState(() {
-            _boundBook = null;
-            _offlineMode = false;
-            _searchController.clear();
-          });
-        }
-      }
-    } catch (e) {
-      _logController.append('ERROR: 重注失败：$e');
-      if (mounted) {
-        context.read<ToastProvider>().showError('重注失败：$e');
       }
     } finally {
       if (mounted) {
@@ -740,6 +561,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// MediaStore),避免 Dart 堆持有完整文件字节 + MethodChannel 序列化副本
   /// 导致移动端大书 OOM 闪退。
   Future<void> _copyToPublicDownload() async {
+    if (!mounted) return;
     if (_outputPath.isEmpty) return;
     if (!Platform.isAndroid) return;
     if (!await File(_outputPath).exists()) return;
@@ -750,13 +572,17 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         sourcePath: _outputPath,
         filename: filename,
       );
-      _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
-      try {
-        await File(_outputPath).delete();
-      } catch (_) {}
-      _outputPath = publicPath;
+      if (mounted) {
+        _logController.append('PROGRESS: 已复制到公共 Download: $publicPath');
+        try {
+          await File(_outputPath).delete();
+        } catch (_) {}
+        _outputPath = publicPath;
+      }
     } catch (e) {
-      _logController.append('WARN: 复制到公共 Download 失败：$e');
+      if (mounted) {
+        _logController.append('WARN: 复制到公共 Download 失败：$e');
+      }
     }
   }
 
@@ -782,14 +608,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
               '4. 在搜索结果中选择对应书目\n'
               '5. 点击执行，等待拉取和注入完成\n'
               '6. 完成后自动清除搜索结果，方便处理下一本',
-        ),
-        ToolHelpSection(
-          title: '离线重注',
-          content:
-              '同步完成后数据自动缓存到本地。\n'
-              '之后换了本地 EPUB 版本或还原后想重新注入时，\n'
-              '在页面顶部「缓存书目」中选择对应书目，选择新 EPUB 文件，\n'
-              '点击「离线重注」即可零网络重跑映射和注入。',
         ),
         ToolHelpSection(
           title: '匹配原理',
@@ -832,8 +650,8 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                 // === 登录区 ===
                 _buildLoginSection(),
 
-                // === 已登录/离线模式后才显示以下区域 ===
-                if (_isLoggedIn || _offlineMode) ...[
+                // === 已登录后才显示以下区域 ===
+                if (_isLoggedIn) ...[
                   const SizedBox(height: 10),
 
                   // === EPUB 文件区 + 输出路径(桌面双列并排,窄屏保持原顺序)===
@@ -854,20 +672,10 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     _buildInputSection(),
                   ],
 
-                  // === 数据源选择 ===
-                  const SizedBox(height: 10),
-                  _buildDataSourceSelector(),
-
-                  // === 搜索绑定区(选完 EPUB 后自动出现,离线模式跳过)===
-                  if (_isLoggedIn && _epubPath.isNotEmpty && !_offlineMode) ...[
+                  // === 搜索绑定区(选完 EPUB 后自动出现)===
+                  if (_isLoggedIn && _epubPath.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     _buildSearchSection(),
-                  ],
-
-                  // === 缓存状态(离线模式下显示)===
-                  if (_offlineMode && _cacheData != null) ...[
-                    const SizedBox(height: 10),
-                    _buildCacheStatusCard(),
                   ],
 
                   // === 输出路径(窄屏:绑定书目后显示,保持原顺序)===
@@ -901,19 +709,12 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             context,
             loading: _loading,
             onPressed: _loading ? () {} : _execute,
-            label: _offlineMode ? '离线重注' : '同步想法到 EPUB',
-            icon: _offlineMode
-                ? Icons.cached
-                : Icons.cloud_download_outlined,
+            label: '同步想法到 EPUB',
+            icon: Icons.cloud_download_outlined,
           ),
         ],
       ),
     );
-  }
-
-  /// 构建数据源选择器
-  Widget _buildDataSourceSelector() {
-    return const SizedBox.shrink();
   }
 
   /// 输入区：EPUB 文件选择
@@ -957,9 +758,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         const SizedBox(height: 8),
         buildHelpInfoBar(
           context,
-          text: _offlineMode
-              ? '离线重注模式:使用缓存数据,无需网络。选择输出路径后点击重注。'
-              : '程序会自动根据 EPUB 书名搜索书目。选择对应书目后点击执行,完成后自动清除搜索结果。',
+          text: '程序会自动根据 EPUB 书名搜索书目。选择对应书目后点击执行,完成后自动清除搜索结果。',
           onTap: _showFeatureHelp,
         ),
       ],
@@ -992,9 +791,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  _offlineMode
-                      ? '选择缓存书目后即可在此选择输出路径'
-                      : '搜索并绑定书目后，在此选择输出路径',
+                  '搜索并绑定书目后，在此选择输出路径',
                   style: TextStyle(
                     fontSize: 12.5,
                     color: context.themeTextTertiary,
@@ -1408,70 +1205,6 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         Icons.book_outlined,
         size: 16,
         color: context.themeTextTertiary,
-      ),
-    );
-  }
-
-  /// 构建缓存书目列表区域
-  ///
-  /// 显示所有已缓存的书目,用户可选择进行离线重注。
-  /// 构建单个缓存书目条目
-  Widget _buildCacheStatusCard() {
-    final cache = _cacheData!;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: context.themeAccent.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.cached, size: 16, color: context.themeAccent),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  cache.bookTitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: context.themeTextPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  '缓存 ${cache.syncedCount}/${cache.totalChapters} 章'
-                  '${cache.isComplete ? ' · 完整' : ' · 部分(剩余 ${cache.remainingCount} 章需在线)'}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.themeTextSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: _loading ? null : _unbindBook,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              minimumSize: const Size(0, 24),
-            ),
-            child: Text(
-              '取消',
-              style: TextStyle(
-                fontSize: 11,
-                color: context.themeTextTertiary,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

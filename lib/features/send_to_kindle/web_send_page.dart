@@ -313,7 +313,13 @@ class _WebSendPageState extends State<WebSendPage> {
       windowsController.reload();
       return;
     }
-    _controller?.reload();
+    final controller = _controller;
+    if (controller != null) {
+      controller.reload();
+      return;
+    }
+    // 初始化失败路径：重新创建 WebView（错误横幅的「刷新」按钮走这里）
+    _initializeWebView();
   }
 
   Future<void> _openInBrowser() async {
@@ -425,19 +431,21 @@ class _WebSendPageState extends State<WebSendPage> {
 
   Widget _buildWebViewPage(BuildContext context, bool isMobile) {
     final controller = _controller;
-    if (controller == null) return const SizedBox.shrink();
 
     return Column(
       children: [
         if (isMobile) _buildMobileBrowserBar(context),
         _buildWebErrorBanner(context),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              _onWebViewportChanged(constraints.maxWidth);
-              return WebViewWidget(controller: controller);
-            },
-          ),
+          child: controller == null
+              // 初始化失败：占位空白，错误横幅在上方可点「刷新」重建 WebView
+              ? const SizedBox.shrink()
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    _onWebViewportChanged(constraints.maxWidth);
+                    return WebViewWidget(controller: controller);
+                  },
+                ),
         ),
         _buildLoginHint(context, compact: isMobile),
       ],
@@ -447,8 +455,11 @@ class _WebSendPageState extends State<WebSendPage> {
   Widget _buildWindowsWebViewPage(BuildContext context) {
     final controller = _windowsController;
     if (controller != null && _windowsReady) {
+      // 窄窗口下 appBar 为 null，导航控制由移动浏览器栏补齐（与 WebView 分支一致）
+      final isNarrow = MediaQuery.sizeOf(context).width <= 800;
       return Column(
         children: [
+          if (isNarrow) _buildMobileBrowserBar(context),
           _buildWebErrorBanner(context),
           Expanded(
             child: LayoutBuilder(
@@ -458,7 +469,7 @@ class _WebSendPageState extends State<WebSendPage> {
               },
             ),
           ),
-          _buildLoginHint(context, compact: false),
+          _buildLoginHint(context, compact: isNarrow),
         ],
       );
     }
