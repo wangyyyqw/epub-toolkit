@@ -2,7 +2,7 @@ name: epub_gadget
 description: "一站式 EPUB 电子书处理工具"
 publish_to: 'none'
 
-version: 1.5.2+29
+version: 1.6.2+30
 
 environment:
   sdk: ^3.12.0
@@ -25,7 +25,13 @@ dependencies:
   shared_preferences: ^2.3.3
 
   # EPUB 处理
-  epubx: ^4.0.0
+  epubx:
+    path: third_party/epubx
+
+  # Native assets compile and bundle HarfBuzz on desktop and mobile.
+  harfbuzz_ffi:
+    path: third_party/harfbuzz_ffi
+  ffi: ^2.2.0
 
   # ZIP 解压/打包
   archive: ^3.6.1

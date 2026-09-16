@@ -52,6 +52,12 @@ class TtfSubsetter {
       if (!parser.hasTable('glyf')) {
         return null;
       }
+      // These tables can reference glyphs absent from cmap. Preserve the
+      // original font until their dependency closure is supported.
+      if (['GSUB', 'morx', 'mort', 'gvar', 'COLR', 'SVG ', 'sbix', 'CBDT']
+          .any(parser.hasTable)) {
+        return null;
+      }
 
       // 1. 通过 cmap 获取字符→字形ID 映射
       final charToGlyph = parser.parseCmap(characters);
@@ -163,7 +169,8 @@ class _FontParser {
       final subtableOffset = cmapOffset + byteData.getUint32(recordOffset + 4);
 
       // 仅处理 Unicode 编码的子表
-      if (platformID == 0 || (platformID == 3 && encodingID <= 1)) {
+      if (platformID == 0 ||
+          (platformID == 3 && (encodingID <= 1 || encodingID == 10))) {
         final format = byteData.getUint16(subtableOffset);
         if (format == 12 && format12Offset == null) {
           format12Offset = subtableOffset;
@@ -315,7 +322,9 @@ class _FontParser {
       // 复合字形没有 numberOfContours 对应的端点数组
 
       while (true) {
-        if (componentOffset + 4 > data.length) break;
+        if (componentOffset + 4 > glyfEntry.offset + endOffset) {
+          throw const FormatException('Truncated composite glyph');
+        }
 
         final flags = byteData.getUint16(componentOffset);
         final componentGlyphId = byteData.getUint16(componentOffset + 2);
@@ -338,33 +347,16 @@ class _FontParser {
         if (flags & 0x0008 != 0) {
           componentOffset += 2; // 一个 F2Dot14
         }
-        // WE_HAVE_AN_X_AND_Y_SCALE (bit 4)
-        else if (flags & 0x0010 != 0) {
+        // WE_HAVE_AN_X_AND_Y_SCALE (bit 6)
+        else if (flags & 0x0040 != 0) {
           componentOffset += 4; // 两个 F2Dot14
         }
-        // WE_HAVE_A_TWO_BY_TWO (bit 5)
-        else if (flags & 0x0020 != 0) {
+        // WE_HAVE_A_TWO_BY_TWO (bit 7)
+        else if (flags & 0x0080 != 0) {
           componentOffset += 8; // 四个 F2Dot14
         }
 
-        // MORE_COMPONENTS (bit 5) - 注意：这里 bit 5 既可能是 2x2 矩阵也可能是更多组件
-        // 实际上 MORE_COMPONENTS 是 bit 5
-        // 但 WE_HAVE_A_TWO_BY_TWO 也是 bit 5...
-        // 修正：根据 OpenType 规范
-        // bit 0: ARG_1_AND_2_ARE_WORDS
-        // bit 1: ARGS_ARE_XY_VALUES
-        // bit 2: ROUND_XY_TO_GRID
-        // bit 3: WE_HAVE_A_SCALE
-        // bit 4: WE_HAVE_AN_X_AND_Y_SCALE
-        // bit 5: WE_HAVE_A_TWO_BY_TWO
-        // bit 6: WE_HAVE_INSTRUCTIONS
-        // bit 7: USE_MY_METRICS
-        // bit 8: OVERLAP_COMPOUND
-        // bit 9: SCALED_COMPONENT_OFFSET
-        // bit 10: UNSCALED_COMPONENT_OFFSET
-        // bit 11: MORE_COMPONENTS
-
-        // MORE_COMPONENTS (bit 11)
+        // MORE_COMPONENTS (bit 5)
         if (flags & 0x0020 == 0) {
           // 没有更多组件了
           break;
@@ -381,8 +373,8 @@ class _FontParser {
     final glyfEntry = tables['glyf'];
     if (glyfEntry == null) return null;
 
-    // 1. 排序字形ID，建立旧→新映射
-    final sortedGlyphs = neededGlyphs.toList()..sort();
+    // Preserve glyph IDs referenced by cmap, post, metrics and layout tables.
+    final sortedGlyphs = List<int>.generate(_numGlyphs, (i) => i);
     final oldToNew = <int, int>{};
     for (var i = 0; i < sortedGlyphs.length; i++) {
       oldToNew[sortedGlyphs[i]] = i;
@@ -400,7 +392,7 @@ class _FontParser {
       final endOffset = _locaOffsets[oldGlyphId + 1];
       final glyphLength = endOffset - startOffset;
 
-      if (glyphLength > 0) {
+      if (glyphLength > 0 && neededGlyphs.contains(oldGlyphId)) {
         // 复制字形数据，如果需要则更新复合字形组件引用
         final glyphData = data.sublist(
           glyfEntry.offset + startOffset,
@@ -524,26 +516,17 @@ class _FontParser {
       if (flags & 0x0008 != 0) {
         offset += 2;
       }
-      // WE_HAVE_AN_X_AND_Y_SCALE (bit 4)
-      else if (flags & 0x0010 != 0) {
+      // WE_HAVE_AN_X_AND_Y_SCALE (bit 6)
+      else if (flags & 0x0040 != 0) {
         offset += 4;
       }
-      // WE_HAVE_A_TWO_BY_TWO (bit 5)
-      else if (flags & 0x0020 != 0) {
+      // WE_HAVE_A_TWO_BY_TWO (bit 7)
+      else if (flags & 0x0080 != 0) {
         offset += 8;
       }
 
-      // MORE_COMPONENTS (bit 11) — 实际规范中是 bit 5 的位置需要重新确认
-      // 根据 OpenType spec: bit 5 = WE_HAVE_A_TWO_BY_TWO
-      // 没有 "MORE_COMPONENTS" flag，循环结束靠遍历完所有组件
-      // 实际上复合字形的组件通过 flags 中没有特定结束标志来判断
-      // 这里用简单逻辑：如果剩余数据不足以构成下一个组件头，则结束
-      if (offset + 4 > result.length) break;
-      // 检查是否还有更多组件（通过检查 flags 的 MORE_COMPONENTS 位）
-      // OpenType spec: 实际上每个复合字形的组件会一直列出，直到最后一个
-      // 没有显式的结束标志，需要通过数据长度判断
-      // 但实际上，flags 的 bit 5 在某些实现中表示 MORE_COMPONENTS
-      // 这里我们简单地在数据不足时停止
+      // Stop before composite instructions, which are not component records.
+      if (flags & 0x0020 == 0 || offset + 4 > result.length) break;
     }
 
     return result;
@@ -616,10 +599,12 @@ class _FontParser {
     tableTags['maxp'] = maxpData;
     tableTags['head'] = headData;
     tableTags['hhea'] = hheaData;
+    ByteData.sublistView(headData).setUint32(8, 0);
 
     // 原样复制的表
     for (final entry in tables.entries) {
       final tag = entry.key;
+      if (tag == 'DSIG') continue;
       if (!tableTags.containsKey(tag)) {
         final te = entry.value;
         tableTags[tag] = Uint8List.fromList(
@@ -657,7 +642,7 @@ class _FontParser {
     }
 
     // 构建输出
-    final totalSize = currentOffset;
+    final totalSize = (currentOffset + 3) & ~3;
     final output = Uint8List(totalSize);
     final bd = ByteData.sublistView(output);
 
@@ -678,8 +663,7 @@ class _FontParser {
       output[dirOffset + 2] = tagBytes[2];
       output[dirOffset + 3] = tagBytes[3];
 
-      // checksum (4 bytes) - 暂时设为 0
-      bd.setUint32(dirOffset + 4, 0);
+      bd.setUint32(dirOffset + 4, _checksum(tableTags[tag]!));
 
       // offset (4 bytes)
       bd.setUint32(dirOffset + 8, tableOffsets[tag]!);
@@ -697,6 +681,22 @@ class _FontParser {
       output.setRange(offset, offset + tableData.length, tableData);
     }
 
+    bd.setUint32(
+      tableOffsets['head']! + 8,
+      (0xB1B0AFBA - _checksum(output)) & 0xFFFFFFFF,
+    );
     return output;
+  }
+
+  static int _checksum(Uint8List bytes) {
+    var sum = 0;
+    for (var i = 0; i < bytes.length; i += 4) {
+      var word = 0;
+      for (var j = 0; j < 4; j++) {
+        word = (word << 8) | (i + j < bytes.length ? bytes[i + j] : 0);
+      }
+      sum = (sum + word) & 0xFFFFFFFF;
+    }
+    return sum;
   }
 }

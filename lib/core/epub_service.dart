@@ -51,7 +51,7 @@ class EpubService {
       throw Exception('EPUB 结构异常：container.xml 中未找到 OPF 路径');
     }
 
-    final opfPath = opfPathMatch.group(1)!;
+    final opfPath = Uri.parse(opfPathMatch.group(1)!).pathSegments.join('/');
     final opfFile = archive.findFile(opfPath);
     if (opfFile == null) {
       throw Exception('EPUB 结构异常：找不到 OPF 文件 $opfPath');
@@ -101,7 +101,7 @@ class EpubService {
     if (opfPathMatch == null) {
       throw Exception('EPUB 结构异常：无法确定 OPF 路径');
     }
-    final opfPath = opfPathMatch.group(1)!;
+    final opfPath = Uri.parse(opfPathMatch.group(1)!).pathSegments.join('/');
     final opfDir = opfPath.contains('/')
         ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
         : '';
@@ -156,7 +156,7 @@ class EpubService {
 
     // 替换或添加封面文件（使用 replaceFile 避免 removeFile 的索引损坏 bug）
     if (coverHref != null) {
-      final oldCoverPath = opfDir + Uri.decodeFull(coverHref);
+      final oldCoverPath = opfDir + Uri.parse(coverHref).pathSegments.join('/');
       EpubImageHelper.replaceFile(
         archive,
         oldCoverPath,
@@ -189,6 +189,7 @@ class EpubService {
     }
 
     // 更新或添加 meta name="cover"（属性顺序无关）
+    final effectiveCoverId = coverManifestId ?? 'cover-image';
     final coverMeta = RegExp(
       r'<meta\b[^>]*\bname\s*=\s*"cover"[^>]*>',
       caseSensitive: false,
@@ -202,12 +203,12 @@ class EpubService {
           if (tag.contains(RegExp(r'\bcontent\s*=', caseSensitive: false))) {
             tag = tag.replaceAllMapped(
               RegExp(r'\bcontent\s*=\s*"[^"]*"', caseSensitive: false),
-              (_) => 'content="cover-image"',
+              (_) => 'content="$effectiveCoverId"',
             );
           } else {
             tag = tag.replaceFirst(
               RegExp(r'\s*/?>\s*$'),
-              ' content="cover-image"/>',
+              ' content="$effectiveCoverId"/>',
             );
           }
           return tag;
@@ -216,7 +217,7 @@ class EpubService {
     } else {
       opfContent = opfContent.replaceAllMapped(
         RegExp(r'</[Mm][Ee][Tt][Aa][Dd][Aa][Tt][Aa]\s*>'),
-        (m) => '    <meta name="cover" content="cover-image"/>\n  ${m.group(0)}',
+        (m) => '    <meta name="cover" content="$effectiveCoverId"/>\n  ${m.group(0)}',
       );
     }
 
@@ -274,34 +275,13 @@ class EpubService {
     required String newName,
     required String mediaType,
   }) {
-    return opfContent.replaceAllMapped(
-      RegExp(
-        r'<item\b[^>]*\bid="' + RegExp.escape(itemId) + r'"[^>]*>',
-        caseSensitive: false,
-      ),
-      (m) {
-        var tag = m.group(0)!;
-        if (tag.contains('</item')) return tag;
-        final selfClosing = tag.endsWith('/>');
-        tag = tag.replaceFirst(RegExp(r'\s*/>$'), '>');
-        tag = tag.replaceAllMapped(
-          RegExp(r'\bhref\s*=\s*"[^"]*"', caseSensitive: false),
-          (_) => 'href="$newName"',
-        );
-        if (tag.contains(RegExp(r'\bmedia-type\s*=', caseSensitive: false))) {
-          tag = tag.replaceAllMapped(
-            RegExp(r'\bmedia-type\s*=\s*"[^"]*"', caseSensitive: false),
-            (_) => 'media-type="$mediaType"',
-          );
-        } else {
-          tag = tag.replaceFirst(
-            RegExp(r'\s*>\s*$'),
-            ' media-type="$mediaType">',
-          );
-        }
-        return selfClosing ? '$tag />' : tag;
-      },
-    );
+    final document = xml.XmlDocument.parse(opfContent);
+    for (final item in document.findAllElements('item', namespace: '*')) {
+      if (item.getAttribute('id') != itemId) continue;
+      item.setAttribute('href', newName);
+      item.setAttribute('media-type', mediaType);
+    }
+    return document.toXmlString();
   }
 
   /// 获取 EPUB 中所有 XHTML 文件的内容（按 spine 顺序）
