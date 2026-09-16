@@ -7,12 +7,12 @@ import 'package:xml/xml.dart' as xml;
 
 import 'epub_image_helper.dart';
 import 'ttf_subsetter.dart';
+import 'harfbuzz_subsetter.dart';
 
 /// 字体子集化操作
 ///
-/// 分析 EPUB 中的 CSS @font-face 规则和字体引用关系，
-/// 提取每个字体实际使用的字符，对 TTF 字体进行子集化以减小体积。
-/// 未被任何选择器引用的字体会从 OPF manifest 中移除。
+/// 保守收集正文、属性与 CSS 中的字符，通过 HarfBuzz 同时缩减字形与排版表。
+/// 无法安全缩减的字体保留原样。
 class FontSubsetOperation {
   FontSubsetOperation._();
 
@@ -75,12 +75,18 @@ class FontSubsetOperation {
     }
 
     // 遍历 HTML 文件，按选择器提取文本
-    _collectCharsFromHtml(
-      archive,
-      selectorToFontFile,
-      fontToChars,
-      fontNameToFile,
-    );
+    try {
+      _collectCharsFromHtml(
+        archive,
+        selectorToFontFile,
+        fontToChars,
+        fontNameToFile,
+      );
+    } on FormatException {
+      log.writeln('正文 XML 无法完整解析，为避免丢失字形，保留全部原字体。');
+      await EpubImageHelper.saveArchive(archive, outputPath);
+      return log.toString();
+    }
 
     // 4. 子集化字体文件
     var subsetCount = 0;
@@ -110,9 +116,11 @@ class FontSubsetOperation {
 
       // 子集化 TTF/OTF 字体
       final fontData = EpubImageHelper.readBytes(fontFile);
-      final subsetData = TtfSubsetter.subset(fontData, chars);
+      final subsetData =
+          HarfBuzzSubsetter.subset(fontData, chars) ??
+          TtfSubsetter.subset(fontData, chars);
 
-      if (subsetData != null) {
+      if (subsetData != null && subsetData.length < fontData.length) {
         final ratio = subsetData.length / fontData.length;
         log.writeln(
           '  子集化: $fontPath '
@@ -128,7 +136,7 @@ class FontSubsetOperation {
         );
         subsetCount++;
       } else {
-        log.writeln('  子集化失败，保留原字体: $fontPath');
+        log.writeln('  无法安全缩减或缩减后未变小，保留原字体: $fontPath');
         skipCount++;
       }
     }
@@ -274,6 +282,14 @@ class FontSubsetOperation {
     for (final file in archive.files) {
       if (file.name.isEmpty) continue;
       final lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith('.css') || lowerName.endsWith('.svg')) {
+        // Include generated content/counters and SVG text conservatively.
+        final chars = utf8.decode(file.content as List<int>).runes.toSet();
+        for (final target in fontToChars.values) {
+          target.addAll(chars);
+        }
+        continue;
+      }
       if (!lowerName.endsWith('.html') &&
           !lowerName.endsWith('.xhtml') &&
           !lowerName.endsWith('.htm')) {
@@ -281,6 +297,13 @@ class FontSubsetOperation {
       }
 
       final content = utf8.decode(file.content as List<int>);
+
+      // Selector heuristics cannot model CSS inheritance, fallback families or
+      // compound selectors. Keep every visible character in each embedded font.
+      final visibleChars = _extractAllChars(content);
+      for (final chars in fontToChars.values) {
+        chars.addAll(visibleChars);
+      }
 
       if (noSelectors) {
         // 无选择器映射时，将所有文本字符加入所有字体
@@ -300,31 +323,16 @@ class FontSubsetOperation {
 
   /// 提取 HTML 中的所有字符
   ///
-  /// 去除标签和 script/style 内容
+  /// 保守保留正文、样式及属性字符，包含 CSS 生成内容可能使用的字形。
   static Set<int> _extractAllChars(String html) {
-    final chars = <int>{};
-
-    // 移除 script 和 style 内容
-    final cleaned = html
-        .replaceAll(
-          RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false),
-          '',
-        )
-        .replaceAll(
-          RegExp(r'<style\b[^>]*>[\s\S]*?</style>', caseSensitive: false),
-          '',
-        );
-
-    // 提取标签之间的文本
-    for (final match in RegExp(r'>([^<]+)<').allMatches(cleaned)) {
-      final text = match.group(1)!;
-      for (final rune in text.runes) {
-        if (rune > 0x20) {
-          chars.add(rune);
-        }
+    final document = xml.XmlDocument.parse(html);
+    final chars = document.innerText.runes.toSet()..add(0x20);
+    // Attributes can be displayed through alt text or CSS attr().
+    for (final element in document.descendants.whereType<xml.XmlElement>()) {
+      for (final attribute in element.attributes) {
+        chars.addAll(attribute.value.runes);
       }
     }
-
     return chars;
   }
 
@@ -485,7 +493,11 @@ class FontSubsetOperation {
       final updatedOpf = document.toXmlString(pretty: true);
       EpubImageHelper.addOrReplaceFile(
         archive,
-        ArchiveFile(opfPath, utf8.encode(updatedOpf).length, utf8.encode(updatedOpf)),
+        ArchiveFile(
+          opfPath,
+          utf8.encode(updatedOpf).length,
+          utf8.encode(updatedOpf),
+        ),
       );
     } catch (e) {
       // OPF 解析失败，跳过清理

@@ -1,0 +1,13 @@
+name: harfbuzz_ffi
+description: Vendored HarfBuzz native assets for EPUB font subsetting.
+version: 0.4.2
+publish_to: none
+environment:
+  sdk: ^3.12.0
+dependencies:
+  code_assets: ^1.2.0
+  ffi: ^2.2.0
+  hooks: ^2.0.0
+  logging: ^1.3.0
+  meta: ^1.18.0
+  native_toolchain_c: 0.19.2

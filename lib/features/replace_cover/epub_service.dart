@@ -51,7 +51,7 @@ class EpubService {
       throw Exception('EPUB 结构异常：container.xml 中未找到 OPF 路径');
     }
 
-    final opfPath = opfPathMatch.group(1)!;
+    final opfPath = Uri.parse(opfPathMatch.group(1)!).pathSegments.join('/');
     final opfFile = archive.findFile(opfPath);
     if (opfFile == null) {
       throw Exception('EPUB 结构异常：找不到 OPF 文件 $opfPath');
@@ -91,7 +91,7 @@ class EpubService {
     if (opfPathMatch == null) {
       throw Exception('EPUB 结构异常：无法确定 OPF 路径');
     }
-    final opfPath = opfPathMatch.group(1)!;
+    final opfPath = Uri.parse(opfPathMatch.group(1)!).pathSegments.join('/');
     final opfDir = opfPath.contains('/')
         ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
         : '';
@@ -143,7 +143,7 @@ class EpubService {
 
     // 替换或添加封面文件（使用 replaceFile 避免 removeFile 的索引损坏 bug）
     if (coverHref != null) {
-      final oldCoverPath = opfDir + coverHref;
+      final oldCoverPath = opfDir + Uri.parse(coverHref).pathSegments.join('/');
       EpubImageHelper.replaceFile(
         archive,
         oldCoverPath,
@@ -175,15 +175,16 @@ class EpubService {
     }
 
     // 更新或添加 meta name="cover"
+    final effectiveCoverId = coverManifestId ?? 'cover-image';
     if (RegExp(r'name="cover"\s+content=').hasMatch(opfContent)) {
       opfContent = opfContent.replaceAll(
         RegExp(r'name="cover"\s+content="[^"]*"'),
-        'name="cover" content="cover-image"',
+        'name="cover" content="$effectiveCoverId"',
       );
     } else {
       opfContent = opfContent.replaceAll(
         '</metadata>',
-        '    <meta name="cover" content="cover-image"/>\n  </metadata>',
+        '    <meta name="cover" content="$effectiveCoverId"/>\n  </metadata>',
       );
     }
 

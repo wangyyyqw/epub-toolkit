@@ -80,6 +80,12 @@ flutter pub get
 flutter run
 ```
 
+字体子集化使用项目内固定版本的 HarfBuzz 14.2.1，通过 Dart native assets
+随应用编译、打包，支持 CFF/OTF 和包含 GSUB 的 TTF。运行时不需要安装
+Python、HarfBuzz 命令行或 Homebrew。构建机需要对应平台的 C++ 工具链。
+`third_party/epubx` 保存中文、百分号编码和嵌套目录的路径兼容修复；
+两个本地依赖的来源、许可证和改动均记录在各自的 `LOCAL_CHANGES.md`。
+
 ## 测试
 
 ```bash
@@ -88,6 +94,21 @@ flutter test
 ```
 
 真实书籍全功能测试需要本地测试 EPUB 文件，不随仓库提交。
+
+```bash
+REAL_EPUB_INPUT=/absolute/path/book.epub \
+REAL_EPUB_OUTPUT=/absolute/path/existing-output-directory \
+flutter test test/real_book_reader_test.dart
+
+# 只验证字体缩减，输出路径必须尚不存在。
+REAL_EPUB_INPUT=/absolute/path/book.epub \
+FONT_EPUB_OUTPUT=build/font-check/subset.epub \
+flutter test test/operations/harfbuzz_subsetter_test.dart
+```
+
+独立字体检查工具 `tool/audit_epub_fonts.py` 使用 fontTools；
+`tool/audit_epub_font_shaping.py` 额外使用 uharfbuzz，比较全书横排/竖排的字形、
+字距与位置。这些 Python 依赖仅用于开发审计，不属于应用运行依赖。
 
 ## 打包
 
