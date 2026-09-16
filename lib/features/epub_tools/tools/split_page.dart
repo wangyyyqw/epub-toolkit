@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -40,6 +43,7 @@ class _SplitPageState extends State<SplitPage> {
   /// 拆分输出目录
   String _splitOutputDir = '';
   bool _userPickedOutputDir = false;
+  int _selectionGeneration = 0;
 
   /// 章节目标列表
   List<_SplitTargetUi> _targets = [];
@@ -58,16 +62,49 @@ class _SplitPageState extends State<SplitPage> {
 
   /// 选择 EPUB 文件，随后自动扫描章节目录
   Future<void> _pickEpub() async {
+    final generation = ++_selectionGeneration;
     final path = await FileService.pickEpub();
-    if (path == null) return;
+    if (!mounted || generation != _selectionGeneration || path == null) return;
     setState(() {
       _epubPath = path;
       _targets = [];
       _selected.clear();
     });
     if (!_userPickedOutputDir) {
-      _splitOutputDir = p.dirname(path);
+      // 默认输出到安全目录下的独立子目录，避免隐藏路径和权限问题
+      try {
+        var base = p.basename(path);
+        if (base.toLowerCase().endsWith('.epub')) {
+          base = base.substring(0, base.length - 5);
+        } else {
+          base = p.basenameWithoutExtension(path);
+        }
+        // 清理非法字符
+        base = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+        if (base.isEmpty) base = 'split';
+        // 使用 FileService 的安全目录逻辑
+        final safeFile = await FileService.getSafeOutputPath(
+          '${base}_split/dummy.epub',
+        );
+        var outputDir = p.dirname(safeFile);
+        // 桌面端若输入在真实 Documents 下，优先与输入同目录的子目录
+        if (!kIsWeb &&
+            (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+          final inputDir = p.dirname(path);
+          // 若输入目录非隐藏且可写，优先使用输入同目录下的 _split 子目录
+          if (!inputDir.contains('.trae-cn') && !inputDir.contains('/tmp')) {
+            final candidate = p.join(inputDir, '${base}_split');
+            outputDir = candidate;
+          }
+        }
+        if (!mounted || generation != _selectionGeneration) return;
+        if (!_userPickedOutputDir) _splitOutputDir = outputDir;
+      } catch (_) {
+        if (!mounted || generation != _selectionGeneration) return;
+        if (!_userPickedOutputDir) _splitOutputDir = p.dirname(path);
+      }
     }
+    if (!mounted || generation != _selectionGeneration) return;
     await _loadTargets();
     if (mounted) setState(() {});
   }
@@ -89,11 +126,13 @@ class _SplitPageState extends State<SplitPage> {
       if (!mounted || scanPath != _epubPath) return;
       setState(() {
         _targets = data
-            .map((e) => _SplitTargetUi(
-                  title: (e as Map)['title'] as String? ?? '',
-                  level: (e['level'] as num?)?.toInt() ?? 1,
-                  href: e['href'] as String? ?? '',
-                ))
+            .map(
+              (e) => _SplitTargetUi(
+                title: (e as Map)['title'] as String? ?? '',
+                level: (e['level'] as num?)?.toInt() ?? 1,
+                href: e['href'] as String? ?? '',
+              ),
+            )
             .toList();
         // 保留仍然有效的勾选
         _selected.removeWhere((i) => i < 0 || i >= _targets.length);
@@ -114,7 +153,7 @@ class _SplitPageState extends State<SplitPage> {
   /// 选择拆分输出目录
   Future<void> _pickSplitOutputDir() async {
     final dir = await FileService.pickDirectory(title: '选择拆分输出目录');
-    if (dir == null) return;
+    if (!mounted || dir == null) return;
     _userPickedOutputDir = true;
     setState(() => _splitOutputDir = dir);
   }
@@ -136,23 +175,68 @@ class _SplitPageState extends State<SplitPage> {
       context.read<ToastProvider>().showWarning('请在章节目录中勾选至少 1 个分割点');
       return;
     }
+    if (_loading || _targetsLoading) return;
+    final inputPath = _epubPath;
+    final points = _selected.toList()..sort();
     setState(() => _loading = true);
     _logController.clear();
     _logController.append('PROGRESS: 开始执行「拆分 EPUB」操作...');
     _logController.append('输入文件：$_epubPath');
+    // 输出目录为空时，按平台选择安全目录
+    String outputDir = _splitOutputDir.isEmpty
+        ? p.dirname(_epubPath)
+        : _splitOutputDir;
     try {
-      final points = _selected.toList()..sort();
-      final outputDir = _splitOutputDir.isEmpty
-          ? p.dirname(_epubPath)
-          : _splitOutputDir;
-      final result = await runEpubBackgroundOperation<String>(
+      // 验证输出权限，失败时自动选择应用安全目录。
+      try {
+        await FileService.ensureWritableDirectory(outputDir);
+      } catch (_) {
+        // 无权限则回退到安全目录
+        final safe = await FileService.getSafeOutputPath('split_probe.epub');
+        outputDir = p.join(
+          p.dirname(safe),
+          '${p.basenameWithoutExtension(inputPath)}_split',
+        );
+        await FileService.ensureWritableDirectory(outputDir);
+        _logController.append('WARN: 原输出目录无写权限，已回退到 $outputDir');
+        if (mounted) setState(() => _splitOutputDir = outputDir);
+      }
+      _logController.append('输出目录：$outputDir');
+      final result = await runEpubBackgroundOperation<Map<String, dynamic>>(
         EpubBackgroundOperation.split,
-        {'epubPath': _epubPath, 'outputDir': outputDir, 'splitPoints': points},
+        {'epubPath': inputPath, 'outputDir': outputDir, 'splitPoints': points},
       );
-      _logAppendLines(result);
+      _logAppendLines(result['log'] as String);
+      final files = (result['outputPaths'] as List)
+          .cast<String>()
+          .map(File.new)
+          .toList();
+      if (files.isEmpty) {
+        throw StateError('未生成拆分文件，请检查章节目录和分割点');
+      }
+      _logController.append('已生成 ${files.length} 个文件:');
+      for (final file in files) {
+        _logController.append(
+          '  - ${p.basename(file.path)} (${(file.lengthSync() / 1024).toStringAsFixed(1)} KB)',
+        );
+      }
+      if (!kIsWeb && Platform.isAndroid) {
+        for (final file in files) {
+          try {
+            final copied = await FileService.copyFileToPublicDownload(
+              sourcePath: file.path,
+              filename: p.basename(file.path),
+            );
+            _logController.append('已复制到公共目录: $copied');
+          } catch (e) {
+            _logController.append('复制到公共目录失败 ${p.basename(file.path)}: $e');
+          }
+        }
+      }
       if (mounted) context.read<ToastProvider>().showSuccess('拆分完成');
-    } catch (e) {
+    } catch (e, st) {
       _logController.append('ERROR: 操作失败：$e');
+      _logController.append('STACK: $st');
       if (mounted) context.read<ToastProvider>().showError('操作失败：$e');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -183,7 +267,11 @@ class _SplitPageState extends State<SplitPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                        buildSectionLabel(
+                          context,
+                          Icons.folder_open,
+                          'EPUB 文件',
+                        ),
                         const SizedBox(height: 8),
                         buildFilePickerRow(
                           context,
@@ -320,9 +408,7 @@ class _SplitPageState extends State<SplitPage> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: checked ? FontWeight.w600 : FontWeight.w400,
-              color: checked
-                  ? theme.colorScheme.primary
-                  : cs.onSurface,
+              color: checked ? theme.colorScheme.primary : cs.onSurface,
             ),
           ),
           subtitle: target.href.isNotEmpty

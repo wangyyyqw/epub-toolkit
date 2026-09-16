@@ -93,6 +93,18 @@ flutter analyze lib
 flutter test
 ```
 
+完整真实书籍回归需按“生成产物、补充流程、阅读器导入”的顺序执行：
+
+```bash
+bash tool/verify_real_epub.sh /absolute/path/book.epub build/real-book-check
+```
+
+输出目录必须尚不存在。使用 `FLUTTER_BIN` 可指定 Flutter 可执行文件。
+不要给整个 `flutter test` 设置 `REAL_EPUB_OUTPUT`，否则不同测试文件会并行
+读写尚未完成的产物。测试会保留结果和报告，不修改输入 EPUB。
+WiFi 传输通过本机 HTTP 验证；微信读书注入和远程图片使用受控离线响应，
+不等同于真实账号登录、SMTP 邮件发送或外部阅读器人工验收。
+
 真实书籍全功能测试需要本地测试 EPUB 文件，不随仓库提交。
 
 ```bash
@@ -132,17 +144,22 @@ flutter build windows --release
 & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" windows\installer.iss
 ```
 
-GitHub Actions 会自动生成 `epub-toolkit-windows-*-setup.exe` 安装程序，并作为
+GitHub Actions 在推送与 `pubspec.yaml` 版本一致的 tag（如 `v1.6.3`）时发布，
+也可在该 tag 上手动运行。`main` push 和 PR 仅运行静态分析与测试；
+发布构建同样必须通过这两项检查。CI 构建号继续使用工作流运行编号。
+每次发布应更新版本与构建号，并为对应提交创建新 tag，不要移动已有发布 tag。
+
+工作流会自动生成 `epub-toolkit-windows-*-setup.exe` 安装程序，并作为
 GitHub Release 附件发布。Flutter 的原始程序目录包含 DLL 和资源文件，不能只复制
 其中的 `epub_gadget.exe` 单独运行。
 
 ## Android 签名
 
-签名密钥库 `android/app/release-keystore.jks` 与配置 `android/key.properties`
-随仓库提交：GitHub Actions 构建时直接读取，保证每次 Release 的 APK 签名一致，
-用户可以直接覆盖更新，无需配置任何 Secrets。
+签名密钥库与 `android/key.properties` 已被 Git 忽略，不应提交。
+本地 release 构建按 `android/key.properties.example` 配置；
+CI 需要配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、
+`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 四项 GitHub Secrets。
+工作流将密钥库解码为临时文件并设置 `ANDROID_KEYSTORE_FILE`。
 
-> 注意：公开仓库提交签名密钥意味着任何人可以用同一密钥伪造应用签名。
-> 如果对安全性有更高要求，可将 `android/key.properties` 与 `*.jks` 移出
-> 仓库并改用 GitHub Secrets（`ANDROID_KEYSTORE_FILE` / `ANDROID_KEYSTORE_PASSWORD`
-> / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`）注入签名。
+缺少签名配置或密钥库时，release 构建会失败，不再降级为 debug 签名。
+调试构建仍使用调试签名。已有用户升级需要继续使用原正式签名密钥。

@@ -39,6 +39,20 @@ android {
         releaseKeyPassword,
     ).all { !it.isNullOrBlank() }
 
+    val requireReleaseSigning = tasks.register("requireReleaseSigning") {
+        doLast {
+            check(hasReleaseSigning) {
+                "Release signing is required. Configure key.properties or ANDROID_KEYSTORE_* credentials."
+            }
+            check(rootProject.file(releaseStoreFile!!).isFile) {
+                "Release keystore file does not exist."
+            }
+        }
+    }
+    tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+        dependsOn(requireReleaseSigning)
+    }
+
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
@@ -63,7 +77,7 @@ android {
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                null
             }
         }
     }

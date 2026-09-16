@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 
 import '../../core/epub_packer.dart';
-import 'package:pinyin/pinyin.dart';
+import 'package:pinyin/pinyin.dart' deferred as pinyin;
 
 import 'common_chars.dart';
 import 'epub_image_helper.dart';
@@ -40,6 +40,8 @@ class PhoneticOperation {
     String toneMode = toneModeMark,
     bool annotateAll = true,
   }) async {
+    // 延迟加载 pinyin 词库（约 2MB Dart AOT），仅在注音功能首次使用时加载
+    await pinyin.loadLibrary();
     // 确定 PinyinFormat
     final format = _parseFormat(toneMode);
 
@@ -112,15 +114,15 @@ class PhoneticOperation {
   }
 
   /// 解析声调模式为 PinyinFormat
-  static PinyinFormat _parseFormat(String toneMode) {
+  static dynamic _parseFormat(String toneMode) {
     switch (toneMode) {
       case toneModeMark:
-        return PinyinFormat.WITH_TONE_MARK;
+        return pinyin.PinyinFormat.WITH_TONE_MARK;
       case toneModeNumber:
-        return PinyinFormat.WITH_TONE_NUMBER;
+        return pinyin.PinyinFormat.WITH_TONE_NUMBER;
       case toneModeNone:
       default:
-        return PinyinFormat.WITHOUT_TONE;
+        return pinyin.PinyinFormat.WITHOUT_TONE;
     }
   }
 
@@ -142,7 +144,7 @@ class PhoneticOperation {
   /// 返回 (标注后的内容, 是否有修改, 标注字符数)
   static (String, bool, int) _annotateHtml(
     String content,
-    PinyinFormat format,
+    dynamic format,
     bool annotateAll,
   ) {
     var result = content;
@@ -218,7 +220,7 @@ class PhoneticOperation {
   /// 返回 (标注后的文本, 标注字符数)
   static (String, int) _annotateText(
     String text,
-    PinyinFormat format,
+    dynamic format,
     bool annotateAll,
   ) {
     final result = StringBuffer();
@@ -250,7 +252,7 @@ class PhoneticOperation {
         // 获取拼音（用 try/catch 防御 pinyin 库对生僻字/扩展区字符的内部异常）
         List<String> pinyinList = const [];
         try {
-          pinyinList = PinyinHelper.convertToPinyinArray(char, format);
+          pinyinList = pinyin.PinyinHelper.convertToPinyinArray(char, format);
         } catch (_) {
           // pinyin 库对某些生僻字会抛 RangeError，跳过该字符
         }

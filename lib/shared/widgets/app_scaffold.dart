@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +6,7 @@ import 'package:tdesign_flutter/tdesign_flutter.dart';
 
 import '../../core/app_version.dart';
 import '../../core/theme.dart';
+import '../../core/theme_controller.dart';
 
 /// 侧边栏导航项
 class NavItem {
@@ -28,8 +27,7 @@ class NavItem {
 
 /// 侧边栏完整导航配置
 final List<NavItem> _navGroups = [
-  const NavItem(
-      label: '仪表盘', icon: TDIcons.dashboard, route: '/dashboard'),
+  const NavItem(label: '仪表盘', icon: TDIcons.dashboard, route: '/dashboard'),
   NavItem(
     label: '文件转换',
     icon: TDIcons.swap,
@@ -60,11 +58,7 @@ final List<NavItem> _navGroups = [
     label: '格式处理',
     icon: TDIcons.article,
     children: [
-      const NavItem(
-        label: '元数据编辑',
-        icon: TDIcons.edit_1,
-        route: '/metadata',
-      ),
+      const NavItem(label: '元数据编辑', icon: TDIcons.edit_1, route: '/metadata'),
       const NavItem(
         label: 'EPUB → TXT',
         icon: TDIcons.article,
@@ -215,13 +209,8 @@ final List<NavItem> _navGroups = [
     label: 'Kindle 推送',
     icon: TDIcons.send,
     children: [
-      const NavItem(
-        label: '邮箱推送',
-        icon: TDIcons.mail,
-        route: '/send-email',
-      ),
-      const NavItem(
-          label: '网页推送', icon: TDIcons.internet, route: '/send-web'),
+      const NavItem(label: '邮箱推送', icon: TDIcons.mail, route: '/send-email'),
+      const NavItem(label: '网页推送', icon: TDIcons.internet, route: '/send-web'),
       const NavItem(
         label: 'WiFi 传书',
         icon: TDIcons.wifi,
@@ -233,11 +222,7 @@ final List<NavItem> _navGroups = [
     label: '使用教程',
     icon: TDIcons.education,
     children: [
-      const NavItem(
-        label: '传书教程',
-        icon: TDIcons.book_open,
-        route: '/tutorial',
-      ),
+      const NavItem(label: '传书教程', icon: TDIcons.book_open, route: '/tutorial'),
     ],
   ),
 ];
@@ -276,8 +261,9 @@ class AppScaffold extends StatelessWidget {
       value: overlay.copyWith(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness:
-            context.isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: context.isDarkMode
+            ? Brightness.light
+            : Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
         // Android 12+ 三键导航：关闭系统强制对比度遮罩，实现真正透明沉浸
         systemNavigationBarContrastEnforced: false,
@@ -300,8 +286,8 @@ class AppScaffold extends StatelessWidget {
                   if (!isMobile) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       context.read<SidebarState>().applyWindowWidth(
-                            constraints.maxWidth < _autoCollapseBreakpoint,
-                          );
+                        constraints.maxWidth < _autoCollapseBreakpoint,
+                      );
                     });
                   }
                   if (isMobile) {
@@ -320,8 +306,9 @@ class AppScaffold extends StatelessWidget {
                             // 桌面宽屏(>1560)放宽内容区上限,充分利用屏幕;
                             // 窄屏自然全宽
                             constraints: BoxConstraints(
-                              maxWidth:
-                                  constraints.maxWidth > 1560 ? 1440 : 1200,
+                              maxWidth: constraints.maxWidth > 1560
+                                  ? 1440
+                                  : 1200,
                             ),
                             child: _SafeContent(child: child),
                           ),
@@ -351,7 +338,10 @@ Widget _buildMobileLayout(
     children: [
       Column(
         children: [
-          _MobileTopBar(onMenuTap: sidebar.toggleMobile),
+          _MobileTopBar(
+            onMenuTap: sidebar.toggleMobile,
+            onThemeTap: () => context.read<ThemeController>().cycle(),
+          ),
           Expanded(
             child: Center(
               child: ConstrainedBox(
@@ -362,17 +352,12 @@ Widget _buildMobileLayout(
           ),
         ],
       ),
-      // 遮罩：模糊灰色蒙层，点击收起抽屉
+      // 遮罩：纯色蒙层，点击收起抽屉
       if (sidebar.mobileOpen)
         Positioned.fill(
           child: GestureDetector(
             onTap: sidebar.closeMobile,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.28),
-              ),
-            ),
+            child: Container(color: Colors.black.withValues(alpha: 0.28)),
           ),
         ),
       // 抽屉式侧边栏
@@ -428,8 +413,9 @@ class _SafeContent extends StatelessWidget {
 /// 左侧菜单按钮 + 品牌名，高度紧凑以让更多空间给内容
 class _MobileTopBar extends StatelessWidget {
   final VoidCallback onMenuTap;
+  final VoidCallback onThemeTap;
 
-  const _MobileTopBar({required this.onMenuTap});
+  const _MobileTopBar({required this.onMenuTap, required this.onThemeTap});
 
   @override
   Widget build(BuildContext context) {
@@ -459,6 +445,19 @@ class _MobileTopBar extends StatelessWidget {
                 letterSpacing: 0.2,
               ),
             ),
+            const Spacer(),
+            Consumer<ThemeController>(
+              builder: (context, theme, _) => IconButton(
+                onPressed: onThemeTap,
+                tooltip: theme.label,
+                icon: Icon(
+                  theme.icon,
+                  size: 20,
+                  color: context.themeTextSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
           ],
         ),
       ),
@@ -567,8 +566,7 @@ class SidebarState extends ChangeNotifier {
   }
 
   void expand(String groupLabel) {
-    if (_expandedGroups.length == 1 &&
-        _expandedGroups.contains(groupLabel)) {
+    if (_expandedGroups.length == 1 && _expandedGroups.contains(groupLabel)) {
       return;
     }
     // 手风琴模式：只保留当前分组展开
@@ -639,9 +637,7 @@ class _Sidebar extends StatelessWidget {
             _buildBrand(context, collapsed),
             const SizedBox(height: 10),
             Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: collapsed ? 12 : 14,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: collapsed ? 12 : 14),
               child: Divider(height: 1, color: context.themeDivider),
             ),
             const SizedBox(height: 6),
@@ -652,28 +648,28 @@ class _Sidebar extends StatelessWidget {
                   vertical: 4,
                 ),
                 itemCount: _navGroups.length,
-                  itemBuilder: (context, index) {
-                    final nav = _navGroups[index];
-                    if (nav.isLeaf) {
-                      return _LeafNavTile(
-                        icon: nav.icon,
-                        label: nav.label,
-                        route: nav.route!,
-                        currentPath: currentPath,
-                        collapsed: collapsed,
-                        onTap: () {
-                          context.go(nav.route!);
-                          context.read<SidebarState>().navFromSidebar();
-                        },
-                      );
-                    }
-                    return _ExpandableNavGroup(
-                      parent: nav,
+                itemBuilder: (context, index) {
+                  final nav = _navGroups[index];
+                  if (nav.isLeaf) {
+                    return _LeafNavTile(
+                      icon: nav.icon,
+                      label: nav.label,
+                      route: nav.route!,
                       currentPath: currentPath,
                       collapsed: collapsed,
+                      onTap: () {
+                        context.go(nav.route!);
+                        context.read<SidebarState>().navFromSidebar();
+                      },
                     );
-                  },
-                ),
+                  }
+                  return _ExpandableNavGroup(
+                    parent: nav,
+                    currentPath: currentPath,
+                    collapsed: collapsed,
+                  );
+                },
+              ),
             ),
             if (!collapsed && !drawerMode)
               Padding(
@@ -684,6 +680,18 @@ class _Sidebar extends StatelessWidget {
                     fontSize: 11,
                     color: context.themeTextTertiary.withValues(alpha: 0.7),
                     letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            if (!drawerMode)
+              Consumer<ThemeController>(
+                builder: (context, theme, _) => IconButton(
+                  onPressed: theme.cycle,
+                  tooltip: theme.label,
+                  icon: Icon(
+                    theme.icon,
+                    size: 19,
+                    color: context.themeTextTertiary,
                   ),
                 ),
               ),
@@ -811,9 +819,7 @@ class _LeafNavTile extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: isActive
-                    ? context.themeWarmLight
-                    : Colors.transparent,
+                color: isActive ? context.themeWarmLight : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppTheme.radiusS),
               ),
               child: Center(
@@ -1037,8 +1043,7 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
           curve: Curves.easeOutCubic,
           child: isExpanded && widget.parent.children != null
               ? Padding(
-                  padding:
-                      const EdgeInsets.only(left: 6, top: 2, bottom: 4),
+                  padding: const EdgeInsets.only(left: 6, top: 2, bottom: 4),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: widget.parent.children!.map((child) {
@@ -1059,8 +1064,9 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
                             color: isActive
                                 ? context.themeWarmLight
                                 : Colors.transparent,
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.radiusS),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusS,
+                            ),
                           ),
                           child: Row(
                             children: [
@@ -1069,8 +1075,9 @@ class _ExpandableNavGroupState extends State<_ExpandableNavGroup> {
                                 size: 15,
                                 color: isActive
                                     ? context.themeAccent
-                                    : context.themeTextTertiary
-                                        .withValues(alpha: 0.7),
+                                    : context.themeTextTertiary.withValues(
+                                        alpha: 0.7,
+                                      ),
                               ),
                               const SizedBox(width: 9),
                               Text(

@@ -202,11 +202,14 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
         ),
       );
     case 'split':
-      return SplitOperation.execute(
+      final outputPaths = <String>[];
+      final log = await SplitOperation.execute(
         epubPath: args['epubPath'] as String,
         outputDir: args['outputDir'] as String,
         splitPoints: (args['splitPoints'] as List).cast<int>(),
+        onOutput: outputPaths.add,
       );
+      return {'log': log, 'outputPaths': outputPaths};
     case 'listSplitTargets':
       final targets = await ListSplitTargetsOperation.execute(
         epubPath: args['epubPath'] as String,
@@ -215,11 +218,7 @@ Future<Object?> _runEpubOperation(Map<String, Object?> message) async {
         'formatted': ListSplitTargetsOperation.formatTargets(targets),
         'length': targets.length,
         'data': targets
-            .map((t) => {
-                  'title': t.title,
-                  'level': t.level,
-                  'href': t.href,
-                })
+            .map((t) => {'title': t.title, 'level': t.level, 'href': t.href})
             .toList(),
       };
     case 'comment':

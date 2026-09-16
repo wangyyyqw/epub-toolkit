@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:tdesign_flutter/tdesign_flutter.dart';
@@ -303,7 +301,9 @@ Widget buildFilePickerRow(
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
   final displayValue = value.isNotEmpty
-      ? (value.length > (wide ? 88 : 40) ? truncatePath(value, maxLen: wide ? 72 : 35) : value)
+      ? (value.length > (wide ? 88 : 40)
+            ? truncatePath(value, maxLen: wide ? 72 : 35)
+            : value)
       : hint;
   final defaultDropHandler = _shouldAcceptDroppedFiles(label)
       ? (List<String> paths) {
@@ -539,8 +539,10 @@ Widget buildCompactSelect(
       ),
       const SizedBox(height: 6),
       SizedBox(
-        height: (54 * MediaQuery.textScalerOf(context).scale(1.0))
-            .clamp(54.0, 88.0),
+        height: (54 * MediaQuery.textScalerOf(context).scale(1.0)).clamp(
+          54.0,
+          88.0,
+        ),
         child: DropdownButtonFormField<String>(
           key: ValueKey('$label-$value'),
           initialValue: value,
@@ -660,7 +662,7 @@ Widget buildToolHeader(
 ///
 /// 响应式：宽屏(≥720)为右下角悬浮胶囊按钮(不占通栏宽度，内容区不再
 /// 需要底部大留白)；窄屏为通栏大按钮(触控友好)。
-/// 加载态均为半透明磨砂玻璃。
+/// 加载态使用不透明底色，避免遮挡内容并保持低开销。
 Widget buildBottomActionBar(
   BuildContext context, {
   required bool loading,
@@ -676,42 +678,34 @@ Widget buildBottomActionBar(
         // 按系统文字缩放自适应高度（封顶 84）
         final barHeight = (50 * MediaQuery.textScalerOf(context).scale(1.0))
             .clamp(50.0, 84.0);
-        final loadingWidget = ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radiusM),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              height: barHeight,
-              decoration: BoxDecoration(
-                color: context.themeCard.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                border: Border.all(
-                  color: context.themeDividerLight.withValues(alpha: 0.6),
+        final loadingWidget = Container(
+          height: barHeight,
+          decoration: BoxDecoration(
+            color: context.themeCard,
+            borderRadius: BorderRadius.circular(AppTheme.radiusM),
+            border: Border.all(color: context.themeDividerLight),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: context.themeAccent,
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: context.themeAccent,
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    '正在处理，请稍候…',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: context.themeTextSecondary,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
+              SizedBox(width: 12),
+              Text(
+                '正在处理，请稍候…',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: context.themeTextSecondary,
+                  letterSpacing: 0.3,
+                ),
               ),
-            ),
+            ],
           ),
         );
         final actionButton = SizedBox(
@@ -780,10 +774,7 @@ Widget buildSettingRow({
   final style = TDCellStyle(
     context: context,
     leftIconColor: context.themeTextTertiary,
-    titleStyle: TextStyle(
-      fontSize: 14.5,
-      color: context.themeTextPrimary,
-    ),
+    titleStyle: TextStyle(fontSize: 14.5, color: context.themeTextPrimary),
     noteStyle: TextStyle(
       fontSize: 13.5,
       color: valueColor ?? context.themeTextTertiary,

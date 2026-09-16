@@ -22,12 +22,16 @@ class EpubPacker {
     final existing = archive.findFile('mimetype');
     if (existing != null) {
       existing.compress = false;
+      existing.comment = null;
       return;
     }
 
     archive.addFile(
-      ArchiveFile('mimetype', _mimetypeBytes.length, _mimetypeBytes)
-        ..compress = false,
+      ArchiveFile(
+        'mimetype',
+        _mimetypeBytes.length,
+        Uint8List.fromList(_mimetypeBytes),
+      )..compress = false,
     );
   }
 
@@ -81,6 +85,9 @@ class EpubPacker {
 
     try {
       final text = utf8.decode(content);
+      // Most reader-generated XHTML is already OCF-compatible. Avoid the
+      // normalization regex pipeline when all required markers are present.
+      if (_isAlreadyNormalizedXhtml(text)) return content;
       final normalized = _normalizeXhtml(text);
       if (normalized == text) return content;
       return utf8.encode(normalized);
@@ -96,14 +103,45 @@ class EpubPacker {
         lower.endsWith('.htm');
   }
 
+  static bool _isAlreadyNormalizedXhtml(String text) {
+    if (!text.startsWith('<?xml')) return false;
+    if (!text.contains('xmlns="http://www.w3.org/1999/xhtml"')) return false;
+    if (!text.contains('<!DOCTYPE html')) return false;
+    if (!text.contains('<head') || !text.contains('<body')) return false;
+    return text.contains('</head>') && text.contains('</body>');
+  }
+
   static String _normalizeXhtml(String input) {
     var text = input.replaceFirst('\uFEFF', '').trimLeft();
+
+    // 纯 SVG 文件（如封面 SVG）不应被包裹为 HTML，避免破坏阅读
+    final trimmedNoDecl = text
+        .replaceFirst(
+          RegExp(r'^\s*<\?xml[^>]*\?>\s*', caseSensitive: false),
+          '',
+        )
+        .trimLeft();
+    if (trimmedNoDecl.toLowerCase().startsWith('<svg')) {
+      // 仅确保 XML 声明，不做 HTML 包装
+      return _ensureXmlDeclaration(text);
+    }
 
     final hasHtml = RegExp(
       r'<html(?:\s|>)',
       caseSensitive: false,
     ).hasMatch(text);
     if (!hasHtml) {
+      // 前导注释/处理指令可能导致 hasHtml 误判，需先剥离注释再判断
+      final noComment = text
+          .replaceAll(RegExp(r'<!--[\s\S]*?-->'), '')
+          .trimLeft();
+      final stillNoHtml = !RegExp(
+        r'<html(?:\s|>)',
+        caseSensitive: false,
+      ).hasMatch(noComment);
+      if (stillNoHtml && noComment.toLowerCase().startsWith('<svg')) {
+        return _ensureXmlDeclaration(text);
+      }
       text =
           '<html xmlns="http://www.w3.org/1999/xhtml">\n'
           '<head><title></title></head>\n'

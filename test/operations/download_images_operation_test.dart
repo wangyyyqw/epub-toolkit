@@ -3,7 +3,10 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:epub_gadget/features/download_images/download_images.dart';
+import 'package:epub_gadget/features/download_images/safe_image_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   test('下载网络图片会保留 Images 目录大小写并写入正确相对路径', () async {
@@ -13,20 +16,7 @@ void main() {
     final imageBytes = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9NwAAAABJRU5ErkJggg==',
     );
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(server.close);
-    server.listen((request) async {
-      if (request.uri.path == '/formula.png' ||
-          request.uri.path == '/lazy.png') {
-        request.response.headers.contentType = ContentType('image', 'png');
-        request.response.add(imageBytes);
-      } else {
-        request.response.statusCode = HttpStatus.notFound;
-      }
-      await request.response.close();
-    });
-
-    final baseUrl = 'http://${server.address.address}:${server.port}';
+    const baseUrl = 'https://images.example';
     final source = File('${tempDir.path}/source.epub');
     final output = '${tempDir.path}/output.epub';
     final archive = Archive()
@@ -56,6 +46,18 @@ void main() {
     final log = await DownloadImagesOperation.execute(
       epubPath: source.path,
       outputPath: output,
+      downloader: SafeImageDownloader(
+        policy: PublicNetworkPolicy(
+          lookup: (_) async => [InternetAddress('93.184.216.34')],
+        ),
+        clientFactory: () => MockClient((request) async {
+          return http.Response.bytes(
+            imageBytes,
+            200,
+            headers: {'content-type': 'image/png'},
+          );
+        }),
+      ),
     );
 
     expect(log, contains('成功 2 张'));

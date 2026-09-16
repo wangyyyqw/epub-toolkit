@@ -22,3 +22,6 @@ dist-packages/
 *.swp
 *.swo
 *.env
+
+# Private real-book fixtures and generated audit output.
+/测试文件/

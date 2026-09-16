@@ -62,7 +62,11 @@ class ConvertVersionOperation {
     // 将修改后的 OPF 写回（addFile 会自动替换同名文件）
     EpubImageHelper.addOrReplaceFile(
       archive,
-      ArchiveFile(opfPath, utf8.encode(opfContent).length, utf8.encode(opfContent)),
+      ArchiveFile(
+        opfPath,
+        utf8.encode(opfContent).length,
+        utf8.encode(opfContent),
+      ),
     );
 
     // 重新打包并保存
@@ -99,7 +103,11 @@ class ConvertVersionOperation {
         final navPath = '${opfDir}nav.xhtml';
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(navPath, utf8.encode(navHtml).length, utf8.encode(navHtml)),
+          ArchiveFile(
+            navPath,
+            utf8.encode(navHtml).length,
+            utf8.encode(navHtml),
+          ),
         );
         // 在 manifest 中添加 nav item
         content = content.replaceFirst(
@@ -140,19 +148,35 @@ class ConvertVersionOperation {
     // 移除 nav.xhtml 的 manifest/spine 引用和实际文件。
     // 一些 EPUB3 会把 nav 放在 Text/nav.xhtml 等子目录中，不能只删除
     // OPF 同级的 nav.xhtml。
+    // 注意：archive.removeFile 会损坏 _fileMap，不能在循环中多次调用，改为批量重建
     content = _removeNavItem(content);
+    final navPathsToRemove = <String>{};
     for (final navItem in navItems) {
       if (navItem.id != null && navItem.id!.isNotEmpty) {
         content = _removeSpineItemref(content, navItem.id!);
       }
       final navPath = _resolvePath(opfDir, navItem.href);
-      final navFile = archive.findFile(navPath);
-      if (navFile != null) {
-        archive.removeFile(navFile);
+      navPathsToRemove.add(navPath);
+    }
+    navPathsToRemove.add('${opfDir}nav.xhtml');
+    // 使用重建避免索引腐败
+    final remaining = archive.files
+        .where((f) => !navPathsToRemove.contains(f.name))
+        .toList();
+    if (remaining.length != archive.files.length) {
+      final newArchive = Archive();
+      newArchive.comment = archive.comment;
+      for (final f in remaining) {
+        newArchive.addFile(
+          ArchiveFile(f.name, f.size, f.content as List<int>)
+            ..compress = f.compress,
+        );
+      }
+      archive.clear();
+      for (final f in newArchive.files) {
+        archive.addFile(f);
       }
     }
-    final fallbackNavFile = archive.findFile('${opfDir}nav.xhtml');
-    if (fallbackNavFile != null) archive.removeFile(fallbackNavFile);
 
     return content;
   }
@@ -619,7 +643,9 @@ class ConvertVersionOperation {
         ? (contents.first.getAttribute('src') ?? '')
         : '';
 
-    buffer.writeln('$indent<li><a href="${_escapeXmlAttr(src)}">${_escapeXmlText(label)}</a>');
+    buffer.writeln(
+      '$indent<li><a href="${_escapeXmlAttr(src)}">${_escapeXmlText(label)}</a>',
+    );
 
     // 递归处理嵌套子章节
     final subPoints = navPoint.findElements('navPoint', namespace: '*');
@@ -663,7 +689,11 @@ class ConvertVersionOperation {
   static String _resolvePath(String opfDir, String href) {
     // 去除 URL 片段和查询参数
     final pathPart = href.split(RegExp(r'[?#]')).first;
-    final combined = opfDir + Uri.decodeFull(pathPart);
+    var decoded = pathPart;
+    try {
+      decoded = Uri.decodeFull(pathPart);
+    } catch (_) {}
+    final combined = opfDir + decoded;
     // 逐段处理，解析 ./ 和 ../
     final segments = <String>[];
     for (final part in combined.split('/')) {

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
 import 'core/theme.dart';
+import 'core/theme_controller.dart';
 import 'shared/providers/toast_provider.dart';
 import 'shared/widgets/app_scaffold.dart';
 import 'shared/widgets/toast_overlay.dart';
@@ -21,11 +22,13 @@ void main() {
     ),
   );
   initTDesignTheme();
+  final themeController = ThemeController()..load();
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ToastProvider()),
         ChangeNotifierProvider(create: (_) => SidebarState()),
+        ChangeNotifierProvider.value(value: themeController),
       ],
       child: const EpubGadgetApp(),
     ),
@@ -39,12 +42,13 @@ class EpubGadgetApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final toastProvider = context.watch<ToastProvider>();
+    final themeController = context.watch<ThemeController>();
     return MaterialApp.router(
       title: 'EPUB 工具箱',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeController.mode,
       routerConfig: AppRouter.config,
       builder: (context, child) =>
           ToastOverlay(provider: toastProvider, child: child!),

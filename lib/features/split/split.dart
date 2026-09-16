@@ -24,12 +24,14 @@ class SplitOperation {
   /// [epubPath] 输入 EPUB 路径
   /// [outputDir] 输出目录
   /// [splitPoints] 拆分点索引列表（指向 list_split_targets 返回的列表）
+  /// [onOutput] 每个分卷成功写入后报告其路径，不包含目录中的旧文件。
   ///
   /// 返回处理结果摘要字符串
   static Future<String> execute({
     required String epubPath,
     required String outputDir,
     required List<int> splitPoints,
+    void Function(String path)? onOutput,
   }) async {
     final log = StringBuffer();
     log.writeln('开始拆分 EPUB...');
@@ -131,7 +133,13 @@ class SplitOperation {
 
     // 7. 逐段生成 EPUB
     final assignedDocs = <String>{};
-    final baseName = p.basenameWithoutExtension(epubPath);
+    // 仅剥离 .epub 后缀，保留 .0 等版本点，避免 p.basenameWithoutExtension 对 v2.0 的误剥
+    var baseName = p.basename(epubPath);
+    if (baseName.toLowerCase().endsWith('.epub')) {
+      baseName = baseName.substring(0, baseName.length - 5);
+    } else {
+      baseName = p.basenameWithoutExtension(epubPath);
+    }
     final now = DateTime.now().toUtc();
     final modified = '${now.toIso8601String().split('.')[0]}Z';
 
@@ -304,13 +312,21 @@ class SplitOperation {
       );
 
       segArchive.addFile(
-        ArchiveFile(opfPath, utf8.encode(segOpfContent).length, utf8.encode(segOpfContent)),
+        ArchiveFile(
+          opfPath,
+          utf8.encode(segOpfContent).length,
+          utf8.encode(segOpfContent),
+        ),
       );
 
       // TOC 文件
       final tocPath = _normalizePath('$opfDir$tocHref');
       segArchive.addFile(
-        ArchiveFile(tocPath, utf8.encode(tocContent).length, utf8.encode(tocContent)),
+        ArchiveFile(
+          tocPath,
+          utf8.encode(tocContent).length,
+          utf8.encode(tocContent),
+        ),
       );
 
       // 内容文件
@@ -327,6 +343,7 @@ class SplitOperation {
           '${baseName}_${(segIdx + 1).toString().padLeft(2, '0')}.epub';
       final segOutputPath = p.join(outputDir, segFileName);
       await EpubPacker.pack(archive: segArchive, outputPath: segOutputPath);
+      onOutput?.call(segOutputPath);
 
       log.writeln('  段 ${segIdx + 1}: ${segFiles.length} 文件 → $segFileName');
     }

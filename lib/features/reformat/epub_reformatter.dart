@@ -236,11 +236,11 @@ class EpubReformatter {
     final containerXml = containerFile != null
         ? utf8.decode(containerFile.content as List<int>)
         : '<container version="1.0" '
-            'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
-            '<rootfiles>'
-            '<rootfile full-path="$_opfOutPath" '
-            'media-type="application/oebps-package+xml"/>'
-            '</rootfiles></container>';
+              'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+              '<rootfiles>'
+              '<rootfile full-path="$_opfOutPath" '
+              'media-type="application/oebps-package+xml"/>'
+              '</rootfiles></container>';
     final newContainer = _rewriteContainerXml(containerXml);
     tgtArchive.addFile(
       ArchiveFile(
@@ -1039,7 +1039,7 @@ class EpubReformatter {
       if (bkpath == null) return m.group(0)!;
       final n = rePathMap['text']![bkpath.toLowerCase()];
       if (n == null) return m.group(0)!;
-      return 'src="Text/$n"$targetAnchor';
+      return 'src="Text/$n$targetAnchor"';
     });
   }
 

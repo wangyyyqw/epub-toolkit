@@ -168,11 +168,21 @@ class EpubImageHelper {
       return newArchive;
     }
 
-    // 设置为不压缩
+    // 设置为不压缩且清理 comment/extra（规范要求首条不能带 extra field）
     mimetypeFile.compress = false;
+    mimetypeFile.comment = null;
 
-    // 如果 mimetype 已经是第一个文件，无需重排
-    if (mimetypeIndex == null || mimetypeIndex == 0) {
+    // 严格校验：必须是根目录的 "mimetype"（非 "OEBPS/mimetype"）
+    final isRootMimetype = mimetypeFile.name == 'mimetype';
+    if (!isRootMimetype) {
+      // 路径非根，重建为根 mimetype
+      final bytes = Uint8List.fromList(utf8.encode('application/epub+zip'));
+      mimetypeFile = ArchiveFile('mimetype', bytes.length, bytes)
+        ..compress = false;
+    }
+
+    // 如果已经是第一个且为根，无需重排
+    if (isRootMimetype && (mimetypeIndex == null || mimetypeIndex == 0)) {
       return archive;
     }
 
@@ -461,7 +471,11 @@ class EpubImageHelper {
       if (modified) {
         addOrReplaceFile(
           archive,
-          ArchiveFile(file.name, utf8.encode(content).length, utf8.encode(content)),
+          ArchiveFile(
+            file.name,
+            utf8.encode(content).length,
+            utf8.encode(content),
+          ),
         );
       }
     }

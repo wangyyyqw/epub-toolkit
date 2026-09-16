@@ -12,7 +12,7 @@ Future<R> runBackgroundTask<M, R>(
   M message,
 ) async {
   if (kIsWeb) {
-    return Future<R>.value(task(message));
+    return await Future<R>.sync(() => task(message));
   }
   return Isolate.run(() async => await task(message));
 }

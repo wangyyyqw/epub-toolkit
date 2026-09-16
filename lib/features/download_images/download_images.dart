@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import 'epub_image_helper.dart';
+import 'safe_image_downloader.dart';
 
 /// 下载网络图片操作
 ///
@@ -16,6 +17,7 @@ class DownloadImagesOperation {
 
   /// 避免大书逐张串行下载，同时不给图片源站施加过高压力。
   static const _maxConcurrentDownloads = 6;
+  static const _maxImageCount = 100; // 最多处理 100 张
 
   /// 图片扩展名与 MIME 类型的映射
   static const _extMimeMap = {
@@ -48,6 +50,7 @@ class DownloadImagesOperation {
   static Future<String> execute({
     required String epubPath,
     required String outputPath,
+    SafeImageDownloader? downloader,
   }) async {
     final archive = await EpubImageHelper.readArchive(epubPath);
 
@@ -92,6 +95,10 @@ class DownloadImagesOperation {
       return '未找到网络图片引用，无需下载。';
     }
 
+    if (urlSet.length > _maxImageCount) {
+      return '错误: 网络图片数量 ${urlSet.length} 超过上限 $_maxImageCount 张，已中止。';
+    }
+
     final log = StringBuffer();
     log.writeln('找到 ${urlSet.length} 个网络图片 URL，开始下载...');
 
@@ -105,50 +112,43 @@ class DownloadImagesOperation {
 
     var downloadCount = 0;
     var failCount = 0;
-
-    final client = http.Client();
-    try {
-      final urls = urlSet.toList(growable: false);
-      for (
-        var start = 0;
-        start < urls.length;
-        start += _maxConcurrentDownloads
-      ) {
-        final batch = urls.skip(start).take(_maxConcurrentDownloads);
-        await Future.wait(
-          batch.map((url) async {
-            try {
-              final data = await _downloadImage(client, url);
-              if (data == null) {
-                failCount++;
-                log.writeln('  失败: $url');
-                return;
-              }
-
-              final localName = _generateLocalFilename(url, data, usedNames);
-              urlToLocal[url] = localName;
-              downloadedImages[localName] = data;
-              usedNames.add(localName);
-              downloadCount++;
-              log.writeln(
-                '  下载: $url → $localName '
-                '(${EpubImageHelper.sizeStr(data.length)})',
-              );
-            } catch (e) {
-              failCount++;
-              log.writeln('  失败: $url - $e');
+    final imageDownloader = downloader ?? SafeImageDownloader();
+    final urls = urlSet.toList(growable: false);
+    for (var start = 0; start < urls.length; start += _maxConcurrentDownloads) {
+      final batch = urls.skip(start).take(_maxConcurrentDownloads).toList();
+      final results = await Future.wait(
+        batch.map((url) async {
+          try {
+            final data = await _downloadImage(imageDownloader, url);
+            if (data == null) {
+              return (url: url, data: null, error: '下载失败或格式校验失败');
             }
-          }),
+            return (url: url, data: data, error: null);
+          } catch (e) {
+            return (url: url, data: null, error: e.toString());
+          }
+        }),
+      );
+      // 串行处理结果，避免并发写共享集合的 race
+      for (final r in results) {
+        if (r.data == null) {
+          failCount++;
+          log.writeln('  失败: ${r.url} - ${r.error}');
+          continue;
+        }
+        final localName = _generateLocalFilename(r.url, r.data!, usedNames);
+        urlToLocal[r.url] = localName;
+        downloadedImages[localName] = r.data!;
+        usedNames.add(localName);
+        downloadCount++;
+        log.writeln(
+          '  下载: ${r.url} → $localName '
+          '(${EpubImageHelper.sizeStr(r.data!.length)})',
         );
-
-        final completed = (start + _maxConcurrentDownloads).clamp(
-          0,
-          urls.length,
-        );
-        log.writeln('  进度: $completed/${urls.length}');
       }
-    } finally {
-      client.close();
+
+      final completed = (start + _maxConcurrentDownloads).clamp(0, urls.length);
+      log.writeln('  进度: $completed/${urls.length}');
     }
 
     if (downloadCount == 0) {
@@ -171,7 +171,11 @@ class DownloadImagesOperation {
       if (updated != content) {
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(htmlFile.name, utf8.encode(updated).length, utf8.encode(updated)),
+          ArchiveFile(
+            htmlFile.name,
+            utf8.encode(updated).length,
+            utf8.encode(updated),
+          ),
         );
       }
     }
@@ -189,7 +193,11 @@ class DownloadImagesOperation {
       if (updated != content) {
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(cssFile.name, utf8.encode(updated).length, utf8.encode(updated)),
+          ArchiveFile(
+            cssFile.name,
+            utf8.encode(updated).length,
+            utf8.encode(updated),
+          ),
         );
       }
     }
@@ -207,7 +215,11 @@ class DownloadImagesOperation {
         );
         EpubImageHelper.addOrReplaceFile(
           archive,
-          ArchiveFile(opfPath, utf8.encode(updatedOpf).length, utf8.encode(updatedOpf)),
+          ArchiveFile(
+            opfPath,
+            utf8.encode(updatedOpf).length,
+            utf8.encode(updatedOpf),
+          ),
         );
       }
     }
@@ -272,42 +284,13 @@ class DownloadImagesOperation {
   ///
   /// 返回图片二进制数据，失败返回 null
   static Future<Uint8List?> _downloadImage(
-    http.Client client,
+    SafeImageDownloader downloader,
     String url,
   ) async {
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final response = await client
-            .get(
-              Uri.parse(url),
-              headers: const {
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                    'AppleWebKit/537.36 (KHTML, like Gecko) '
-                    'Chrome/122.0.0.0 Safari/537.36',
-                'Accept':
-                    'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-              },
-            )
-            .timeout(const Duration(seconds: 30));
-
-        final data = response.bodyBytes;
-        if (response.statusCode == 200 && _isImageResponse(response, data)) {
-          return data;
-        }
-
-        // 只对临时错误重试，404/403 等明确拒绝不反复请求。
-        if (response.statusCode != 429 && response.statusCode < 500) {
-          return null;
-        }
-      } catch (_) {
-        // 网络中断和超时可重试。
-      }
-
-      if (attempt < 2) {
-        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
-      }
+    final response = await downloader.get(url);
+    final data = response.bodyBytes;
+    if (response.statusCode == 200 && _isImageResponse(response, data)) {
+      return data;
     }
     return null;
   }

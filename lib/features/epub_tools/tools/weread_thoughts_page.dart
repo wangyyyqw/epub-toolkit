@@ -96,6 +96,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   @override
   void dispose() {
+    _api.dispose();
     _searchController.dispose();
     _logController.dispose();
     super.dispose();
@@ -127,7 +128,12 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 清除登录状态
   Future<void> _clearLogin() async {
-    await _api.clear();
+    Object? storageError;
+    try {
+      await _api.clear();
+    } catch (e) {
+      storageError = e;
+    }
     if (!mounted) return;
     setState(() {
       _isLoggedIn = false;
@@ -136,7 +142,13 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       _searchController.clear();
       _qrUrl = null;
     });
-    context.read<ToastProvider>().showSuccess('已退出登录');
+    if (storageError != null) {
+      context.read<ToastProvider>().showError(
+        '本次登录已退出，但安全存储清理失败，请重试：$storageError',
+      );
+    } else {
+      context.read<ToastProvider>().showSuccess('已退出登录');
+    }
   }
 
   /// 开始 QR 扫码登录流程
@@ -272,9 +284,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       if (!mounted) return;
       setState(() => _guestCaptchaWaiting = true);
       context.read<ToastProvider>().showInfo('请在浏览器中完成微信读书安全验证');
-      final captcha = await WereadGuestCaptcha.run(
-        appId: wereadCaptchaAppId,
-      );
+      final captcha = await WereadGuestCaptcha.run(appId: wereadCaptchaAppId);
       if (!mounted) return;
       if (captcha == null) {
         setState(() => _guestCaptchaWaiting = false);
@@ -357,18 +367,23 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       // 找到 container.xml 获取 OPF 路径
       final containerFile = archive.findFile('META-INF/container.xml');
       if (containerFile == null) return p.basenameWithoutExtension(epubPath);
-      final containerXml =
-          utf8.decode(containerFile.content as List<int>, allowMalformed: true);
-      final opfPathMatch =
-          RegExp(r'full-path="([^"]+)"').firstMatch(containerXml);
+      final containerXml = utf8.decode(
+        containerFile.content as List<int>,
+        allowMalformed: true,
+      );
+      final opfPathMatch = RegExp(
+        r'full-path="([^"]+)"',
+      ).firstMatch(containerXml);
       if (opfPathMatch == null) return p.basenameWithoutExtension(epubPath);
       final opfPath = opfPathMatch.group(1)!;
 
       // 读取 OPF
       final opfFile = archive.findFile(opfPath);
       if (opfFile == null) return p.basenameWithoutExtension(epubPath);
-      final opfContent =
-          utf8.decode(opfFile.content as List<int>, allowMalformed: true);
+      final opfContent = utf8.decode(
+        opfFile.content as List<int>,
+        allowMalformed: true,
+      );
 
       // 提取 dc:title（优先带 title-type=main 的，否则取第一个）
       final titlePattern = RegExp(
@@ -378,9 +393,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       final matches = titlePattern.allMatches(opfContent);
       if (matches.isEmpty) {
         // 降级：EPUB2 风格 <meta name="title" content="...">
-        final metaPattern = RegExp(
-          r'<meta\s+name="title"\s+content="([^"]*)"',
-        );
+        final metaPattern = RegExp(r'<meta\s+name="title"\s+content="([^"]*)"');
         final metaMatch = metaPattern.firstMatch(opfContent);
         if (metaMatch != null) return metaMatch.group(1)!.trim();
         return p.basenameWithoutExtension(epubPath);
@@ -466,10 +479,13 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     setState(() => _searching = true);
     _logController.append('搜索关键词：「$keyword」');
     try {
-      final results = await _api.search(keyword, onDebug: (raw) {
-        if (!mounted) return;
-        _logController.append('API 原始响应：$raw');
-      });
+      final results = await _api.search(
+        keyword,
+        onDebug: (raw) {
+          if (!mounted) return;
+          _logController.append('API 原始响应：$raw');
+        },
+      );
       if (!mounted) return;
       setState(() {
         _searchResults = results;
@@ -480,7 +496,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       } else {
         _logController.append('搜索结果：找到 ${results.length} 本');
         for (final book in results) {
-          _logController.append('  - ${book.title} · ${book.author} (ID: ${book.bookId})');
+          _logController.append(
+            '  - ${book.title} · ${book.author} (ID: ${book.bookId})',
+          );
         }
       }
     } catch (e) {
@@ -572,10 +590,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       );
       final totalThoughts = allChapters.fold<int>(
         0,
-        (sum, ch) => sum + ch.reviewMap.values.fold<int>(
-          0,
-          (s, list) => s + list.length,
-        ),
+        (sum, ch) =>
+            sum +
+            ch.reviewMap.values.fold<int>(0, (s, list) => s + list.length),
       );
 
       _logController.append(
@@ -612,9 +629,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         }
       } else {
         if (mounted) {
-          context.read<ToastProvider>().showSuccess(
-            '想法注入完成，已保存到 $_outputPath',
-          );
+          context.read<ToastProvider>().showSuccess('想法注入完成，已保存到 $_outputPath');
         }
         if (!mounted) return;
         await _copyToPublicDownload();
@@ -643,7 +658,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     }
   }
 
-    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
+  /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
     if (!mounted) return;
     _outputPath = await FileService.copyGeneratedFileToPublicDownload(
@@ -901,9 +916,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  _isLoggedIn
-                      ? '已登录: ${_api.userName}'
-                      : '未登录',
+                  _isLoggedIn ? '已登录: ${_api.userName}' : '未登录',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -943,10 +956,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   SizedBox(height: 8),
-                  Text(
-                    '正在获取二维码...',
-                    style: TextStyle(fontSize: 12),
-                  ),
+                  Text('正在获取二维码...', style: TextStyle(fontSize: 12)),
                 ],
               ),
             ),
@@ -1116,11 +1126,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.bookmark,
-                  size: 16,
-                  color: context.themeAccent,
-                ),
+                Icon(Icons.bookmark, size: 16, color: context.themeAccent),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Column(
@@ -1194,25 +1200,19 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                         horizontal: 10,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppTheme.radiusS,
-                        ),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusS),
                         borderSide: BorderSide(
                           color: context.themeDividerLight,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppTheme.radiusS,
-                        ),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusS),
                         borderSide: BorderSide(
                           color: context.themeDividerLight,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppTheme.radiusS,
-                        ),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusS),
                         borderSide: BorderSide(
                           color: context.themeWarm,
                           width: 1.5,
@@ -1245,10 +1245,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             const SizedBox(height: 6),
             Text(
               '找到 ${_searchResults.length} 个结果',
-              style: TextStyle(
-                fontSize: 11,
-                color: context.themeTextTertiary,
-              ),
+              style: TextStyle(fontSize: 11, color: context.themeTextTertiary),
             ),
             const SizedBox(height: 3),
             ..._searchResults.map((book) => _buildBookResultTile(book)),
@@ -1319,11 +1316,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.link,
-                size: 14,
-                color: context.themeAccent,
-              ),
+              Icon(Icons.link, size: 14, color: context.themeAccent),
             ],
           ),
         ),
@@ -1351,9 +1344,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: context.themeAccent.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: context.themeAccent.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [

@@ -87,9 +87,9 @@ const List<String> _sansFallback = [
 
 /// 为 TextStyle 注入衬线字体（EPUB 内容预览用）
 TextStyle withSerifFont(TextStyle style) => style.copyWith(
-      fontFamily: appFontFamily,
-      fontFamilyFallback: _serifFallback,
-    );
+  fontFamily: appFontFamily,
+  fontFamilyFallback: _serifFallback,
+);
 
 class AppTheme {
   AppTheme._();
@@ -162,39 +162,39 @@ class AppTheme {
 
   /// 极轻投影（生产力风格：以描边为主，投影仅作浮起提示）
   static List<BoxShadow> get cardShadow => [
-        BoxShadow(
-          color: const Color(0xFF000000).withValues(alpha: 0.035),
-          blurRadius: 2,
-          offset: const Offset(0, 1),
-        ),
-      ];
+    BoxShadow(
+      color: const Color(0xFF000000).withValues(alpha: 0.035),
+      blurRadius: 2,
+      offset: const Offset(0, 1),
+    ),
+  ];
 
   /// 轻浮起（用于内嵌卡片）
   static List<BoxShadow> get cardShadowLight => [
-        BoxShadow(
-          color: const Color(0xFF000000).withValues(alpha: 0.025),
-          blurRadius: 1.5,
-          offset: const Offset(0, 1),
-        ),
-      ];
+    BoxShadow(
+      color: const Color(0xFF000000).withValues(alpha: 0.025),
+      blurRadius: 1.5,
+      offset: const Offset(0, 1),
+    ),
+  ];
 
   /// 强调阴影（极少使用）
   static List<BoxShadow> glow(Color color, {double alpha = 0.08}) => [
-        BoxShadow(
-          color: color.withValues(alpha: alpha),
-          blurRadius: 8,
-          offset: const Offset(0, 2),
-        ),
-      ];
+    BoxShadow(
+      color: color.withValues(alpha: alpha),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
+    ),
+  ];
 
   // ==================== 圆角 ====================
 
-  /// 生产力风格圆角：输入 8、卡片 10、浮层 14
-  static const double radiusXL = 14;
-  static const double radiusL = 12;
-  static const double radiusM = 10;
-  static const double radiusS = 8;
-  static const double radiusXS = 6;
+  /// 生产力风格圆角：克制、清晰，避免大圆角和胶囊化界面
+  static const double radiusXL = 8;
+  static const double radiusL = 8;
+  static const double radiusM = 6;
+  static const double radiusS = 6;
+  static const double radiusXS = 4;
   static const double radiusFull = 999;
 
   // ==================== 间距 ====================
@@ -222,443 +222,436 @@ class AppTheme {
   // ==================== 亮色主题 ====================
 
   static ThemeData get light => ThemeData(
-        useMaterial3: true,
-        fontFamilyFallback: _sansFallback,
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: bgBase,
-        extensions: [_tdTheme.light],
-        colorScheme: const ColorScheme.light(
-          primary: accent,
-          onPrimary: Colors.white,
-          secondary: warm,
-          onSecondary: Colors.white,
-          surface: card,
-          onSurface: textPrimary,
-          surfaceContainerHighest: bgWarm,
-          outline: divider,
-          outlineVariant: dividerLight,
-          error: error,
+    useMaterial3: true,
+    fontFamilyFallback: _sansFallback,
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: bgBase,
+    extensions: [_tdTheme.light],
+    colorScheme: const ColorScheme.light(
+      primary: accent,
+      onPrimary: Colors.white,
+      secondary: warm,
+      onSecondary: Colors.white,
+      surface: card,
+      onSurface: textPrimary,
+      surfaceContainerHighest: bgWarm,
+      outline: divider,
+      outlineVariant: dividerLight,
+      error: error,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusM),
+        side: const BorderSide(color: dividerLight, width: 1),
+      ),
+    ),
+    appBarTheme: const AppBarTheme(
+      centerTitle: false,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: Colors.transparent,
+      foregroundColor: textPrimary,
+      titleTextStyle: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: 0.1,
+      ),
+    ),
+    listTileTheme: ListTileThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: card,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: divider, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: divider, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        // 强焦点边框：靛蓝 1.5px
+        borderSide: const BorderSide(color: warm, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: error, width: 1),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: error, width: 1.5),
+      ),
+      hintStyle: const TextStyle(fontSize: 13, color: textTertiary),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: accent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusS),
         ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: card,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusM),
-            side: const BorderSide(color: dividerLight, width: 1),
-          ),
+        textStyle: const TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.1,
         ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-          foregroundColor: textPrimary,
-          titleTextStyle: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: 0.1,
-          ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: warm,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusXS),
         ),
-        listTileTheme: ListTileThemeData(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: card,
-          isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: divider, width: 1),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: divider, width: 1),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            // 强焦点边框：靛蓝 1.5px
-            borderSide: const BorderSide(color: warm, width: 1.5),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: error, width: 1),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: error, width: 1.5),
-          ),
-          hintStyle: const TextStyle(fontSize: 13, color: textTertiary),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: accent,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusS),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.1,
-            ),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: warm,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusXS),
-            ),
-            textStyle: const TextStyle(fontSize: 13),
-          ),
-        ),
-        chipTheme: ChipThemeData(
-          backgroundColor: chipBg,
-          selectedColor: warmLight,
-          labelStyle: const TextStyle(fontSize: 12.5, color: textSecondary),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusXS),
-            side: const BorderSide(color: dividerLight, width: 1),
-          ),
-        ),
-        tabBarTheme: const TabBarThemeData(
-          dividerColor: Colors.transparent,
-          labelColor: warm,
-          unselectedLabelColor: textTertiary,
-          labelStyle: TextStyle(fontWeight: FontWeight.w600),
-          indicatorSize: TabBarIndicatorSize.label,
-        ),
-        dividerTheme: const DividerThemeData(
-          color: divider,
-          thickness: 0.5,
-          space: 1,
-        ),
-        // 精致开关：靛蓝选中轨道 + 白色圆钮，无描边
-        switchTheme: SwitchThemeData(
-          trackOutlineWidth: const WidgetStatePropertyAll(0.0),
-          trackColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? warm
-                : chipBg,
-          ),
-          thumbColor: const WidgetStatePropertyAll(Colors.white),
-          overlayColor: WidgetStatePropertyAll(
-            warm.withValues(alpha: 0.10),
-          ),
-        ),
-        // 精致滑块：细轨道 + 圆钮，进度高亮用靛蓝
-        sliderTheme: SliderThemeData(
-          trackHeight: 3,
-          activeTrackColor: warm,
-          inactiveTrackColor: divider,
-          thumbColor: Colors.white,
-          overlayColor: warm.withValues(alpha: 0.12),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-          thumbShape: const RoundSliderThumbShape(
-            enabledThumbRadius: 6.5,
-            elevation: 0.5,
-          ),
-          tickMarkShape: SliderTickMarkShape.noTickMark,
-          activeTickMarkColor: Colors.transparent,
-          inactiveTickMarkColor: Colors.transparent,
-          valueIndicatorColor: accent,
-          valueIndicatorTextStyle: const TextStyle(
-            fontSize: 11,
-            color: Colors.white,
-          ),
-        ),
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: -0.4,
-            height: 1.25,
-          ),
-          headlineLarge: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: -0.3,
-            height: 1.3,
-          ),
-          headlineMedium: TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: -0.2,
-            height: 1.3,
-          ),
-          headlineSmall: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: -0.1,
-            height: 1.3,
-          ),
-          titleLarge: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: 0.1,
-          ),
-          titleMedium: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w500,
-            color: textPrimary,
-            letterSpacing: 0.1,
-          ),
-          titleSmall: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: textPrimary,
-            letterSpacing: 0.2,
-          ),
-          bodyLarge: TextStyle(
-              fontSize: 15, color: textSecondary, height: 1.5),
-          bodyMedium: TextStyle(
-              fontSize: 13.5, color: textSecondary, height: 1.5),
-          bodySmall: TextStyle(
-              fontSize: 12, color: textTertiary, letterSpacing: 0.1),
-          labelLarge: TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w500,
-            color: textSecondary,
-            letterSpacing: 0.1,
-          ),
-        ),
-      );
+        textStyle: const TextStyle(fontSize: 13),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: chipBg,
+      selectedColor: warmLight,
+      labelStyle: const TextStyle(fontSize: 12.5, color: textSecondary),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusXS),
+        side: const BorderSide(color: dividerLight, width: 1),
+      ),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      dividerColor: Colors.transparent,
+      labelColor: warm,
+      unselectedLabelColor: textTertiary,
+      labelStyle: TextStyle(fontWeight: FontWeight.w600),
+      indicatorSize: TabBarIndicatorSize.label,
+    ),
+    dividerTheme: const DividerThemeData(
+      color: divider,
+      thickness: 0.5,
+      space: 1,
+    ),
+    // 精致开关：靛蓝选中轨道 + 白色圆钮，无描边
+    switchTheme: SwitchThemeData(
+      trackOutlineWidth: const WidgetStatePropertyAll(0.0),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected) ? warm : chipBg,
+      ),
+      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      overlayColor: WidgetStatePropertyAll(warm.withValues(alpha: 0.10)),
+    ),
+    // 精致滑块：细轨道 + 圆钮，进度高亮用靛蓝
+    sliderTheme: SliderThemeData(
+      trackHeight: 3,
+      activeTrackColor: warm,
+      inactiveTrackColor: divider,
+      thumbColor: Colors.white,
+      overlayColor: warm.withValues(alpha: 0.12),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+      thumbShape: const RoundSliderThumbShape(
+        enabledThumbRadius: 6.5,
+        elevation: 0.5,
+      ),
+      tickMarkShape: SliderTickMarkShape.noTickMark,
+      activeTickMarkColor: Colors.transparent,
+      inactiveTickMarkColor: Colors.transparent,
+      valueIndicatorColor: accent,
+      valueIndicatorTextStyle: const TextStyle(
+        fontSize: 11,
+        color: Colors.white,
+      ),
+    ),
+    textTheme: const TextTheme(
+      displayLarge: TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: -0.4,
+        height: 1.25,
+      ),
+      headlineLarge: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: -0.3,
+        height: 1.3,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 19,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: -0.2,
+        height: 1.3,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: -0.1,
+        height: 1.3,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: 0.1,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 14.5,
+        fontWeight: FontWeight.w500,
+        color: textPrimary,
+        letterSpacing: 0.1,
+      ),
+      titleSmall: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: 0.2,
+      ),
+      bodyLarge: TextStyle(fontSize: 15, color: textSecondary, height: 1.5),
+      bodyMedium: TextStyle(fontSize: 13.5, color: textSecondary, height: 1.5),
+      bodySmall: TextStyle(
+        fontSize: 12,
+        color: textTertiary,
+        letterSpacing: 0.1,
+      ),
+      labelLarge: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: textSecondary,
+        letterSpacing: 0.1,
+      ),
+    ),
+  );
 
   // ==================== 暗色主题 ====================
 
   static ThemeData get dark => ThemeData(
-        useMaterial3: true,
-        fontFamilyFallback: _sansFallback,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: darkBgBase,
-        extensions: [_tdTheme.dark!],
-        colorScheme: const ColorScheme.dark(
-          primary: darkAccent,
-          onPrimary: Color(0xFF141416),
-          secondary: darkWarm,
-          onSecondary: Color(0xFF141416),
-          surface: darkCard,
-          onSurface: darkTextPrimary,
-          surfaceContainerHighest: darkBgWarm,
-          outline: darkDivider,
-          outlineVariant: darkDividerLight,
-          error: darkError,
+    useMaterial3: true,
+    fontFamilyFallback: _sansFallback,
+    brightness: Brightness.dark,
+    scaffoldBackgroundColor: darkBgBase,
+    extensions: [_tdTheme.dark!],
+    colorScheme: const ColorScheme.dark(
+      primary: darkAccent,
+      onPrimary: Color(0xFF141416),
+      secondary: darkWarm,
+      onSecondary: Color(0xFF141416),
+      surface: darkCard,
+      onSurface: darkTextPrimary,
+      surfaceContainerHighest: darkBgWarm,
+      outline: darkDivider,
+      outlineVariant: darkDividerLight,
+      error: darkError,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: darkCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusM),
+        side: const BorderSide(color: darkDividerLight, width: 1),
+      ),
+    ),
+    appBarTheme: const AppBarTheme(
+      centerTitle: false,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: Colors.transparent,
+      foregroundColor: darkTextPrimary,
+      titleTextStyle: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: 0.1,
+      ),
+    ),
+    listTileTheme: ListTileThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: darkCard,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: darkDivider, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: darkDivider, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: darkWarm, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: darkError, width: 1),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusS),
+        borderSide: const BorderSide(color: darkError, width: 1.5),
+      ),
+      hintStyle: const TextStyle(fontSize: 13, color: darkTextTertiary),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: darkAccent,
+        foregroundColor: const Color(0xFF141416),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusS),
         ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: darkCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusM),
-            side: const BorderSide(color: darkDividerLight, width: 1),
-          ),
+        textStyle: const TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.1,
         ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-          foregroundColor: darkTextPrimary,
-          titleTextStyle: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: 0.1,
-          ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: darkWarm,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusXS),
         ),
-        listTileTheme: ListTileThemeData(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: darkCard,
-          isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkDivider, width: 1),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkDivider, width: 1),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkWarm, width: 1.5),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkError, width: 1),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(radiusS),
-            borderSide: const BorderSide(color: darkError, width: 1.5),
-          ),
-          hintStyle: const TextStyle(fontSize: 13, color: darkTextTertiary),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: darkAccent,
-            foregroundColor: const Color(0xFF141416),
-            elevation: 0,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusS),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.1,
-            ),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: darkWarm,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radiusXS),
-            ),
-            textStyle: const TextStyle(fontSize: 13),
-          ),
-        ),
-        chipTheme: ChipThemeData(
-          backgroundColor: darkChipBg,
-          selectedColor: darkWarmLight,
-          labelStyle: const TextStyle(fontSize: 12.5, color: darkTextSecondary),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusXS),
-            side: const BorderSide(color: darkDividerLight, width: 1),
-          ),
-        ),
-        tabBarTheme: const TabBarThemeData(
-          dividerColor: Colors.transparent,
-          labelColor: darkWarm,
-          unselectedLabelColor: darkTextTertiary,
-          labelStyle: TextStyle(fontWeight: FontWeight.w600),
-          indicatorSize: TabBarIndicatorSize.label,
-        ),
-        dividerTheme: const DividerThemeData(
-          color: darkDivider,
-          thickness: 0.5,
-          space: 1,
-        ),
-        switchTheme: SwitchThemeData(
-          trackOutlineWidth: const WidgetStatePropertyAll(0.0),
-          trackColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? darkWarm
-                : darkChipBg,
-          ),
-          thumbColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? const Color(0xFF141416)
-                : const Color(0xFF70707A),
-          ),
-          overlayColor: WidgetStatePropertyAll(
-            darkWarm.withValues(alpha: 0.12),
-          ),
-        ),
-        sliderTheme: SliderThemeData(
-          trackHeight: 3,
-          activeTrackColor: darkWarm,
-          inactiveTrackColor: darkDivider,
-          thumbColor: const Color(0xFFEDEDEF),
-          overlayColor: darkWarm.withValues(alpha: 0.14),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-          thumbShape: const RoundSliderThumbShape(
-            enabledThumbRadius: 6.5,
-            elevation: 0.5,
-          ),
-          tickMarkShape: SliderTickMarkShape.noTickMark,
-          activeTickMarkColor: Colors.transparent,
-          inactiveTickMarkColor: Colors.transparent,
-          valueIndicatorColor: darkAccent,
-          valueIndicatorTextStyle: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF141416),
-          ),
-        ),
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: -0.4,
-            height: 1.25,
-          ),
-          headlineLarge: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: -0.3,
-            height: 1.3,
-          ),
-          headlineMedium: TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: -0.2,
-            height: 1.3,
-          ),
-          headlineSmall: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: -0.1,
-            height: 1.3,
-          ),
-          titleLarge: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: 0.1,
-          ),
-          titleMedium: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w500,
-            color: darkTextPrimary,
-            letterSpacing: 0.1,
-          ),
-          titleSmall: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: darkTextPrimary,
-            letterSpacing: 0.2,
-          ),
-          bodyLarge: TextStyle(
-              fontSize: 15, color: darkTextSecondary, height: 1.5),
-          bodyMedium: TextStyle(
-              fontSize: 13.5, color: darkTextSecondary, height: 1.5),
-          bodySmall: TextStyle(
-              fontSize: 12, color: darkTextTertiary, letterSpacing: 0.1),
-          labelLarge: TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w500,
-            color: darkTextSecondary,
-            letterSpacing: 0.1,
-          ),
-        ),
-      );
+        textStyle: const TextStyle(fontSize: 13),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: darkChipBg,
+      selectedColor: darkWarmLight,
+      labelStyle: const TextStyle(fontSize: 12.5, color: darkTextSecondary),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusXS),
+        side: const BorderSide(color: darkDividerLight, width: 1),
+      ),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      dividerColor: Colors.transparent,
+      labelColor: darkWarm,
+      unselectedLabelColor: darkTextTertiary,
+      labelStyle: TextStyle(fontWeight: FontWeight.w600),
+      indicatorSize: TabBarIndicatorSize.label,
+    ),
+    dividerTheme: const DividerThemeData(
+      color: darkDivider,
+      thickness: 0.5,
+      space: 1,
+    ),
+    switchTheme: SwitchThemeData(
+      trackOutlineWidth: const WidgetStatePropertyAll(0.0),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) =>
+            states.contains(WidgetState.selected) ? darkWarm : darkChipBg,
+      ),
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? const Color(0xFF141416)
+            : const Color(0xFF70707A),
+      ),
+      overlayColor: WidgetStatePropertyAll(darkWarm.withValues(alpha: 0.12)),
+    ),
+    sliderTheme: SliderThemeData(
+      trackHeight: 3,
+      activeTrackColor: darkWarm,
+      inactiveTrackColor: darkDivider,
+      thumbColor: const Color(0xFFEDEDEF),
+      overlayColor: darkWarm.withValues(alpha: 0.14),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+      thumbShape: const RoundSliderThumbShape(
+        enabledThumbRadius: 6.5,
+        elevation: 0.5,
+      ),
+      tickMarkShape: SliderTickMarkShape.noTickMark,
+      activeTickMarkColor: Colors.transparent,
+      inactiveTickMarkColor: Colors.transparent,
+      valueIndicatorColor: darkAccent,
+      valueIndicatorTextStyle: const TextStyle(
+        fontSize: 11,
+        color: Color(0xFF141416),
+      ),
+    ),
+    textTheme: const TextTheme(
+      displayLarge: TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: -0.4,
+        height: 1.25,
+      ),
+      headlineLarge: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: -0.3,
+        height: 1.3,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 19,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: -0.2,
+        height: 1.3,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: -0.1,
+        height: 1.3,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: 0.1,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 14.5,
+        fontWeight: FontWeight.w500,
+        color: darkTextPrimary,
+        letterSpacing: 0.1,
+      ),
+      titleSmall: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: darkTextPrimary,
+        letterSpacing: 0.2,
+      ),
+      bodyLarge: TextStyle(fontSize: 15, color: darkTextSecondary, height: 1.5),
+      bodyMedium: TextStyle(
+        fontSize: 13.5,
+        color: darkTextSecondary,
+        height: 1.5,
+      ),
+      bodySmall: TextStyle(
+        fontSize: 12,
+        color: darkTextTertiary,
+        letterSpacing: 0.1,
+      ),
+      labelLarge: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: darkTextSecondary,
+        letterSpacing: 0.1,
+      ),
+    ),
+  );
 }
 
 /// 便捷扩展：从 BuildContext 快速获取主题值
@@ -669,7 +662,8 @@ extension AppThemeExt on BuildContext {
       isDarkMode ? AppTheme.darkAccentDark : AppTheme.accentDark;
 
   /// 强调色背景上使用的文字/图标前景色（亮色黑底白字，暗色浅底深字）
-  Color get themeAccentFg => isDarkMode ? const Color(0xFF141416) : Colors.white;
+  Color get themeAccentFg =>
+      isDarkMode ? const Color(0xFF141416) : Colors.white;
   Color get themeAccentLight =>
       isDarkMode ? AppTheme.darkAccentLight : AppTheme.accentLight;
   Color get themeAccentSoft =>

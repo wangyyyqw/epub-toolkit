@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/file_service.dart';
+import '../../core/secure_prefs.dart';
 import '../../features/epub_tools/epub_tool_widgets.dart';
 import '../../shared/providers/toast_provider.dart';
 import '../../shared/widgets/base_button.dart';
@@ -90,25 +90,40 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+    final remember = prefs.getBool('$_settingsKey.remember') ?? true;
+    String smtpPreset = prefs.getString('$_settingsKey.preset') ?? 'qq';
+    String smtpHost = prefs.getString('$_settingsKey.host') ?? 'smtp.qq.com';
+    String smtpPort = prefs.getInt('$_settingsKey.port')?.toString() ?? '465';
+    String smtpUser = prefs.getString('$_settingsKey.user') ?? '';
+    bool useSsl = prefs.getBool('$_settingsKey.ssl') ?? true;
+    String fromEmail = prefs.getString('$_settingsKey.from') ?? '';
+    String kindleEmail = prefs.getString('$_settingsKey.kindle') ?? '';
+    String amazonAccount = prefs.getString('$_amazonKey.account') ?? '';
+    // 敏感字段走安全存储（自动迁移旧 XOR 数据）
+    final smtpPass =
+        await SecurePrefs.readSecure(
+          '$_settingsKey.password',
+          legacyXor: true,
+        ) ??
+        '';
+    final amazonPass =
+        await SecurePrefs.readSecure('$_amazonKey.password', legacyXor: true) ??
+        '';
+    if (!mounted) return;
     setState(() {
-      _rememberLogin = prefs.getBool('$_settingsKey.remember') ?? true;
+      _rememberLogin = remember;
       if (_rememberLogin) {
-        _smtpPreset = prefs.getString('$_settingsKey.preset') ?? 'qq';
-        _smtpHost = prefs.getString('$_settingsKey.host') ?? 'smtp.qq.com';
-        _smtpPort = prefs.getInt('$_settingsKey.port')?.toString() ?? '465';
-        _smtpUser = prefs.getString('$_settingsKey.user') ?? '';
-        // 密码用 Base64 轻量混淆存储（不是真正的加密，仅防止被明文扫描到）
-        _smtpPassword = _decodePassword(
-          prefs.getString('$_settingsKey.password') ?? '',
-        );
-        _useSsl = prefs.getBool('$_settingsKey.ssl') ?? true;
-        _fromEmail = prefs.getString('$_settingsKey.from') ?? '';
-        _kindleEmail = prefs.getString('$_settingsKey.kindle') ?? '';
+        _smtpPreset = smtpPreset;
+        _smtpHost = smtpHost;
+        _smtpPort = smtpPort;
+        _smtpUser = smtpUser;
+        _smtpPassword = smtpPass;
+        _useSsl = useSsl;
+        _fromEmail = fromEmail;
+        _kindleEmail = kindleEmail;
       }
-      _amazonAccount = prefs.getString('$_amazonKey.account') ?? '';
-      _amazonPassword = _decodePassword(
-        prefs.getString('$_amazonKey.password') ?? '',
-      );
+      _amazonAccount = amazonAccount;
+      _amazonPassword = amazonPass;
     });
   }
 
@@ -120,10 +135,7 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
       await prefs.setString('$_settingsKey.host', _smtpHost);
       await prefs.setInt('$_settingsKey.port', int.tryParse(_smtpPort) ?? 465);
       await prefs.setString('$_settingsKey.user', _smtpUser);
-      await prefs.setString(
-        '$_settingsKey.password',
-        _encodePassword(_smtpPassword),
-      );
+      await SecurePrefs.writeSecure('$_settingsKey.password', _smtpPassword);
       await prefs.setBool('$_settingsKey.ssl', _useSsl);
       await prefs.setString('$_settingsKey.from', _fromEmail);
       await prefs.setString('$_settingsKey.kindle', _kindleEmail);
@@ -133,40 +145,16 @@ class _SendToKindlePageState extends State<SendToKindlePage> {
         'host',
         'port',
         'user',
-        'password',
         'ssl',
         'from',
         'kindle',
       ]) {
         await prefs.remove('$_settingsKey.$suffix');
       }
+      await SecurePrefs.deleteSecure('$_settingsKey.password');
     }
     await prefs.setString('$_amazonKey.account', _amazonAccount);
-    await prefs.setString(
-      '$_amazonKey.password',
-      _encodePassword(_amazonPassword),
-    );
-  }
-
-  // 仅作混淆用：明文密码 → Base64
-  // 注：这不是真正的加密，仅防止密码以原文形式在 SharedPreferences 中可见。
-  // 真正安全做法是使用 flutter_secure_storage（Keychain/DPAPI），但会增加依赖。
-  static const _xorKey = 0x5A; // 单字节 XOR 混淆 + Base64
-  static String _encodePassword(String raw) {
-    if (raw.isEmpty) return '';
-    final xorred = raw.codeUnits.map((c) => c ^ _xorKey).toList();
-    return base64Encode(xorred);
-  }
-
-  static String _decodePassword(String encoded) {
-    if (encoded.isEmpty) return '';
-    try {
-      final bytes = base64Decode(encoded);
-      return String.fromCharCodes(bytes.map((b) => b ^ _xorKey));
-    } catch (_) {
-      // 兼容旧的明文格式（升级时旧数据可能不是 Base64）
-      return encoded;
-    }
+    await SecurePrefs.writeSecure('$_amazonKey.password', _amazonPassword);
   }
 
   void _applyPreset(String label) {

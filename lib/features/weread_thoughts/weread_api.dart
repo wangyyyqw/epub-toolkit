@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/secure_prefs.dart';
 import 'weread_guest_signature.dart';
 
 /// 读书书目信息
@@ -55,10 +56,10 @@ class WereadUnderline {
 
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
-        'range': range,
-        'markText': markText,
-        'chapterUid': chapterUid,
-      };
+    'range': range,
+    'markText': markText,
+    'chapterUid': chapterUid,
+  };
 
   /// 从 JSON 反序列化
   factory WereadUnderline.fromJson(Map<String, dynamic> json) {
@@ -97,15 +98,15 @@ class WereadReview {
 
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
-        'range': range,
-        'content': content,
-        'abstract': abstract,
-        'author': author,
-        'likes': likes,
-        'chapterUid': chapterUid,
-        'createTime': createTime,
-        'type': type,
-      };
+    'range': range,
+    'content': content,
+    'abstract': abstract,
+    'author': author,
+    'likes': likes,
+    'chapterUid': chapterUid,
+    'createTime': createTime,
+    'type': type,
+  };
 
   /// 从 JSON 反序列化
   factory WereadReview.fromJson(Map<String, dynamic> json) {
@@ -142,18 +143,20 @@ class ChapterData {
 
   /// 是否有数据(划线或想法)
   bool get hasData =>
-      underlines.isNotEmpty || reviewMap.isNotEmpty || chapterReviews.isNotEmpty;
+      underlines.isNotEmpty ||
+      reviewMap.isNotEmpty ||
+      chapterReviews.isNotEmpty;
 
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
-        'chapterUid': chapterUid,
-        'title': title,
-        'underlines': underlines.map((u) => u.toJson()).toList(),
-        'reviewMap': reviewMap.map(
-          (k, v) => MapEntry(k, v.map((r) => r.toJson()).toList()),
-        ),
-        'chapterReviews': chapterReviews.map((r) => r.toJson()).toList(),
-      };
+    'chapterUid': chapterUid,
+    'title': title,
+    'underlines': underlines.map((u) => u.toJson()).toList(),
+    'reviewMap': reviewMap.map(
+      (k, v) => MapEntry(k, v.map((r) => r.toJson()).toList()),
+    ),
+    'chapterReviews': chapterReviews.map((r) => r.toJson()).toList(),
+  };
 
   /// 从 JSON 反序列化
   factory ChapterData.fromJson(Map<String, dynamic> json) {
@@ -309,36 +312,29 @@ class WereadApi {
 
   WereadApi({http.Client? client}) : _client = client ?? http.Client();
 
+  void dispose() => _client.close();
+
   /// 从本地存储加载 API Key、Cookie 和绑定的 bookId
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    _apiKey = prefs.getString(_apiKeyPref) ?? '';
+    _apiKey = await SecurePrefs.readSecure(_apiKeyPref) ?? '';
     _bookId = prefs.getString(_bookIdPref) ?? '';
     _bookTitle = prefs.getString(_bookTitlePref) ?? '';
     _userName = prefs.getString(_userNamePref) ?? '';
     _loginMode = prefs.getString(_loginModePref) ?? 'web';
-    _guestVid = prefs.getString(_guestVidPref) ?? '';
-    _guestToken = prefs.getString(_guestTokenPref) ?? '';
+    _guestVid = await SecurePrefs.readSecure(_guestVidPref) ?? '';
+    _guestToken = await SecurePrefs.readSecure(_guestTokenPref) ?? '';
     _guestUa = prefs.getString(_guestUaPref) ?? wereadGuestUserAgent;
-    _guestOldDevice = prefs.getString(_guestOldDevicePref) ?? '';
-    _guestInstallId = prefs.getString(_guestInstallPref) ?? '';
-    _guestNewDevice = prefs.getString(_guestNewDevicePref) ?? '';
-    final cookiesJson = prefs.getString(_cookiesPref);
-    if (cookiesJson != null && cookiesJson.isNotEmpty) {
-      try {
-        final decoded = json.decode(cookiesJson);
-        if (decoded is Map<String, dynamic>) {
-          _cookies = decoded.map((k, v) => MapEntry(k, v.toString()));
-        }
-      } catch (_) {}
-    }
+    _guestOldDevice = await SecurePrefs.readSecure(_guestOldDevicePref) ?? '';
+    _guestInstallId = await SecurePrefs.readSecure(_guestInstallPref) ?? '';
+    _guestNewDevice = await SecurePrefs.readSecure(_guestNewDevicePref) ?? '';
+    _cookies = await SecurePrefs.readSecureMap(_cookiesPref);
   }
 
   /// 保存 API Key
   Future<void> saveApiKey(String apiKey) async {
+    await SecurePrefs.writeSecure(_apiKeyPref, apiKey.trim());
     _apiKey = apiKey.trim();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_apiKeyPref, _apiKey);
   }
 
   /// 保存登录信息(API Key + Cookie + 用户名)
@@ -347,12 +343,12 @@ class WereadApi {
     required Map<String, String> cookies,
     required String userName,
   }) async {
+    await SecurePrefs.writeSecure(_apiKeyPref, apiKey);
+    await SecurePrefs.writeSecureMap(_cookiesPref, cookies);
     _apiKey = apiKey;
     _cookies = cookies;
     _userName = userName;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_apiKeyPref, _apiKey);
-    await prefs.setString(_cookiesPref, json.encode(_cookies));
     await prefs.setString(_userNamePref, _userName);
   }
 
@@ -380,18 +376,22 @@ class WereadApi {
     _guestInstallId = '';
     _guestNewDevice = '';
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_apiKeyPref);
-    await prefs.remove(_cookiesPref);
+    await Future.wait(
+      [
+        _apiKeyPref,
+        _cookiesPref,
+        _guestVidPref,
+        _guestTokenPref,
+        _guestOldDevicePref,
+        _guestInstallPref,
+        _guestNewDevicePref,
+      ].map(SecurePrefs.deleteSecure),
+    );
     await prefs.remove(_userNamePref);
     await prefs.remove(_bookIdPref);
     await prefs.remove(_bookTitlePref);
     await prefs.remove(_loginModePref);
-    await prefs.remove(_guestVidPref);
-    await prefs.remove(_guestTokenPref);
     await prefs.remove(_guestUaPref);
-    await prefs.remove(_guestOldDevicePref);
-    await prefs.remove(_guestInstallPref);
-    await prefs.remove(_guestNewDevicePref);
   }
 
   /// 是否已登录(Cookie 登录或游客登录)
@@ -475,9 +475,9 @@ class WereadApi {
         if (_isPersistentCookie(name)) {
           // 只取 cookie 的第一段(name=value),忽略后面的 path/domain 等
           final firstSemicolon = part.indexOf(';');
-          result.add(firstSemicolon >= 0
-              ? part.substring(0, firstSemicolon)
-              : part);
+          result.add(
+            firstSemicolon >= 0 ? part.substring(0, firstSemicolon) : part,
+          );
         }
       }
     }
@@ -528,17 +528,17 @@ class WereadApi {
           headers['Cookie'] = cookie;
         }
 
-        final response = await _client.post(
-          Uri.parse(_gatewayUrl),
-          headers: headers,
-          body: bodyJson,
-        ).timeout(Duration(milliseconds: _timeoutMs));
+        final response = await _client
+            .post(Uri.parse(_gatewayUrl), headers: headers, body: bodyJson)
+            .timeout(Duration(milliseconds: _timeoutMs));
 
         // 临时状态码:可重试(参考 pickthought transient_status)
         if (_isTransientStatus(response.statusCode) && attempt < _maxRetries) {
           final backoff = (350 * (1 << (attempt - 1))).clamp(350, 2500);
-          debugPrint('[WereadApi] HTTP ${response.statusCode} 临时错误,'
-              '第 $attempt 次重试,等待 ${backoff}ms...');
+          debugPrint(
+            '[WereadApi] HTTP ${response.statusCode} 临时错误,'
+            '第 $attempt 次重试,等待 ${backoff}ms...',
+          );
           await _delay(backoff);
           continue;
         }
@@ -576,8 +576,13 @@ class WereadApi {
 
   /// 判断状态码是否为临时错误(参考 pickthought transient_status)
   static bool _isTransientStatus(int code) {
-    return code == 408 || code == 425 || code == 429 ||
-        code == 500 || code == 502 || code == 503 || code == 504;
+    return code == 408 ||
+        code == 425 ||
+        code == 429 ||
+        code == 500 ||
+        code == 502 ||
+        code == 503 ||
+        code == 504;
   }
 
   /// 判断错误是否可重试(网络异常、超时)
@@ -660,8 +665,7 @@ class WereadApi {
     // 检查 upgrade_info(接口需要升级)
     final upgradeInfo = data['upgrade_info'];
     if (upgradeInfo is Map<String, dynamic>) {
-      final msg = upgradeInfo['message']?.toString() ??
-          '接口需要升级,请更新应用后重试';
+      final msg = upgradeInfo['message']?.toString() ?? '接口需要升级,请更新应用后重试';
       throw Exception(msg);
     }
 
@@ -676,7 +680,8 @@ class WereadApi {
       if (errcode == -2014 || errcode == '-2014') {
         throw Exception('请求频率超限,请等待几秒后重试');
       }
-      final msg = data['errmsg'] ?? data['errMsg'] ?? data['message'] ?? errcode;
+      final msg =
+          data['errmsg'] ?? data['errMsg'] ?? data['message'] ?? errcode;
       throw Exception('接口错误: $msg');
     }
 
@@ -699,13 +704,13 @@ class WereadApi {
 
   /// APP 接口基础请求头(不含鉴权)
   Map<String, String> _appBaseHeaders() => {
-        'baseapi': '36',
-        'appver': wereadAppVersion,
-        'basever': wereadAppVersion,
-        'User-Agent': _guestUa,
-        'osver': '16',
-        'channelId': '0',
-      };
+    'baseapi': '36',
+    'appver': wereadAppVersion,
+    'basever': wereadAppVersion,
+    'User-Agent': _guestUa,
+    'osver': '16',
+    'channelId': '0',
+  };
 
   /// APP 接口鉴权请求头(含游客 vid/accessToken)
   Map<String, String> _appAuthedHeaders() {
@@ -733,10 +738,9 @@ class WereadApi {
     String label = 'APP 接口',
     Map<String, String>? headers,
   }) async {
-    final response = await _client.get(
-      Uri.parse(url),
-      headers: headers ?? _appAuthedHeaders(),
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .get(Uri.parse(url), headers: headers ?? _appAuthedHeaders())
+        .timeout(Duration(milliseconds: _timeoutMs));
     return _parseAppResponse(response, label);
   }
 
@@ -752,11 +756,9 @@ class WereadApi {
       'Content-Type': 'application/json; charset=UTF-8',
       ...?headers,
     };
-    final response = await _client.post(
-      Uri.parse(url),
-      headers: requestHeaders,
-      body: json.encode(body),
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .post(Uri.parse(url), headers: requestHeaders, body: json.encode(body))
+        .timeout(Duration(milliseconds: _timeoutMs));
     return _parseAppResponse(response, label);
   }
 
@@ -777,7 +779,8 @@ class WereadApi {
     }
     final errcode = data['errcode'];
     if (errcode != null && errcode != 0 && errcode != '0') {
-      final msg = data['errmsg'] ?? data['errMsg'] ?? data['message'] ?? errcode;
+      final msg =
+          data['errmsg'] ?? data['errMsg'] ?? data['message'] ?? errcode;
       throw Exception('$label 错误($errcode): $msg');
     }
     return data;
@@ -846,11 +849,13 @@ class WereadApi {
 
     var challenged = false;
     try {
-      final preflight = await _client.post(
-        Uri.parse('https://i.weread.qq.com/guestLogin'),
-        headers: _guestLoginHeaders(),
-        body: session.bodyJson,
-      ).timeout(Duration(milliseconds: _timeoutMs));
+      final preflight = await _client
+          .post(
+            Uri.parse('https://i.weread.qq.com/guestLogin'),
+            headers: _guestLoginHeaders(),
+            body: session.bodyJson,
+          )
+          .timeout(Duration(milliseconds: _timeoutMs));
       if (preflight.statusCode == 200 && preflight.body.isNotEmpty) {
         final data = json.decode(preflight.body);
         if (data is Map) {
@@ -897,11 +902,13 @@ class WereadApi {
     if (ticket.isEmpty || randstr.isEmpty) {
       throw Exception('验证码结果不完整,请重新验证');
     }
-    final response = await _client.post(
-      Uri.parse('https://i.weread.qq.com/guestLogin'),
-      headers: _guestLoginHeaders(ticket: ticket, randstr: randstr),
-      body: session.bodyJson,
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .post(
+          Uri.parse('https://i.weread.qq.com/guestLogin'),
+          headers: _guestLoginHeaders(ticket: ticket, randstr: randstr),
+          body: session.bodyJson,
+        )
+        .timeout(Duration(milliseconds: _timeoutMs));
     if (response.body.isEmpty || response.statusCode != 200) {
       throw Exception('游客登录失败,HTTP ${response.statusCode}');
     }
@@ -944,16 +951,16 @@ class WereadApi {
       label: '游客阅读状态',
     );
 
-    _loginMode = 'guest';
-    _userName = '游客账号';
+    await SecurePrefs.writeSecure(_guestVidPref, vid);
+    await SecurePrefs.writeSecure(_guestTokenPref, accessToken);
+    await SecurePrefs.writeSecure(_guestOldDevicePref, _guestOldDevice);
+    await SecurePrefs.writeSecure(_guestInstallPref, _guestInstallId);
+    await SecurePrefs.writeSecure(_guestNewDevicePref, _guestNewDevice);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_loginModePref, 'guest');
-    await prefs.setString(_guestVidPref, vid);
-    await prefs.setString(_guestTokenPref, accessToken);
     await prefs.setString(_guestUaPref, _guestUa);
-    await prefs.setString(_guestOldDevicePref, _guestOldDevice);
-    await prefs.setString(_guestInstallPref, _guestInstallId);
-    await prefs.setString(_guestNewDevicePref, _guestNewDevice);
+    _loginMode = 'guest';
+    _userName = '游客账号';
     debugPrint('[WereadApi] 游客登录完成: vid=${vid.substring(0, 3)}***');
     return '游客登录成功,可以获取公开想法和热门划线';
   }
@@ -992,8 +999,7 @@ class WereadApi {
 
   /// 游客模式 APP 热门划线(公开数据)
   Future<Map<String, dynamic>> _appBestbookmarks(String bookId) async {
-    final url =
-        Uri.parse('https://i.weread.qq.com/book/bestbookmarks').replace(
+    final url = Uri.parse('https://i.weread.qq.com/book/bestbookmarks').replace(
       queryParameters: {'bookId': bookId, 'count': '2000', 'synckey': '0'},
     );
     return _appGetJson(url.toString(), label: 'APP 热门划线');
@@ -1024,15 +1030,15 @@ class WereadApi {
     String chapterUid, {
     int maxIdx = 0,
   }) async {
-    final url =
-        Uri.parse('https://i.weread.qq.com/book/chapterreviewlist').replace(
-      queryParameters: {
-        'bookId': bookId,
-        'chapterUid': chapterUid,
-        'count': '20',
-        'maxIdx': '$maxIdx',
-      },
-    );
+    final url = Uri.parse('https://i.weread.qq.com/book/chapterreviewlist')
+        .replace(
+          queryParameters: {
+            'bookId': bookId,
+            'chapterUid': chapterUid,
+            'count': '20',
+            'maxIdx': '$maxIdx',
+          },
+        );
     return _appGetJson(url.toString(), label: 'APP 章评');
   }
 
@@ -1064,26 +1070,30 @@ class WereadApi {
   /// 返回 QR 码确认链接: https://weread.qq.com/web/confirm?uid={uid}
   Future<String> getLoginQrUrl() async {
     // 1. 获取初始 session cookie
-    final pageResp = await _client.get(
-      Uri.parse('$_webBaseUrl/r/weread-skills'),
-      headers: {
-        'User-Agent': _webUserAgent,
-        'Accept': 'text/html,application/xhtml+xml',
-        'Referer': '$_webBaseUrl/',
-      },
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final pageResp = await _client
+        .get(
+          Uri.parse('$_webBaseUrl/r/weread-skills'),
+          headers: {
+            'User-Agent': _webUserAgent,
+            'Accept': 'text/html,application/xhtml+xml',
+            'Referer': '$_webBaseUrl/',
+          },
+        )
+        .timeout(Duration(milliseconds: _timeoutMs));
     _absorbCookies(pageResp);
 
     // 2. 获取登录 UID
-    final uidResp = await _client.get(
-      Uri.parse('$_webBaseUrl/api/auth/getLoginUid'),
-      headers: {
-        'User-Agent': _webUserAgent,
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': '$_webBaseUrl/r/weread-skills',
-        'Cookie': _cookieHeader(),
-      },
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final uidResp = await _client
+        .get(
+          Uri.parse('$_webBaseUrl/api/auth/getLoginUid'),
+          headers: {
+            'User-Agent': _webUserAgent,
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': '$_webBaseUrl/r/weread-skills',
+            'Cookie': _cookieHeader(),
+          },
+        )
+        .timeout(Duration(milliseconds: _timeoutMs));
     _absorbCookies(uidResp);
 
     if (uidResp.body.isEmpty) {
@@ -1114,19 +1124,21 @@ class WereadApi {
   /// - logicCode == "LOGIN_TIMEOUT": 二维码过期
   /// - 其他: 继续轮询
   Future<Map<String, dynamic>> pollLoginStatus(String uid) async {
-    final url = Uri.parse('$_webBaseUrl/api/auth/getLoginInfo').replace(
-      queryParameters: {'uid': uid, 'otp': ''},
-    );
+    final url = Uri.parse(
+      '$_webBaseUrl/api/auth/getLoginInfo',
+    ).replace(queryParameters: {'uid': uid, 'otp': ''});
 
-    final resp = await _client.get(
-      url,
-      headers: {
-        'User-Agent': _webUserAgent,
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': '$_webBaseUrl/r/weread-skills',
-        'Cookie': _cookieHeader(),
-      },
-    ).timeout(Duration(seconds: 10));
+    final resp = await _client
+        .get(
+          url,
+          headers: {
+            'User-Agent': _webUserAgent,
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': '$_webBaseUrl/r/weread-skills',
+            'Cookie': _cookieHeader(),
+          },
+        )
+        .timeout(Duration(seconds: 10));
     _absorbCookies(resp);
 
     if (resp.body.isEmpty) {
@@ -1179,10 +1191,12 @@ class WereadApi {
     // 获取用户信息
     String userName = vid;
     try {
-      final userResp = await _client.get(
-        Uri.parse('$_webBaseUrl/api/userInfo?userVid=$vid'),
-        headers: authHeaders,
-      ).timeout(Duration(milliseconds: _timeoutMs));
+      final userResp = await _client
+          .get(
+            Uri.parse('$_webBaseUrl/api/userInfo?userVid=$vid'),
+            headers: authHeaders,
+          )
+          .timeout(Duration(milliseconds: _timeoutMs));
       _absorbCookies(userResp);
       if (userResp.body.isNotEmpty) {
         final userData = json.decode(userResp.body);
@@ -1198,10 +1212,12 @@ class WereadApi {
     // 获取 API Key(用于网关调用)
     String apiKey = '';
     try {
-      final skillResp = await _client.get(
-        Uri.parse('$_webBaseUrl/api/skills/apikeyGet?only_show=1'),
-        headers: authHeaders,
-      ).timeout(Duration(milliseconds: _timeoutMs));
+      final skillResp = await _client
+          .get(
+            Uri.parse('$_webBaseUrl/api/skills/apikeyGet?only_show=1'),
+            headers: authHeaders,
+          )
+          .timeout(Duration(milliseconds: _timeoutMs));
       _absorbCookies(skillResp);
       if (skillResp.body.isNotEmpty) {
         final skillData = json.decode(skillResp.body);
@@ -1211,10 +1227,12 @@ class WereadApi {
       }
       // 如果 only_show=1 没返回 key,尝试不带参数(会创建 key)
       if (apiKey.isEmpty) {
-        final skillResp2 = await _client.get(
-          Uri.parse('$_webBaseUrl/api/skills/apikeyGet'),
-          headers: authHeaders,
-        ).timeout(Duration(milliseconds: _timeoutMs));
+        final skillResp2 = await _client
+            .get(
+              Uri.parse('$_webBaseUrl/api/skills/apikeyGet'),
+              headers: authHeaders,
+            )
+            .timeout(Duration(milliseconds: _timeoutMs));
         _absorbCookies(skillResp2);
         if (skillResp2.body.isNotEmpty) {
           final skillData2 = json.decode(skillResp2.body);
@@ -1234,9 +1252,11 @@ class WereadApi {
       userName: userName,
     );
 
-    debugPrint('[WereadApi] 登录完成: 用户=$userName, '
-        'apiKey=${apiKey.isNotEmpty ? "已获取" : "未获取"}, '
-        'cookies=${_cookies.keys.toList()}');
+    debugPrint(
+      '[WereadApi] 登录完成: 用户=$userName, '
+      'apiKey=${apiKey.isNotEmpty ? "已获取" : "未获取"}, '
+      'cookies=${_cookies.keys.toList()}',
+    );
 
     return userName;
   }
@@ -1284,7 +1304,8 @@ class WereadApi {
     }
 
     var out =
-        '${digest.substring(0, 3)}$kind' '2${digest.substring(digest.length - 2)}';
+        '${digest.substring(0, 3)}$kind'
+        '2${digest.substring(digest.length - 2)}';
     for (var i = 0; i < chunks.length; i++) {
       final c = chunks[i];
       out += c.length.toRadixString(16).padLeft(2, '0') + c;
@@ -1329,10 +1350,9 @@ class WereadApi {
     final cookie = _cookieHeader();
     if (cookie.isNotEmpty) headers['Cookie'] = cookie;
 
-    final response = await _client.get(
-      url,
-      headers: headers,
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .get(url, headers: headers)
+        .timeout(Duration(milliseconds: _timeoutMs));
 
     if (response.body.isEmpty) {
       throw Exception('Web 搜索返回空响应');
@@ -1346,7 +1366,9 @@ class WereadApi {
     // 检查错误码
     final errcode = data['errCode'] ?? data['errcode'] ?? data['code'];
     if (errcode != null && errcode != 0 && errcode != '0') {
-      throw Exception('Web 搜索错误: ${data['errMsg'] ?? data['errmsg'] ?? errcode}');
+      throw Exception(
+        'Web 搜索错误: ${data['errMsg'] ?? data['errmsg'] ?? errcode}',
+      );
     }
 
     return data;
@@ -1369,15 +1391,21 @@ class WereadApi {
     final cookie = _cookieHeader();
     if (cookie.isNotEmpty) headers['Cookie'] = cookie;
 
-    final response = await _client.post(
-      Uri.parse('$_webBaseUrl/web/book/chapterInfos'),
-      headers: headers,
-      body: json.encode({'bookIds': [bookId]}),
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .post(
+          Uri.parse('$_webBaseUrl/web/book/chapterInfos'),
+          headers: headers,
+          body: json.encode({
+            'bookIds': [bookId],
+          }),
+        )
+        .timeout(Duration(milliseconds: _timeoutMs));
 
-    debugPrint('[WereadApi] _webChapters statusCode=${response.statusCode}, '
-        'bodyLength=${response.body.length}, '
-        'referer=$referer');
+    debugPrint(
+      '[WereadApi] _webChapters statusCode=${response.statusCode}, '
+      'bodyLength=${response.body.length}, '
+      'referer=$referer',
+    );
 
     if (response.body.isEmpty) {
       throw Exception('Web 章节列表返回空响应(statusCode=${response.statusCode})');
@@ -1385,8 +1413,11 @@ class WereadApi {
 
     // 检测 HTML 响应(未登录时可能重定向到登录页)
     final bodyTrimmed = response.body.trim();
-    if (bodyTrimmed.startsWith('<') || bodyTrimmed.toLowerCase().startsWith('<!doctype')) {
-      final preview = bodyTrimmed.length > 200 ? bodyTrimmed.substring(0, 200) : bodyTrimmed;
+    if (bodyTrimmed.startsWith('<') ||
+        bodyTrimmed.toLowerCase().startsWith('<!doctype')) {
+      final preview = bodyTrimmed.length > 200
+          ? bodyTrimmed.substring(0, 200)
+          : bodyTrimmed;
       throw Exception('Web 章节列表返回 HTML(可能需要登录): $preview');
     }
 
@@ -1403,7 +1434,8 @@ class WereadApi {
     // 检查错误码(Web 端点可能返回登录错误)
     final errcode = data['errCode'] ?? data['errcode'] ?? data['code'];
     if (errcode != null && errcode != 0 && errcode != '0') {
-      final errmsg = data['errMsg'] ?? data['errmsg'] ?? data['message'] ?? errcode;
+      final errmsg =
+          data['errMsg'] ?? data['errmsg'] ?? data['message'] ?? errcode;
       throw Exception('Web 章节列表错误($errcode): $errmsg');
     }
 
@@ -1418,11 +1450,7 @@ class WereadApi {
   Future<Map<String, dynamic>> _webBestbookmarks(String bookId) async {
     final referer = _readerUrl(bookId);
     final url = Uri.parse('$_webBaseUrl/web/book/bestbookmarks').replace(
-      queryParameters: {
-        'bookId': bookId,
-        'count': '2000',
-        'synckey': '0',
-      },
+      queryParameters: {'bookId': bookId, 'count': '2000', 'synckey': '0'},
     );
 
     final headers = {
@@ -1433,13 +1461,14 @@ class WereadApi {
     final cookie = _cookieHeader();
     if (cookie.isNotEmpty) headers['Cookie'] = cookie;
 
-    final response = await _client.get(
-      url,
-      headers: headers,
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .get(url, headers: headers)
+        .timeout(Duration(milliseconds: _timeoutMs));
 
-    debugPrint('[WereadApi] _webBestbookmarks statusCode=${response.statusCode}, '
-        'bodyLength=${response.body.length}');
+    debugPrint(
+      '[WereadApi] _webBestbookmarks statusCode=${response.statusCode}, '
+      'bodyLength=${response.body.length}',
+    );
 
     if (response.body.isEmpty) {
       throw Exception('Web 热门划线返回空响应(statusCode=${response.statusCode})');
@@ -1502,13 +1531,14 @@ class WereadApi {
     final cookie = _cookieHeader();
     if (cookie.isNotEmpty) headers['Cookie'] = cookie;
 
-    final response = await _client.get(
-      url,
-      headers: headers,
-    ).timeout(Duration(milliseconds: _timeoutMs));
+    final response = await _client
+        .get(url, headers: headers)
+        .timeout(Duration(milliseconds: _timeoutMs));
 
-    debugPrint('[WereadApi] _webChapterReviews statusCode=${response.statusCode}, '
-        'bodyLength=${response.body.length}, chapter=$chapterUid');
+    debugPrint(
+      '[WereadApi] _webChapterReviews statusCode=${response.statusCode}, '
+      'bodyLength=${response.body.length}, chapter=$chapterUid',
+    );
 
     if (response.body.isEmpty) {
       throw Exception('Web 章节想法返回空响应(statusCode=${response.statusCode})');
@@ -1578,7 +1608,9 @@ class WereadApi {
         );
         debugPrint('[WereadApi] search via web endpoint succeeded');
       } catch (webErr) {
-        debugPrint('[WereadApi] web search failed: $webErr, falling back to gateway');
+        debugPrint(
+          '[WereadApi] web search failed: $webErr, falling back to gateway',
+        );
         // 2. 回退到网关
         final params = <String, dynamic>{
           'keyword': keyword,
@@ -1592,10 +1624,16 @@ class WereadApi {
 
     // 调试:输出原始响应
     final rawJson = json.encode(data);
-    debugPrint('[WereadApi] search("$keyword", scope=$scope) response keys: ${data.keys.toList()}');
-    debugPrint('[WereadApi] search response: ${rawJson.length > 800 ? rawJson.substring(0, 800) : rawJson}');
+    debugPrint(
+      '[WereadApi] search("$keyword", scope=$scope) response keys: ${data.keys.toList()}',
+    );
+    debugPrint(
+      '[WereadApi] search response: ${rawJson.length > 800 ? rawJson.substring(0, 800) : rawJson}',
+    );
     if (onDebug != null) {
-      onDebug(rawJson.length > 800 ? '${rawJson.substring(0, 800)}...' : rawJson);
+      onDebug(
+        rawJson.length > 800 ? '${rawJson.substring(0, 800)}...' : rawJson,
+      );
     }
 
     final books = <WereadBook>[];
@@ -1701,27 +1739,32 @@ class WereadApi {
         data = await _webChapters(bookId);
         usedWeb = true;
         final rawJson = json.encode(data);
-        debugPrint('[WereadApi] chapters via web endpoint succeeded, '
-            'keys=${data.keys.toList()}, '
-            'body=${rawJson.length > 500 ? rawJson.substring(0, 500) : rawJson}');
+        debugPrint(
+          '[WereadApi] chapters via web endpoint succeeded, '
+          'keys=${data.keys.toList()}, '
+          'body=${rawJson.length > 500 ? rawJson.substring(0, 500) : rawJson}',
+        );
       } catch (webErr) {
         webError = webErr.toString();
-        debugPrint('[WereadApi] web chapters failed: $webErr, falling back to gateway');
+        debugPrint(
+          '[WereadApi] web chapters failed: $webErr, falling back to gateway',
+        );
         // 2. 回退到网关
         try {
-          data = await _gateway('/book/chapterinfo', params: {
-            'bookId': bookId,
-          });
+          data = await _gateway(
+            '/book/chapterinfo',
+            params: {'bookId': bookId},
+          );
           final rawJson = json.encode(data);
-          debugPrint('[WereadApi] chapters via gateway, '
-              'keys=${data.keys.toList()}, '
-              'body=${rawJson.length > 500 ? rawJson.substring(0, 500) : rawJson}');
+          debugPrint(
+            '[WereadApi] chapters via gateway, '
+            'keys=${data.keys.toList()}, '
+            'body=${rawJson.length > 500 ? rawJson.substring(0, 500) : rawJson}',
+          );
         } catch (gwErr) {
           // 3. 两者均失败:输出合并错误
           debugPrint('[WereadApi] gateway chapters also failed: $gwErr');
-          throw Exception(
-            '获取章节列表失败(Web: $webError | 网关: $gwErr)'
-          );
+          throw Exception('获取章节列表失败(Web: $webError | 网关: $gwErr)');
         }
       }
     }
@@ -1754,10 +1797,12 @@ class WereadApi {
     if (chapterList is List) {
       for (final ch in chapterList) {
         if (ch is Map<String, dynamic>) {
-          chapters.add(WereadChapter(
-            chapterUid: ch['chapterUid']?.toString() ?? '',
-            title: ch['title']?.toString() ?? '',
-          ));
+          chapters.add(
+            WereadChapter(
+              chapterUid: ch['chapterUid']?.toString() ?? '',
+              title: ch['title']?.toString() ?? '',
+            ),
+          );
         }
       }
     }
@@ -1765,9 +1810,13 @@ class WereadApi {
     if (chapters.isEmpty) {
       // 解析后为空:输出原始数据摘要,帮助排查
       final rawJson = json.encode(data);
-      final preview = rawJson.length > 300 ? rawJson.substring(0, 300) : rawJson;
-      throw Exception('章节列表解析为空(来源=${usedWeb ? "Web" : "网关"}, '
-          'keys=${data.keys.toList()}, data=$preview)');
+      final preview = rawJson.length > 300
+          ? rawJson.substring(0, 300)
+          : rawJson;
+      throw Exception(
+        '章节列表解析为空(来源=${usedWeb ? "Web" : "网关"}, '
+        'keys=${data.keys.toList()}, data=$preview)',
+      );
     }
 
     return chapters;
@@ -1794,17 +1843,22 @@ class WereadApi {
     if (isGuestMode) {
       data = await _appReadreviews(bookId, chapterUid, batch);
     } else {
-      data = await _gateway('/book/readreviews', params: {
-        'bookId': bookId,
-        'chapterUid': chapterUidInt ?? chapterUid,
-        'reviews': batch,
-      });
+      data = await _gateway(
+        '/book/readreviews',
+        params: {
+          'bookId': bookId,
+          'chapterUid': chapterUidInt ?? chapterUid,
+          'reviews': batch,
+        },
+      );
     }
 
     // 调试:输出原始响应(仅第一次调用)
     if (onDebug != null) {
       final rawJson = json.encode(data);
-      onDebug(rawJson.length > 800 ? '${rawJson.substring(0, 800)}...' : rawJson);
+      onDebug(
+        rawJson.length > 800 ? '${rawJson.substring(0, 800)}...' : rawJson,
+      );
     }
 
     final result = <WereadReview>[];
@@ -1821,16 +1875,19 @@ class WereadApi {
       }
     }
 
-    debugPrint('[WereadApi] readreviews: chapter=$chapterUid, '
-        'batch=${batch.length} ranges, '
-        'response reviews=${reviewList is List ? reviewList.length : 0}');
+    debugPrint(
+      '[WereadApi] readreviews: chapter=$chapterUid, '
+      'batch=${batch.length} ranges, '
+      'response reviews=${reviewList is List ? reviewList.length : 0}',
+    );
 
     if (reviewList is List) {
       for (final item in reviewList) {
         if (item is! Map<String, dynamic>) continue;
 
         // 提取 range
-        final range = item['range']?.toString() ??
+        final range =
+            item['range']?.toString() ??
             (item['review'] is Map
                 ? item['review']['range']?.toString() ?? ''
                 : '');
@@ -1840,36 +1897,54 @@ class WereadApi {
         if (pageReviews is List) {
           for (final pr in pageReviews) {
             if (pr is! Map<String, dynamic>) continue;
-            final thought = pr['review'] is Map ? pr['review'] as Map<String, dynamic> : pr;
+            final thought = pr['review'] is Map
+                ? pr['review'] as Map<String, dynamic>
+                : pr;
             final content = thought['content']?.toString() ?? '';
             if (content.isNotEmpty && range.isNotEmpty) {
               final author = thought['author'];
-              result.add(WereadReview(
-                range: range,
-                content: content,
-                abstract: _cleanQuote(thought['abstract']?.toString() ??
-                    thought['contextAbstract']?.toString() ?? ''),
-                author: author is Map
-                    ? (author['name']?.toString() ?? author['nick']?.toString() ?? '')
-                    : '',
-                // likesCount 可能是 int 或 double,安全转换
-                likes: _safeInt(pr['likesCount'] ?? thought['likesCount'] ?? 0),
-                chapterUid: chapterUid,
-              ));
+              result.add(
+                WereadReview(
+                  range: range,
+                  content: content,
+                  abstract: _cleanQuote(
+                    thought['abstract']?.toString() ??
+                        thought['contextAbstract']?.toString() ??
+                        '',
+                  ),
+                  author: author is Map
+                      ? (author['name']?.toString() ??
+                            author['nick']?.toString() ??
+                            '')
+                      : '',
+                  // likesCount 可能是 int 或 double,安全转换
+                  likes: _safeInt(
+                    pr['likesCount'] ?? thought['likesCount'] ?? 0,
+                  ),
+                  chapterUid: chapterUid,
+                ),
+              );
             }
           }
         } else {
           // 扁平结构:直接在 item 上
-          final review = item['review'] is Map ? item['review'] as Map<String, dynamic> : item;
+          final review = item['review'] is Map
+              ? item['review'] as Map<String, dynamic>
+              : item;
           final content = review['content']?.toString() ?? '';
           if (content.isNotEmpty && range.isNotEmpty) {
-            result.add(WereadReview(
-              range: range,
-              content: content,
-              abstract: _cleanQuote(review['abstract']?.toString() ??
-                  review['contextAbstract']?.toString() ?? ''),
-              chapterUid: chapterUid,
-            ));
+            result.add(
+              WereadReview(
+                range: range,
+                content: content,
+                abstract: _cleanQuote(
+                  review['abstract']?.toString() ??
+                      review['contextAbstract']?.toString() ??
+                      '',
+                ),
+                chapterUid: chapterUid,
+              ),
+            );
           }
         }
       }
@@ -1905,12 +1980,7 @@ class WereadApi {
     for (var i = 0; i < ranges.length; i += batchSize) {
       final batch = <Map<String, dynamic>>[];
       for (var j = i; j < i + batchSize && j < ranges.length; j++) {
-        batch.add({
-          'range': ranges[j],
-          'maxIdx': 0,
-          'count': 30,
-          'synckey': 0,
-        });
+        batch.add({'range': ranges[j], 'maxIdx': 0, 'count': 30, 'synckey': 0});
       }
       batches.add(batch);
     }
@@ -1949,21 +2019,26 @@ class WereadApi {
         final content = review['content']?.toString() ?? '';
         if (content.isEmpty) continue;
         final author = review['author'];
-        result.add(WereadReview(
-          range: '',
-          content: content,
-          abstract: _cleanQuote(review['abstract']?.toString() ??
-              review['contextAbstract']?.toString() ?? ''),
-          author: author is Map
-              ? (author['name']?.toString() ??
-                  author['nick']?.toString() ??
-                  '')
-              : '',
-          likes: _safeInt(wrapper['likesCount'] ?? review['likesCount'] ?? 0),
-          chapterUid: chapterUid,
-          createTime: _safeInt(review['createTime'] ?? 0),
-          type: type,
-        ));
+        result.add(
+          WereadReview(
+            range: '',
+            content: content,
+            abstract: _cleanQuote(
+              review['abstract']?.toString() ??
+                  review['contextAbstract']?.toString() ??
+                  '',
+            ),
+            author: author is Map
+                ? (author['name']?.toString() ??
+                      author['nick']?.toString() ??
+                      '')
+                : '',
+            likes: _safeInt(wrapper['likesCount'] ?? review['likesCount'] ?? 0),
+            chapterUid: chapterUid,
+            createTime: _safeInt(review['createTime'] ?? 0),
+            type: type,
+          ),
+        );
       }
     }
 
@@ -1995,12 +2070,15 @@ class WereadApi {
       if (isGuestMode) {
         data = await _appChapterReviews(bookId, chapterUid, maxIdx: cursor);
       } else {
-        data = await _gateway('/book/chapterreviewlist', params: {
-          'bookId': bookId,
-          'chapterUid': chapterUidInt ?? chapterUid,
-          'count': 20,
-          'maxIdx': cursor,
-        });
+        data = await _gateway(
+          '/book/chapterreviewlist',
+          params: {
+            'bookId': bookId,
+            'chapterUid': chapterUidInt ?? chapterUid,
+            'count': 20,
+            'maxIdx': cursor,
+          },
+        );
       }
       final reviews = _parseReviewList(data, chapterUid, 'chapter');
       result.addAll(reviews);
@@ -2012,8 +2090,10 @@ class WereadApi {
       if (hasMore) await _delay(150);
     }
 
-    debugPrint('[WereadApi] chapterReviews: chapter=$chapterUid, '
-        '${result.length} reviews');
+    debugPrint(
+      '[WereadApi] chapterReviews: chapter=$chapterUid, '
+      '${result.length} reviews',
+    );
     return result;
   }
 
@@ -2037,15 +2117,22 @@ class WereadApi {
     while (hasMore && fetched < pages) {
       final Map<String, dynamic> data;
       if (isGuestMode) {
-        data = await _appBookReviews(bookId, category: category, synckey: cursor);
+        data = await _appBookReviews(
+          bookId,
+          category: category,
+          synckey: cursor,
+        );
       } else {
-        data = await _gateway('/book/podcasts', params: {
-          'bookId': bookId,
-          'count': 100,
-          'listType': 2,
-          'reviewListType': category,
-          'synckey': cursor,
-        });
+        data = await _gateway(
+          '/book/podcasts',
+          params: {
+            'bookId': bookId,
+            'count': 100,
+            'listType': 2,
+            'reviewListType': category,
+            'synckey': cursor,
+          },
+        );
       }
       final reviews = _parseReviewList(data, '', 'book');
       result.addAll(reviews);
@@ -2057,8 +2144,10 @@ class WereadApi {
       if (hasMore) await _delay(200);
     }
 
-    debugPrint('[WereadApi] bookReviews: category=$category, '
-        '${result.length} reviews');
+    debugPrint(
+      '[WereadApi] bookReviews: category=$category, '
+      '${result.length} reviews',
+    );
     return result;
   }
 
@@ -2088,19 +2177,21 @@ class WereadApi {
     if (items is List) {
       for (final item in items) {
         if (item is! Map<String, dynamic>) continue;
-        final range = item['range']?.toString() ??
-            item['markRange']?.toString() ??
-            '';
+        final range =
+            item['range']?.toString() ?? item['markRange']?.toString() ?? '';
         if (range.isEmpty) continue;
         final chapterUid = item['chapterUid']?.toString() ?? defaultChapterUid;
-        final markText = item['markText']?.toString() ??
+        final markText =
+            item['markText']?.toString() ??
             item['bookmarkText']?.toString() ??
             '';
-        result.add(WereadUnderline(
-          range: range,
-          markText: markText,
-          chapterUid: chapterUid,
-        ));
+        result.add(
+          WereadUnderline(
+            range: range,
+            markText: markText,
+            chapterUid: chapterUid,
+          ),
+        );
       }
     }
 
@@ -2133,7 +2224,8 @@ class WereadApi {
         if (item is! Map<String, dynamic>) continue;
 
         // 提取 range
-        final range = item['range']?.toString() ??
+        final range =
+            item['range']?.toString() ??
             (item['review'] is Map
                 ? item['review']['range']?.toString() ?? ''
                 : '');
@@ -2149,19 +2241,26 @@ class WereadApi {
             final content = thought['content']?.toString() ?? '';
             if (content.isNotEmpty && range.isNotEmpty) {
               final author = thought['author'];
-              result.add(WereadReview(
-                range: range,
-                content: content,
-                abstract: _cleanQuote(thought['abstract']?.toString() ??
-                    thought['contextAbstract']?.toString() ?? ''),
-                author: author is Map
-                    ? (author['name']?.toString() ??
-                        author['nick']?.toString() ??
-                        '')
-                    : '',
-                likes: _safeInt(pr['likesCount'] ?? thought['likesCount'] ?? 0),
-                chapterUid: chapterUid,
-              ));
+              result.add(
+                WereadReview(
+                  range: range,
+                  content: content,
+                  abstract: _cleanQuote(
+                    thought['abstract']?.toString() ??
+                        thought['contextAbstract']?.toString() ??
+                        '',
+                  ),
+                  author: author is Map
+                      ? (author['name']?.toString() ??
+                            author['nick']?.toString() ??
+                            '')
+                      : '',
+                  likes: _safeInt(
+                    pr['likesCount'] ?? thought['likesCount'] ?? 0,
+                  ),
+                  chapterUid: chapterUid,
+                ),
+              );
             }
           }
         } else {
@@ -2172,18 +2271,23 @@ class WereadApi {
           final content = review['content']?.toString() ?? '';
           if (content.isNotEmpty && range.isNotEmpty) {
             final author = review['author'];
-            result.add(WereadReview(
-              range: range,
-              content: content,
-              abstract: _cleanQuote(review['abstract']?.toString() ??
-                  review['contextAbstract']?.toString() ?? ''),
-              author: author is Map
-                  ? (author['name']?.toString() ??
-                      author['nick']?.toString() ??
-                      '')
-                  : '',
-              chapterUid: chapterUid,
-            ));
+            result.add(
+              WereadReview(
+                range: range,
+                content: content,
+                abstract: _cleanQuote(
+                  review['abstract']?.toString() ??
+                      review['contextAbstract']?.toString() ??
+                      '',
+                ),
+                author: author is Map
+                    ? (author['name']?.toString() ??
+                          author['nick']?.toString() ??
+                          '')
+                    : '',
+                chapterUid: chapterUid,
+              ),
+            );
           }
         }
       }
@@ -2208,7 +2312,7 @@ class WereadApi {
   Future<FetchResult> fetchBookData(
     String bookId, {
     void Function(String phase, int current, int total, String text)?
-        onProgress,
+    onProgress,
     bool includeChapterReviews = true,
     bool includeBookReviews = true,
   }) async {
@@ -2273,8 +2377,10 @@ class WereadApi {
               hotReviews.addAll(batchReviews);
             }
           } catch (e) {
-            debugPrint('[WereadApi] 段评拉取失败: '
-                'chapter=${ch.chapterUid}, batch=$bi, error=$e');
+            debugPrint(
+              '[WereadApi] 段评拉取失败: '
+              'chapter=${ch.chapterUid}, batch=$bi, error=$e',
+            );
           }
           if (batches.length > 1) await _delay(200);
         }
@@ -2289,8 +2395,10 @@ class WereadApi {
             hotReviews.addAll(webReviews);
           }
         } catch (e) {
-          debugPrint('[WereadApi] Web 章级想法兜底失败: '
-              'chapter=${ch.chapterUid}, error=$e');
+          debugPrint(
+            '[WereadApi] Web 章级想法兜底失败: '
+            'chapter=${ch.chapterUid}, error=$e',
+          );
         }
       }
 
@@ -2302,8 +2410,10 @@ class WereadApi {
             chapterReviewsByChapter[ch.chapterUid] = chapterReviewList;
           }
         } catch (e) {
-          debugPrint('[WereadApi] 章评拉取失败(可选数据源,不影响主线): '
-              'chapter=${ch.chapterUid}, error=$e');
+          debugPrint(
+            '[WereadApi] 章评拉取失败(可选数据源,不影响主线): '
+            'chapter=${ch.chapterUid}, error=$e',
+          );
         }
       }
 
@@ -2316,10 +2426,16 @@ class WereadApi {
     }
 
     // 统计
-    final totalUnderlines =
-        underlinesByChapter.values.fold<int>(0, (sum, list) => sum + list.length);
-    onProgress('underlines', chapterList.length, chapterList.length,
-        '热门划线 $totalUnderlines 条,公开想法 ${hotReviews.length} 条');
+    final totalUnderlines = underlinesByChapter.values.fold<int>(
+      0,
+      (sum, list) => sum + list.length,
+    );
+    onProgress(
+      'underlines',
+      chapterList.length,
+      chapterList.length,
+      '热门划线 $totalUnderlines 条,公开想法 ${hotReviews.length} 条',
+    );
 
     // 4. 整本书评(挂在书上):失败不影响主线
     var bookReviewList = <WereadReview>[];
@@ -2394,11 +2510,13 @@ class WereadApi {
         reviewMap.putIfAbsent(r.range, () => []).add(r);
         if (!seenRanges.contains(r.range)) {
           seenRanges.add(r.range);
-          cleanUnderlines.add(WereadUnderline(
-            range: r.range,
-            markText: r.abstract,
-            chapterUid: ch.chapterUid,
-          ));
+          cleanUnderlines.add(
+            WereadUnderline(
+              range: r.range,
+              markText: r.abstract,
+              chapterUid: ch.chapterUid,
+            ),
+          );
         }
       }
 
@@ -2417,13 +2535,15 @@ class WereadApi {
         }
       }
 
-      result.add(ChapterData(
-        chapterUid: ch.chapterUid,
-        title: ch.title,
-        underlines: cleanUnderlines,
-        reviewMap: reviewMap,
-        chapterReviews: chapterReviews,
-      ));
+      result.add(
+        ChapterData(
+          chapterUid: ch.chapterUid,
+          title: ch.title,
+          underlines: cleanUnderlines,
+          reviewMap: reviewMap,
+          chapterReviews: chapterReviews,
+        ),
+      );
     }
 
     return result;

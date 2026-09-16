@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:epub_gadget/core/router.dart';
+import 'package:epub_gadget/core/theme_controller.dart';
 import 'package:epub_gadget/main.dart';
-import 'package:epub_gadget/shared/widgets/app_scaffold.dart';
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 
 void main() {
+  SharedPreferences.setMockInitialValues({});
+
   testWidgets('App builds without error', (WidgetTester tester) async {
     // 包裹 MultiProvider 提供 ToastProvider，模拟真实运行环境
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => ToastProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeController()),
         ],
         child: const EpubGadgetApp(),
       ),
@@ -30,6 +34,7 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => ToastProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeController()),
         ],
         child: const EpubGadgetApp(),
       ),
@@ -64,6 +69,7 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => ToastProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeController()),
         ],
         child: const EpubGadgetApp(),
       ),
@@ -102,6 +108,7 @@ void main() {
         child: MultiProvider(
           providers: [
             ChangeNotifierProvider(create: (_) => ToastProvider()),
+            ChangeNotifierProvider(create: (_) => ThemeController()),
           ],
           child: const EpubGadgetApp(),
         ),
@@ -132,6 +139,28 @@ void main() {
     await tester.tapAt(const Offset(370, 400));
     await tester.pumpAndSettle();
     expect(find.text('仪表盘').hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('主题按钮可在系统与日间模式之间切换', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ToastProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeController()),
+        ],
+        child: const EpubGadgetApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('跟随系统'), findsOneWidget);
+    await tester.tap(find.byTooltip('跟随系统'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('日间模式'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

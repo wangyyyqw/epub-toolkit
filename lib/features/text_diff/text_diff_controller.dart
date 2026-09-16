@@ -83,8 +83,8 @@ class TextDiffController extends ChangeNotifier {
       final start = k * chunkSize;
       total += start < _leftLines.length
           ? (chunkSize < _leftLines.length - start
-              ? chunkSize
-              : _leftLines.length - start)
+                ? chunkSize
+                : _leftLines.length - start)
           : 0;
     }
     return total;
@@ -159,20 +159,46 @@ class TextDiffController extends ChangeNotifier {
       return;
     }
     final block = blocks[blockIndex];
-    final target = <String>[];
-    for (var r = 0; r < rows.length; r++) {
-      final row = rows[r];
-      final inBlock = r >= block.startRow && r < block.endRow;
-      final String? text;
-      if (inBlock) {
-        // 块内：取源侧内容
-        text = toLeft ? row.rightText : row.leftText;
-      } else {
-        // 块外：保持目标侧原内容
-        text = toLeft ? row.leftText : row.rightText;
+    final blockRows = rows.sublist(block.startRow, block.endRow);
+    final sourceLines = toLeft ? _rightLines : _leftLines;
+    final targetLines = toLeft ? _leftLines : _rightLines;
+    final sourceIndices =
+        blockRows
+            .map((row) => toLeft ? row.rightIndex : row.leftIndex)
+            .whereType<int>()
+            .toList()
+          ..sort();
+    final targetIndices =
+        blockRows
+            .map((row) => toLeft ? row.leftIndex : row.rightIndex)
+            .whereType<int>()
+            .toList()
+          ..sort();
+    var start = targetLines.length;
+    var end = start;
+    if (targetIndices.isNotEmpty) {
+      start = targetIndices.first;
+      end = targetIndices.last + 1;
+    } else {
+      for (var r = block.endRow; r < rows.length; r++) {
+        final index = toLeft ? rows[r].leftIndex : rows[r].rightIndex;
+        if (index != null) {
+          start = end = index;
+          break;
+        }
       }
-      if (text != null) target.add(text);
     }
+    // Display rows may reorder or omit ignored blank lines. Splice original
+    // line ranges so copying one block cannot rewrite the surrounding text.
+    final targetText = toLeft ? _leftText : _rightText;
+    final target = targetText.isEmpty ? <String>[] : targetText.split('\n');
+    target.replaceRange(
+      start,
+      end,
+      sourceIndices.isEmpty
+          ? const <String>[]
+          : sourceLines.sublist(sourceIndices.first, sourceIndices.last + 1),
+    );
     if (toLeft) {
       _leftText = target.join('\n');
     } else {
@@ -185,8 +211,7 @@ class TextDiffController extends ChangeNotifier {
   void ignoreSelectedBlock() {
     final rows = this.rows;
     final blocks = activeBlocks;
-    if (rows.isEmpty || _selectedBlock < 0 ||
-        _selectedBlock >= blocks.length) {
+    if (rows.isEmpty || _selectedBlock < 0 || _selectedBlock >= blocks.length) {
       return;
     }
     final block = blocks[_selectedBlock];
@@ -233,8 +258,9 @@ class TextDiffController extends ChangeNotifier {
         options: _options,
       );
       _chunks = [result.rows];
-      _chunkPlaceholders = [_placeholderCount(_leftLines.length,
-          _rightLines.length)];
+      _chunkPlaceholders = [
+        _placeholderCount(_leftLines.length, _rightLines.length),
+      ];
       _comparedChunks = 1;
       _computing = false;
       _rowsCache = null;
@@ -244,8 +270,7 @@ class TextDiffController extends ChangeNotifier {
     }
 
     // 大文件：先显示占位内容，再逐块渐进计算
-    final chunkCount =
-        (totalLines + chunkSize - 1) ~/ chunkSize;
+    final chunkCount = (totalLines + chunkSize - 1) ~/ chunkSize;
     _chunks = List<List<DiffRow>?>.filled(chunkCount, null);
     _chunkPlaceholders = [
       for (var k = 0; k < chunkCount; k++)
@@ -273,8 +298,7 @@ class TextDiffController extends ChangeNotifier {
     return remain < chunkSize ? remain : chunkSize;
   }
 
-  int _placeholderCount(int left, int right) =>
-      left > right ? left : right;
+  int _placeholderCount(int left, int right) => left > right ? left : right;
 
   /// 逐块渐进计算：每完成一块立即合并并通知界面
   Future<void> _computeChunks(int gen) async {
@@ -333,8 +357,9 @@ class TextDiffController extends ChangeNotifier {
       (msg['left'] as List).cast<String>(),
       (msg['right'] as List).cast<String>(),
       options: DiffOptions(
-        whitespaceMode: WhiteSpaceMode.values
-            .byName(msg['whitespaceMode'] as String),
+        whitespaceMode: WhiteSpaceMode.values.byName(
+          msg['whitespaceMode'] as String,
+        ),
         ignoreCase: msg['ignoreCase'] as bool,
         ignoreBlankLines: msg['ignoreBlankLines'] as bool,
         similarityThreshold: msg['similarityThreshold'] as int,
@@ -343,9 +368,7 @@ class TextDiffController extends ChangeNotifier {
     return [
       for (final row in result.rows)
         DiffRow(
-          leftIndex: row.leftIndex == null
-              ? null
-              : row.leftIndex! + startLeft,
+          leftIndex: row.leftIndex == null ? null : row.leftIndex! + startLeft,
           rightIndex: row.rightIndex == null
               ? null
               : row.rightIndex! + startRight,
@@ -372,17 +395,19 @@ class TextDiffController extends ChangeNotifier {
       for (var i = 0; i < count; i++) {
         final leftIndex = start + i;
         final rightIndex = start + i;
-        rows.add(DiffRow(
-          leftIndex: leftIndex < _leftLines.length ? leftIndex : null,
-          rightIndex: rightIndex < _rightLines.length ? rightIndex : null,
-          op: DiffOp.unknown,
-          leftText: leftIndex < _leftLines.length
-              ? _leftLines[leftIndex]
-              : null,
-          rightText: rightIndex < _rightLines.length
-              ? _rightLines[rightIndex]
-              : null,
-        ));
+        rows.add(
+          DiffRow(
+            leftIndex: leftIndex < _leftLines.length ? leftIndex : null,
+            rightIndex: rightIndex < _rightLines.length ? rightIndex : null,
+            op: DiffOp.unknown,
+            leftText: leftIndex < _leftLines.length
+                ? _leftLines[leftIndex]
+                : null,
+            rightText: rightIndex < _rightLines.length
+                ? _rightLines[rightIndex]
+                : null,
+          ),
+        );
       }
     }
     return rows;

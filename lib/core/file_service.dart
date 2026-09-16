@@ -11,6 +11,17 @@ import 'package:path_provider/path_provider.dart';
 /// 封装 file_picker 包，提供统一的文件选择接口。
 /// 支持单选、多选、目录选择和保存对话框。
 class FileService {
+  /// Probe in a unique temporary directory without touching existing files.
+  static Future<void> ensureWritableDirectory(String path) async {
+    final directory = await Directory(path).create(recursive: true);
+    final probe = await directory.createTemp('.epub-write-check-');
+    try {
+      await File(p.join(probe.path, 'probe')).writeAsBytes([0], flush: true);
+    } finally {
+      await probe.delete(recursive: true);
+    }
+  }
+
   FileService._();
 
   static Future<Directory> _documentsBooksDirectory() async {
@@ -39,8 +50,12 @@ class FileService {
     final basename = p.basenameWithoutExtension(filename);
     var candidate = p.join(directory, filename);
     var index = 1;
+    const maxAttempts = 999;
     while (await File(candidate).exists() ||
         await Directory(candidate).exists()) {
+      if (index > maxAttempts) {
+        throw StateError('无法生成唯一路径，已尝试 $maxAttempts 次: $directory/$filename');
+      }
       candidate = p.join(directory, '${basename}_$index$extension');
       index++;
     }

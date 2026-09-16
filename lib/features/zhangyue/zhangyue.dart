@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:xml/xml.dart';
 
 import 'duokan_base.dart';
 
@@ -103,7 +104,7 @@ class _ZhangyueConverter extends DuokanConverterBase {
     if (liMatch != null) {
       final raw = liMatch.group(1)!.trim();
       // 剥离所有 HTML 标签
-      noteContent = raw.replaceAll(RegExp(r'<[^>]+>'), '').trim();
+      noteContent = XmlDocument.parse('<note>$raw</note>').innerText.trim();
     }
 
     // 查找引用锚点的 id（两种属性顺序）

@@ -81,7 +81,9 @@ class ImageWatermarkOperation {
 
         final watermarked = _embedPayload(decoded, payload);
         final encoded = Uint8List.fromList(
-          img.encodePng(watermarked, level: 6),
+          // Watermarking is CPU-bound on PNG encoding. Level 1 remains
+          // lossless and preserves the embedded bits while reducing latency.
+          img.encodePng(watermarked, level: 1),
         );
         final newArcname = '${p.withoutExtension(arcname)}.png';
         if (newArcname != arcname) {

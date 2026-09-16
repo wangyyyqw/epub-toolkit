@@ -127,9 +127,8 @@ class MergeOperation {
     final allTocForNav = <_TocEntry>[];
     final usedIds = <String>{};
 
-    // 判定合并版本
-    final versions = epubDataList.map((e) => e.version).toSet();
-    final mergedVersion = versions.length == 1 ? versions.first : '3.0';
+    // Generated navigation is EPUB3, including when all inputs are EPUB2.
+    const mergedVersion = '3.0';
 
     for (var volIdx = 0; volIdx < epubDataList.length; volIdx++) {
       final data = epubDataList[volIdx];
@@ -218,13 +217,20 @@ class MergeOperation {
 
       // TOC 收集
       for (final toc in data.tocEntries) {
-        final bookpath = _normalizePath('${data.opfDir}${toc.href}');
+        final fragmentIndex = toc.href.indexOf('#');
+        final href = fragmentIndex < 0
+            ? toc.href
+            : toc.href.substring(0, fragmentIndex);
+        final fragment = fragmentIndex < 0
+            ? ''
+            : toc.href.substring(fragmentIndex);
+        final bookpath = _normalizePath('${data.opfDir}$href');
         final renamedPath = renameMap[bookpath] ?? bookpath;
         final mergedHref = _relPath(renamedPath, mergedOpfDir);
         allTocForNav.add(
           _TocEntry(
             title: toc.title,
-            href: mergedHref,
+            href: '$mergedHref$fragment',
             level: toc.level,
             volume: volIdx,
           ),
@@ -311,12 +317,20 @@ class MergeOperation {
 
     // OPF
     outputArchive.addFile(
-      ArchiveFile(mergedOpfPath, utf8.encode(mergedOpf).length, utf8.encode(mergedOpf)),
+      ArchiveFile(
+        mergedOpfPath,
+        utf8.encode(mergedOpf).length,
+        utf8.encode(mergedOpf),
+      ),
     );
 
     // nav
     outputArchive.addFile(
-      ArchiveFile(mergedNavPath, utf8.encode(mergedNav).length, utf8.encode(mergedNav)),
+      ArchiveFile(
+        mergedNavPath,
+        utf8.encode(mergedNav).length,
+        utf8.encode(mergedNav),
+      ),
     );
 
     // 内容文件（去重）
@@ -484,7 +498,9 @@ class MergeOperation {
         if (path.isEmpty) return m.group(0)!;
 
         // 解析为 bookpath
-        final bookpath = _normalizePath('$opfDir$path');
+        final bookpath = _normalizePath(
+          '${p.posix.dirname(oldBookpath)}/$path',
+        );
         final renamed = renameMap[bookpath];
         if (renamed == null) return m.group(0)!;
 
@@ -945,13 +961,7 @@ class MergeOperation {
       final span = li.findElements('span', namespace: '*').firstOrNull;
 
       final title = a?.innerText ?? span?.innerText ?? '';
-      var href = a?.getAttribute('href') ?? '';
-
-      // 剥离 fragment
-      final fragIdx = href.indexOf('#');
-      if (fragIdx >= 0) {
-        href = href.substring(0, fragIdx);
-      }
+      final href = a?.getAttribute('href') ?? '';
 
       entries.add(
         _TocEntry(title: title.trim(), href: href, level: level, volume: 0),
@@ -1000,13 +1010,7 @@ class MergeOperation {
       final content = navPoint
           .findElements('content', namespace: '*')
           .firstOrNull;
-      var src = content?.getAttribute('src') ?? '';
-
-      // 剥离 fragment
-      final fragIdx = src.indexOf('#');
-      if (fragIdx >= 0) {
-        src = src.substring(0, fragIdx);
-      }
+      final src = content?.getAttribute('src') ?? '';
 
       entries.add(
         _TocEntry(title: label.trim(), href: src, level: level, volume: 0),

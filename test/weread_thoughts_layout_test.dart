@@ -9,6 +9,7 @@ import 'package:epub_gadget/features/epub_tools/tools/weread_thoughts_page.dart'
 import 'package:epub_gadget/shared/providers/toast_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,11 +28,15 @@ Future<void> _pumpPage(WidgetTester tester, Size size) async {
   addTearDown(tester.view.reset);
   await tester.pumpWidget(_wrap(const WereadThoughtsPage()));
   await tester.pump();
+  // 等待 _loadApiState 异步完成（涉及 SecurePrefs / SharedPreferences）
+  await tester.pumpAndSettle(const Duration(milliseconds: 300));
+  await tester.pump(const Duration(milliseconds: 100));
 }
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   testWidgets('宽屏已登录未绑定时,输出区占位与输入区同行', (tester) async {
@@ -51,10 +56,7 @@ void main() {
     );
     // 占位与输入同行: 位于同一 Row 内(占位文本上溯 6 层内存在 Row 且同一行有 EPUB 文件 label)
     final placeholder = find.textContaining('搜索并绑定书目后');
-    final row = find.ancestor(
-      of: placeholder,
-      matching: find.byType(Row),
-    );
+    final row = find.ancestor(of: placeholder, matching: find.byType(Row));
     expect(row, findsWidgets, reason: '占位应位于 Row(双列)中');
     // 双列结构: 该 Row 下同时含输入区 EPUB 文件行
     final epubs = find.ancestor(
@@ -83,9 +85,11 @@ void main() {
   testWidgets('未登录时输入/输出区均不显示', (tester) async {
     await _pumpPage(tester, const Size(1440, 900));
 
-    expect(find.text('EPUB 文件'), findsNothing,
-        reason: '未登录时不应显示输入区');
-    expect(find.textContaining('搜索并绑定书目后'), findsNothing,
-        reason: '未登录时不应显示输出占位');
+    expect(find.text('EPUB 文件'), findsNothing, reason: '未登录时不应显示输入区');
+    expect(
+      find.textContaining('搜索并绑定书目后'),
+      findsNothing,
+      reason: '未登录时不应显示输出占位',
+    );
   });
 }

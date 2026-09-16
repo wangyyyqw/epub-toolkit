@@ -3,11 +3,15 @@ name: Release Builds
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   FLUTTER_CHANNEL: stable
@@ -17,6 +21,9 @@ env:
   INNO_CHINESE_SIMPLIFIED_SHA256: 6753be2c5e2740d859900fd902824db2ec568da5c5b52486524c9762d778b0b0
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   version:
     name: Compute version
     runs-on: ubuntu-latest
@@ -28,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Compute semantic version
         id: version
@@ -37,6 +46,18 @@ jobs:
           app_version="${version_value%%+*}"
           build_number="${GITHUB_RUN_NUMBER}"
           release_tag="v${app_version}"
+          if [[ ! "$version_value" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+            echo "::error::pubspec.yaml must contain a version and numeric build number."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/tags/$release_tag" ]]; then
+            echo "::error::Run releases from the tag $release_tag, not a branch."
+            exit 1
+          fi
+          if [[ "$(git rev-parse "$release_tag^{commit}")" != "$GITHUB_SHA" ]]; then
+            echo "::error::Release tag does not point to this build's source commit."
+            exit 1
+          fi
           echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
           echo "build_number=${build_number}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
@@ -46,9 +67,9 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
-    needs: [version]
+    needs: [version, checks]
     # 签名凭据统一映射到 job 环境变量（secrets 不可直接用于 if 条件）。
-    # 未配置 Secrets 时各变量为空字符串，Gradle 自动回退 debug 签名。
+    # 正式发布必须配置完整签名，不能回退到 debug 签名。
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -79,11 +100,14 @@ jobs:
         run: flutter pub get
 
       - name: Import Android signing keystore
-        # 从仓库 Secrets 解密 keystore；未配置时跳过，自动回退 debug 签名
-        # （fork / PR / 未配置 Secrets 的仓库仍可正常构建）。
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: bash
         run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing signing secret: $name"
+              exit 1
+            fi
+          done
           mkdir -p "$GITHUB_WORKSPACE/android/app"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
           test -s "$GITHUB_WORKSPACE/android/app/keystore-release.jks"
@@ -112,7 +136,7 @@ jobs:
   macos:
     name: macOS App
     runs-on: macos-latest
-    needs: [version]
+    needs: [version, checks]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -161,7 +185,7 @@ jobs:
   windows:
     name: Windows App
     runs-on: windows-latest
-    needs: [version]
+    needs: [version, checks]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -283,7 +307,7 @@ jobs:
   ios:
     name: iOS App
     runs-on: macos-latest
-    needs: [version]
+    needs: [version, checks]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -320,6 +344,8 @@ jobs:
   release:
     name: GitHub Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs:
       - version
       - android
@@ -327,6 +353,18 @@ jobs:
       - windows
       - ios
     steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify remote tag still matches the built commit
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.release_tag }}
+        run: |
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -341,6 +379,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           name: EPUB 工具箱 ${{ needs.version.outputs.app_version }}
           body: |
             自动构建版本：${{ needs.version.outputs.app_version }}+${{ needs.version.outputs.build_number }}

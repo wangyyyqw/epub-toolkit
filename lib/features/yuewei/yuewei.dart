@@ -107,7 +107,7 @@ class _YueweiConverter extends DuokanConverterBase {
     final noteNumber = i + 1;
     final noteId = 'note$noteNumber';
     final noteRefId = 'note_ref$noteNumber';
-    final noteContent = escapeHtml(match.group(1)!);
+    final noteContent = match.group(1)!;
 
     final replacement =
         '      <sup>\n'
@@ -191,9 +191,7 @@ List<FootnoteInfo> _collectExistingDuokanFootnotes(String text) {
       );
       if (asidePattern.hasMatch(text)) continue;
 
-      final noteContent = escapeHtml(
-        _extractZyFootnoteContent(text, match.start),
-      );
+      final noteContent = _extractZyFootnoteContent(text, match.start);
       seenIds.add(noteId);
       footnotes.add(
         FootnoteInfo(id: noteId, refId: noteRefId, content: noteContent),

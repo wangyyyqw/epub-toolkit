@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -73,36 +72,69 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
     }
   }
 
-  /// 规范化输出路径，确保以 .txt 结尾（修复历史 bug：xxx.txt.epub）
+  /// 规范化输出路径，确保以单一 .txt 结尾（修复历史 bug：xxx.txt.epub）
   String _normalizeTxtPath(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.txt')) return path;
-    if (lower.endsWith('.txt.epub')) {
-      return path.substring(0, path.length - '.epub'.length);
+    var result = path.trim();
+    while (true) {
+      final lower = result.toLowerCase();
+      if (lower.endsWith('.epub')) {
+        result = result.substring(0, result.length - '.epub'.length);
+        continue;
+      }
+      if (lower.endsWith('.txt')) {
+        result = result.substring(0, result.length - '.txt'.length);
+        continue;
+      }
+      break;
     }
-    return '$path.txt';
+    result = result.replaceAll(RegExp(r'[.\s]+$'), '');
+    return '$result.txt';
   }
 
   /// 根据输入文件名自动生成输出路径
   Future<void> _autoFillOutputPath() async {
     if (_epubPath.isEmpty) return;
     final filename = _defaultOutputFilename(_epubPath);
-    _outputPath = await FileService.getDefaultOutputPathForInput(
+    var path = await FileService.getDefaultOutputPathForInput(
       inputPath: _epubPath,
       filename: filename,
     );
+    _outputPath = _normalizeTxtPath(path);
   }
 
-  /// 默认输出文件名：${base}.txt
+  /// 默认输出文件名：${base}.txt（剥离所有 .epub/.txt 后缀，避免 .txt.epub）
   String _defaultOutputFilename(String inputPath) {
-    final base = p.basenameWithoutExtension(inputPath);
+    var base = p.basename(inputPath);
+    // 循环剥离所有已知扩展，避免 input 为 .txt.epub 时残留 .txt
+    while (true) {
+      final lower = base.toLowerCase();
+      if (lower.endsWith('.epub')) {
+        base = base.substring(0, base.length - '.epub'.length);
+        continue;
+      }
+      if (lower.endsWith('.txt')) {
+        base = base.substring(0, base.length - '.txt'.length);
+        continue;
+      }
+      break;
+    }
+    // 清理因多次转换产生的 _output/_output_1 等后缀，保持原书名干净
+    base = base.replaceAll(
+      RegExp(r'(_output)+(_\d+)?$', caseSensitive: false),
+      '',
+    );
+    base = base.replaceAll(RegExp(r'[.\s]+$'), '');
+    if (base.isEmpty) base = 'output';
     return '$base.txt';
   }
 
-  /// 执行前确保输出路径已填充
+  /// 执行前确保输出路径已填充并规范化
   Future<void> _ensureOutputPath() async {
     if (_outputPath.isEmpty && _epubPath.isNotEmpty) {
       await _autoFillOutputPath();
+    } else if (_outputPath.isNotEmpty) {
+      // 已有路径也需规范化，避免历史脏数据 .txt.epub
+      _outputPath = _normalizeTxtPath(_outputPath);
     }
   }
 
@@ -126,6 +158,9 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
 
   /// 具体操作逻辑（提取文本并写入文件，同时展示文本结果）
   Future<void> _executeOperation() async {
+    // 确保输出路径为单一 .txt，避免 .txt.epub
+    _outputPath = _normalizeTxtPath(_outputPath);
+    if (mounted) setState(() {});
     _logAppend('PROGRESS: 输出文件：$_outputPath');
     _logAppend('正在提取文本...');
     // EpubToTxtOperation.execute 既写入 outputPath，又返回提取的文本
@@ -165,7 +200,7 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
     }
   }
 
-    /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
+  /// 把生成的 EPUB 复制到公共 Download 目录（仅 Android，大文件流式复制）
   Future<void> _copyToPublicDownload() async {
     if (!mounted) return;
     _outputPath = await FileService.copyGeneratedFileToPublicDownload(
@@ -209,7 +244,11 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        buildSectionLabel(context, Icons.folder_open, 'EPUB 文件'),
+                        buildSectionLabel(
+                          context,
+                          Icons.folder_open,
+                          'EPUB 文件',
+                        ),
                         const SizedBox(height: 8),
                         buildFilePickerRow(
                           context,
@@ -226,7 +265,11 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        buildSectionLabel(context, Icons.output_outlined, '输出文件'),
+                        buildSectionLabel(
+                          context,
+                          Icons.output_outlined,
+                          '输出文件',
+                        ),
                         const SizedBox(height: 8),
                         buildFilePickerRow(
                           context,
@@ -236,7 +279,9 @@ class _EpubToTxtPageState extends State<EpubToTxtPage> {
                           hint: '点击选择输出位置（默认自动填充）',
                           onTap: _loading
                               ? () {}
-                              : () => _pickOutput(_defaultOutputFilename(_epubPath)),
+                              : () => _pickOutput(
+                                  _defaultOutputFilename(_epubPath),
+                                ),
                           isComplete: _outputPath.isNotEmpty,
                         ),
                       ],

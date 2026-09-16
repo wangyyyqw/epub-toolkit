@@ -139,21 +139,30 @@ class EpubToTxtOperation {
     return text;
   }
 
-  /// 规范化 TXT 输出路径，确保扩展名为 .txt。
+  /// 规范化 TXT 输出路径，确保扩展名为单一 .txt。
   ///
   /// 修复历史 bug：部分平台保存对话框或旧逻辑把输出写成了
-  /// `xxx.txt.epub`。这里统一处理：
-  /// - `xxx.txt.epub` → `xxx.txt`
-  /// - 无 .txt 扩展名 → 追加 `.txt`
+  /// `xxx.txt.epub` 或重复 `_output`。这里统一处理：
+  /// 循环剥离所有尾缀 `.epub`/`.txt`（大小写不敏感），再单一追加 `.txt`。
   static String _normalizeTxtOutputPath(String path) {
-    var result = path;
-    final lower = result.toLowerCase();
-    if (lower.endsWith('.txt.epub')) {
-      result = result.substring(0, result.length - '.epub'.length);
-    } else if (!lower.endsWith('.txt')) {
-      result = '$result.txt';
+    var result = path.trim();
+    // 循环剥离尾缀，避免 .txt.epub / .epub.txt / 重复 .txt 等
+    while (true) {
+      final lower = result.toLowerCase();
+      if (lower.endsWith('.epub')) {
+        result = result.substring(0, result.length - '.epub'.length);
+        continue;
+      }
+      if (lower.endsWith('.txt')) {
+        // 暂剥离，循环外统一加回单一 .txt
+        result = result.substring(0, result.length - '.txt'.length);
+        continue;
+      }
+      break;
     }
-    return result;
+    // 去除可能残留的点或空格
+    result = result.replaceAll(RegExp(r'[.\s]+$'), '');
+    return '$result.txt';
   }
 
   /// 将 HTML 内容转换为纯文本
@@ -188,14 +197,34 @@ class EpubToTxtOperation {
     // 移除所有剩余 HTML 标签
     text = text.replaceAll(RegExp(r'<[^>]*>'), '');
 
-    // 解码常见 HTML 实体（注意 &amp; 必须最后解码，避免误伤其他实体）
-    text = text.replaceAll('&nbsp;', ' ');
-    text = text.replaceAll('&lt;', '<');
-    text = text.replaceAll('&gt;', '>');
-    text = text.replaceAll('&quot;', '"');
-    text = text.replaceAll('&#39;', "'");
-    text = text.replaceAll('&apos;', "'");
-    text = text.replaceAll('&amp;', '&');
+    // Decode once, including decimal/hex references used by real XHTML books.
+    text = text.replaceAllMapped(
+      RegExp(r'&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|nbsp|lt|gt|quot|apos|amp);'),
+      (match) {
+        final entity = match.group(1)!;
+        const named = {
+          'nbsp': ' ',
+          'lt': '<',
+          'gt': '>',
+          'quot': '"',
+          'apos': "'",
+          'amp': '&',
+        };
+        if (!entity.startsWith('#')) return named[entity]!;
+        final hex = entity.length > 1 && entity[1].toLowerCase() == 'x';
+        final code = int.tryParse(
+          entity.substring(hex ? 2 : 1),
+          radix: hex ? 16 : 10,
+        );
+        if (code == null ||
+            code <= 0 ||
+            code > 0x10ffff ||
+            (code >= 0xd800 && code <= 0xdfff)) {
+          return match.group(0)!;
+        }
+        return code == 160 ? ' ' : String.fromCharCode(code);
+      },
+    );
 
     // 合并连续空格为单个空格（保留换行）
     text = text.replaceAll(RegExp(r'[^\S\n]+'), ' ');

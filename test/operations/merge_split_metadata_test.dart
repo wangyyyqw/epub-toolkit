@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:epub_gadget/features/encrypt_font/encrypt_font.dart';
 import 'package:epub_gadget/features/merge/merge.dart';
 import 'package:epub_gadget/features/split/split.dart';
+import 'package:epub_gadget/features/epub_tools/epub_background_operation.dart';
 import 'package:epub_gadget/core/epub_image_helper.dart';
 
 /// 构造一个最小但可用的 EPUB 用于测试
@@ -269,20 +270,24 @@ void main() {
       );
       await File(epubPath).writeAsBytes(ZipEncoder().encode(epub)!);
 
+      await Directory(outputDir).create();
+      final stale = await File(
+        p.join(outputDir, 'book_99.epub'),
+      ).writeAsString('keep');
+      final outputPaths = <String>[];
       final log = await SplitOperation.execute(
         epubPath: epubPath,
         outputDir: outputDir,
         splitPoints: [2, 4], // 拆 3 段
+        onOutput: outputPaths.add,
       );
       // 验证 log 中报告了拆分段数
       expect(log, contains('3'));
 
-      // 找到输出目录中所有 .epub 文件
-      final files = (await Directory(outputDir).list().toList())
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.epub'))
-          .toList();
+      final files = outputPaths.map(File.new).toList();
       expect(files.length, 3, reason: '应该拆分出 3 个分卷');
+      expect(outputPaths, isNot(contains(stale.path)));
+      expect(await stale.readAsString(), 'keep');
 
       // 解析每个分卷的 OPF，提取 dc:identifier
       final identifiers = <String>[];
@@ -320,6 +325,21 @@ void main() {
         expect(title, contains('三国演义'), reason: '分卷标题应包含原书名');
         expect(title, contains('/'), reason: '分卷标题应包含分卷序号（如 1/3）');
       }
+
+      final result = await runEpubBackgroundOperation<Map<String, dynamic>>(
+        EpubBackgroundOperation.split,
+        {
+          'epubPath': epubPath,
+          'outputDir': outputDir,
+          'splitPoints': [3],
+        },
+      );
+      expect(result['log'], contains('拆分完成: 2 个 EPUB'));
+      expect(result['outputPaths'], [
+        p.join(outputDir, 'book_01.epub'),
+        p.join(outputDir, 'book_02.epub'),
+      ]);
+      expect(await stale.readAsString(), 'keep');
     });
   });
 

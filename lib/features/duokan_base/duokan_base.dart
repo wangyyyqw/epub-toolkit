@@ -106,7 +106,7 @@ String buildFootnoteSection(List<FootnoteInfo> footnotes) {
     parts.writeln(
       '   <ol class="duokan-footnote-content" style="list-style:none">',
     );
-    parts.writeln('   <li class="duokan-footnote-item" id="${note.id}">');
+    parts.writeln('   <li class="duokan-footnote-item">');
     parts.writeln('   <p><a href="#${note.refId}">${note.content}</a></p>');
     parts.writeln('   </li>');
     parts.writeln('   </ol>');

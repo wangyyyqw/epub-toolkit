@@ -29,8 +29,14 @@ class ManifestItem {
 class EncryptDecryptBase {
   EncryptDecryptBase._();
 
+  static String _decodeHref(String href) => href.replaceAllMapped(
+    RegExp(r'(?:%[0-9a-fA-F]{2})+'),
+    (match) => Uri.decodeComponent(match.group(0)!),
+  );
+
   /// Windows 非法文件名字符 + Flutter 加密混淆字符（用于检测是否已加密）
-  static final _illegalChars = RegExp(r'[\\/:*?"<>|*]');
+  /// 字符类中 `:` 在 Windows 非法但 EPUB href 允许 `:`，检测时以 `*` `:` 为主
+  static final _illegalChars = RegExp(r'[\\/*?"<>|:]');
 
   /// 掌阅 DRM 标识
   static const zhangyueDrm = 'zhangyue_drm';
@@ -50,7 +56,7 @@ class EncryptDecryptBase {
       final document = xml.XmlDocument.parse(opfContent);
       for (final item in document.findAllElements('item', namespace: '*')) {
         final id = item.getAttribute('id') ?? '';
-        final href = item.getAttribute('href') ?? '';
+        final href = _decodeHref(item.getAttribute('href') ?? '');
         final mediaType = item.getAttribute('media-type') ?? '';
         if (id.isNotEmpty && href.isNotEmpty) {
           items.add(ManifestItem(id, href, mediaType));
@@ -329,7 +335,7 @@ class EncryptDecryptBase {
 
         // 取 basename（hrefMap key 是 basename，匹配时也用 basename 避免误伤）
         final oldBase = _basename(oldName);
-        final newBase = _basename(newName);
+        final newBase = Uri.encodeComponent(_basename(newName));
         if (oldBase.isEmpty || newBase.isEmpty) continue;
         if (oldBase == newBase) continue; // 无变化
 
@@ -340,23 +346,23 @@ class EncryptDecryptBase {
         final patterns = <RegExp>[
           // href="...old" / xlink:href="...old" / src="...old"
           RegExp(
-            '(\\b(?:href|xlink:href|src)\\s*=\\s*["\'])([^"\']*?)'
+            '(\\b(?:href|xlink:href|src)\\s*=\\s*["\'])([^"\']*/)?'
             '$oldBaseEscaped'
-            '(["\'])',
+            '((?:[?#][^"\']*)?["\'])',
             caseSensitive: false,
           ),
           // CSS url(...old...) — 形式 url("...old") 或 url('...old') 或 url(...old)
           RegExp(
-            '(url\\s*\\(\\s*["\']?)([^"\')\\s]*?)'
+            '(url\\s*\\(\\s*["\']?)([^"\')\\s]*/)?'
             '$oldBaseEscaped'
-            '(["\']?\\s*\\))',
+            '((?:[?#][^"\')\\s]*)?["\']?\\s*\\))',
             caseSensitive: false,
           ),
           // CSS @import "..." 或 @import url(...)
           RegExp(
-            '(@import\\s+["\'])([^"\']*?)'
+            '(@import\\s+["\'])([^"\']*/)?'
             '$oldBaseEscaped'
-            '(["\'])',
+            '((?:[?#][^"\']*)?["\'])',
             caseSensitive: false,
           ),
         ];
@@ -378,28 +384,28 @@ class EncryptDecryptBase {
         // URL 编码的情况（对每个 URL 编码变体单独处理）
         final encoded = Uri.encodeComponent(oldBase);
         if (encoded != oldBase) {
-          final newEncoded = Uri.encodeComponent(newBase);
+          final newEncoded = newBase;
           final encodedEscaped = RegExp.escape(encoded);
           final encodedPatterns = <RegExp>[
             // href="...old" / xlink:href="...old" / src="...old" (URL 编码)
             RegExp(
-              '(\\b(?:href|xlink:href|src)\\s*=\\s*["\'])([^"\']*?)'
+              '(\\b(?:href|xlink:href|src)\\s*=\\s*["\'])([^"\']*/)?'
               '$encodedEscaped'
-              '(["\'])',
+              '((?:[?#][^"\']*)?["\'])',
               caseSensitive: false,
             ),
             // CSS url(...old...) (URL 编码)
             RegExp(
-              '(url\\s*\\(\\s*["\']?)([^"\')\\s]*?)'
+              '(url\\s*\\(\\s*["\']?)([^"\')\\s]*/)?'
               '$encodedEscaped'
-              '(["\']?\\s*\\))',
+              '((?:[?#][^"\')\\s]*)?["\']?\\s*\\))',
               caseSensitive: false,
             ),
             // CSS @import "..." 或 @import url(...) (URL 编码)
             RegExp(
-              '(@import\\s+["\'])([^"\']*?)'
+              '(@import\\s+["\'])([^"\']*/)?'
               '$encodedEscaped'
-              '(["\'])',
+              '((?:[?#][^"\']*)?["\'])',
               caseSensitive: false,
             ),
           ];
@@ -456,11 +462,7 @@ class EncryptDecryptBase {
     for (final file in updated.files) {
       try {
         original.addFile(
-          ArchiveFile(
-            file.name,
-            file.size,
-            file.content as List<int>,
-          ),
+          ArchiveFile(file.name, file.size, file.content as List<int>),
         );
       } catch (_) {
         // ignore: 单文件复制失败不影响整体
@@ -486,16 +488,18 @@ class EncryptDecryptBase {
       final document = xml.XmlDocument.parse(opfContent);
 
       for (final item in document.findAllElements('item', namespace: '*')) {
-        final href = item.getAttribute('href');
-        if (href == null) continue;
+        final rawHref = item.getAttribute('href');
+        if (rawHref == null) continue;
+        final href = _decodeHref(rawHref);
 
         final basename = p.basename(href);
         final newBasename = hrefMap[basename];
         if (newBasename != null) {
           final dir = p.dirname(href);
+          final encodedBasename = Uri.encodeComponent(newBasename);
           final newHref = dir != '.' && dir.isNotEmpty
-              ? '$dir/$newBasename'
-              : newBasename;
+              ? '$dir/$encodedBasename'
+              : encodedBasename;
           item.setAttribute('href', newHref);
         }
       }

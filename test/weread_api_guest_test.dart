@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:epub_gadget/features/weread_thoughts/weread_api.dart';
 import 'package:epub_gadget/features/weread_thoughts/weread_guest_signature.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,12 +24,17 @@ MockClient _mockServer({bool challengeGuestLogin = false}) {
   return MockClient((request) async {
     final path = request.url.path;
     http.Response okJson(Map<String, dynamic> body, [int status = 200]) =>
-        http.Response(json.encode(body), status,
-            headers: {'content-type': 'application/json'});
+        http.Response(
+          json.encode(body),
+          status,
+          headers: {'content-type': 'application/json'},
+        );
 
     switch (path) {
       case '/feature':
-        return okJson({'feature': {'guest_token': 'gt_test_token'}});
+        return okJson({
+          'feature': {'guest_token': 'gt_test_token'},
+        });
 
       case '/guestLogin':
         final headers = request.headers;
@@ -57,7 +63,7 @@ MockClient _mockServer({bool challengeGuestLogin = false}) {
                 'title': '书名甲',
                 'author': '作者甲',
                 'intro': '简介甲',
-              }
+              },
             },
           ],
         });
@@ -77,11 +83,7 @@ MockClient _mockServer({bool challengeGuestLogin = false}) {
       case '/book/bestbookmarks':
         return okJson({
           'updated': [
-            {
-              'chapterUid': '1',
-              'range': '1-25',
-              'markText': '第一段引文原文内容',
-            },
+            {'chapterUid': '1', 'range': '1-25', 'markText': '第一段引文原文内容'},
           ],
         });
 
@@ -140,8 +142,10 @@ MockClient _mockServer({bool challengeGuestLogin = false}) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   group('游客登录', () {
@@ -195,7 +199,9 @@ void main() {
           );
         }
         return http.Response(
-          json.encode({'feature': {'guest_token': 'gt_sig'}}),
+          json.encode({
+            'feature': {'guest_token': 'gt_sig'},
+          }),
           200,
         );
       });
@@ -286,6 +292,10 @@ void main() {
 
       expect(api.isGuestMode, isFalse);
       expect(api.isLoggedIn, isFalse);
+      expect(await const FlutterSecureStorage().readAll(), isEmpty);
+      final restored = WereadApi(client: _mockServer());
+      await restored.load();
+      expect(restored.isLoggedIn, isFalse);
     });
 
     test('load 恢复游客登录态', () async {
@@ -304,6 +314,37 @@ void main() {
       expect(api.isGuestMode, isTrue);
       expect(api.isLoggedIn, isTrue);
       expect(api.userName, '游客账号');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('weread_guest_access_token'), isNull);
+      expect(
+        await const FlutterSecureStorage().read(
+          key: 'secure:weread_guest_access_token',
+        ),
+        'tok_restored',
+      );
     });
+
+    test(
+      'API keys and cookies migrate without guessing Base64 encoding',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'weread_api_key': 'YWJj',
+          'weread_cookies': '{"wr_skey":"session","wr_vid":"123"}',
+        });
+        final api = WereadApi(client: _mockServer());
+        await api.load();
+        expect(api.isLoggedIn, isTrue);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('weread_api_key'), isNull);
+        expect(prefs.getString('weread_cookies'), isNull);
+        const storage = FlutterSecureStorage();
+        expect(await storage.read(key: 'secure:weread_api_key'), 'YWJj');
+        await api.saveApiKey('updated');
+        expect(await storage.read(key: 'secure:weread_api_key'), 'updated');
+        expect(prefs.getString('weread_api_key'), isNull);
+        await api.clear();
+        expect(await storage.readAll(), isEmpty);
+      },
+    );
   });
 }
