@@ -5,7 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
-import '../img_to_webp/epub_image_helper.dart';
+import '../../core/epub_image_helper.dart';
 
 /// EPUB 图片隐形水印操作。
 ///

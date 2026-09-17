@@ -85,6 +85,8 @@ void main() {
     expect(find.text('WiFi 传书'), findsOneWidget);
 
     // 点击子项导航 → 应自动收起
+    await tester.ensureVisible(find.text('WiFi 传书'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('WiFi 传书'));
     // 固定 pump：目标页初始化进度圈在测试环境不停止，不能用 pumpAndSettle
     await tester.pump();

@@ -1,9 +1,11 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/dashboard/dashboard_page.dart';
+import '../features/batch_workflow/batch_workflow_page.dart';
 import '../features/txt2epub/txt2epub_page.dart';
 import '../features/text_diff/text_diff_page.dart';
 import '../features/epub_tools/tools/replace_cover_page.dart';
+import '../features/epub_tools/tools/epub_health_page.dart';
 import '../features/epub_tools/tools/reformat_page.dart';
 import '../features/epub_tools/tools/convert_version_page.dart';
 import '../features/epub_tools/tools/epub_to_txt_page.dart';
@@ -30,6 +32,7 @@ import '../features/epub_tools/tools/list_split_targets_page.dart';
 import '../features/epub_tools/tools/font_subset_page.dart';
 import '../features/epub_tools/tools/weread_thoughts_page.dart';
 import '../features/metadata/metadata_page.dart';
+import '../features/navigation_editor/navigation_editor_page.dart';
 import '../features/send_to_kindle/send_to_kindle_page.dart';
 import '../features/send_to_kindle/web_send_page.dart';
 import '../features/tutorial/tutorial_page.dart';
@@ -47,6 +50,10 @@ class AppRouter {
         builder: (context, state, child) => AppScaffold(child: child),
         routes: [
           GoRoute(
+            path: '/batch-workflow',
+            builder: (context, state) => const BatchWorkflowPage(),
+          ),
+          GoRoute(
             path: '/dashboard',
             name: 'dashboard',
             builder: (context, state) => const DashboardPage(),
@@ -57,6 +64,14 @@ class AppRouter {
             builder: (context, state) => const Txt2EpubPage(),
           ),
           // EPUB 工具子页面（通过侧边栏分类直接访问）
+          GoRoute(
+            path: '/epub-tool/health',
+            builder: (context, state) => const EpubHealthPage(),
+          ),
+          GoRoute(
+            path: '/epub-tool/navigation-editor',
+            builder: (context, state) => const NavigationEditorPage(),
+          ),
           GoRoute(
             path: '/epub-tool/replace-cover',
             builder: (context, state) => const ReplaceCoverPage(),

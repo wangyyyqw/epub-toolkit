@@ -33,9 +33,19 @@ Kindle 邮件发送功能可能还没有完全写好，我手头没有 Kindle �
 - 编辑元数据并查看完整 OPF 源码
 - 替换封面图片
 - 重新格式化 EPUB 内部结构
+- EPUB 体检与选择性修复：检查 ZIP、`mimetype`、OPF、manifest、spine、NAV/NCX、资源与锚点、重复 ID、媒体类型、封面和字体引用，按错误/警告/建议分类展示并导出 HTML/JSON 报告
+- 可视化目录与导航编辑：树状调整标题、链接、层级和顺序，可从正文 H1-H6 重建目录，并同步维护 EPUB 3 NAV、EPUB 2 NCX、landmarks 与 `page-list`
 - 合并多个 EPUB
 - 按章节拆分 EPUB
 - 列出可拆分章节目标
+
+### 批量工作流
+
+- 一次导入多个 EPUB 或递归扫描整个目录
+- 组合、排序、启停处理步骤，并保存可复用的自定义配方
+- 内置“标准优化”“批量体检”“兼容性整理”配方
+- 支持 1-4 个任务并发、暂停、完成当前步骤后取消、失败重试和跳过已有输出
+- 每本书可导出体检报告，整个批次导出 JSON/HTML 汇总
 
 ### 图片处理
 
@@ -85,6 +95,16 @@ flutter run
 Python、HarfBuzz 命令行或 Homebrew。构建机需要对应平台的 C++ 工具链。
 `third_party/epubx` 保存中文、百分号编码和嵌套目录的路径兼容修复；
 两个本地依赖的来源、许可证和改动均记录在各自的 `LOCAL_CHANGES.md`。
+
+EPUB 体检的内置快速检查可在所有支持平台运行。macOS、Windows、Linux
+还可以在“EPUB 体检与修复”页面运行可选的 EPUBCheck 完整检查，本项目不捆绑
+EPUBCheck。应用按以下顺序寻找可执行入口：
+
+1. `EPUBCHECK_JAR` 指向 EPUBCheck JAR，并确保 `java` 在 `PATH` 中。
+2. `EPUBCHECK_COMMAND` 指向可直接执行的 EPUBCheck 命令。
+3. 在 `PATH` 中寻找名为 `epubcheck` 的命令。
+
+未安装 EPUBCheck 不影响内置体检、选择性修复或其它功能。
 
 ## 测试
 

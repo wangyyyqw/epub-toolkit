@@ -28,6 +28,7 @@ class NavItem {
 /// 侧边栏完整导航配置
 final List<NavItem> _navGroups = [
   const NavItem(label: '仪表盘', icon: TDIcons.dashboard, route: '/dashboard'),
+  const NavItem(label: '批量任务', icon: TDIcons.task_1, route: '/batch-workflow'),
   NavItem(
     label: '文件转换',
     icon: TDIcons.swap,
@@ -58,6 +59,16 @@ final List<NavItem> _navGroups = [
     label: '格式处理',
     icon: TDIcons.article,
     children: [
+      const NavItem(
+        label: 'EPUB 体检与修复',
+        icon: TDIcons.check_circle,
+        route: '/epub-tool/health',
+      ),
+      const NavItem(
+        label: '目录与导航编辑',
+        icon: TDIcons.tree_round_dot,
+        route: '/epub-tool/navigation-editor',
+      ),
       const NavItem(label: '元数据编辑', icon: TDIcons.edit_1, route: '/metadata'),
       const NavItem(
         label: 'EPUB → TXT',

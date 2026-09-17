@@ -169,17 +169,9 @@ void main() {
     final dir = await Directory('$output/33_offline_weread').create();
     final destination = '${dir.path}/out.epub';
     final inputZip = ZipDecoder().decodeBytes(await File(input).readAsBytes());
-    final chapter = inputZip.files.firstWhere(
-      (f) => f.name.contains('chapter') && f.name.endsWith('.xhtml'),
-    );
-    final chapterDoc = XmlDocument.parse(
-      utf8.decode(chapter.content as List<int>),
-    );
-    final heading = chapterDoc.findAllElements('h2').first.innerText;
-    final quote = chapterDoc
-        .findAllElements('p')
-        .map((p) => p.innerText.trim())
-        .firstWhere((p) => p.length > 60);
+    final target = _findReviewTarget(inputZip);
+    final heading = target.heading;
+    final quote = target.quote;
     final log = await WereadThoughtOperation.execute(
       epubPath: input,
       outputPath: destination,
@@ -339,4 +331,38 @@ void main() {
       await File('${dir.path}/result.log').writeAsString(log);
     },
   );
+}
+
+({String heading, String quote}) _findReviewTarget(Archive archive) {
+  for (final file in archive.files.where(
+    (file) => file.isFile && file.name.toLowerCase().endsWith('.xhtml'),
+  )) {
+    try {
+      final document = XmlDocument.parse(
+        utf8.decode(file.content as List<int>),
+      );
+      final heading = document.descendants
+          .whereType<XmlElement>()
+          .where(
+            (element) => RegExp(
+              r'^h[1-6]$',
+              caseSensitive: false,
+            ).hasMatch(element.name.local),
+          )
+          .map((element) => element.innerText.trim())
+          .where((text) => text.isNotEmpty)
+          .firstOrNull;
+      final quote = document
+          .findAllElements('p')
+          .map((element) => element.innerText.trim())
+          .where((text) => text.length > 60)
+          .firstOrNull;
+      if (heading != null && quote != null) {
+        return (heading: heading, quote: quote);
+      }
+    } catch (_) {
+      // Continue until a parseable content document with usable text is found.
+    }
+  }
+  throw StateError('真实 EPUB 中找不到可用于离线想法注入的正文段落');
 }

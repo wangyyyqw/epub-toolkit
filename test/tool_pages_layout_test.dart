@@ -1,4 +1,5 @@
 import 'package:epub_gadget/core/theme.dart';
+import 'package:epub_gadget/features/batch_workflow/batch_workflow_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/ad_clean_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/comment_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/convert_version_page.dart';
@@ -7,6 +8,7 @@ import 'package:epub_gadget/features/epub_tools/tools/download_images_page.dart'
 import 'package:epub_gadget/features/epub_tools/tools/encrypt_font_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/encrypt_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/epub_to_txt_page.dart';
+import 'package:epub_gadget/features/epub_tools/tools/epub_health_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/font_subset_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/footnote_to_comment_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/img_compress_page.dart';
@@ -24,6 +26,7 @@ import 'package:epub_gadget/features/epub_tools/tools/webp_to_img_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/yuewei_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/zhangyue_page.dart';
 import 'package:epub_gadget/features/metadata/metadata_page.dart';
+import 'package:epub_gadget/features/navigation_editor/navigation_editor_page.dart';
 import 'package:epub_gadget/features/send_to_kindle/send_to_kindle_page.dart';
 import 'package:epub_gadget/features/text_diff/text_diff_page.dart';
 import 'package:epub_gadget/features/epub_tools/tools/weread_thoughts_page.dart';
@@ -34,6 +37,9 @@ import 'package:provider/provider.dart';
 
 void main() {
   final pages = <(String, Widget)>[
+    ('批量任务', const BatchWorkflowPage()),
+    ('EPUB 体检与修复', const EpubHealthPage()),
+    ('目录与导航编辑', const NavigationEditorPage()),
     ('替换封面', const ReplaceCoverPage()),
     ('格式重构', const ReformatPage()),
     ('版本转换', const ConvertVersionPage()),

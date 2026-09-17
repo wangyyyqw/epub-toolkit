@@ -1,43 +1,108 @@
-// EPUB 操作的稳定 API 契约
-//
-// 所有具体功能模块（reformat、s2t、img_compress 等）必须实现 EpubOperation 抽象类。
-// 设计目标：模块间完全解耦——任何模块被修改后，理论上其他模块的 import 列表不会断裂，
-// 只要模块仍实现 EpubOperation 接口，UI 就能继续工作。
-//
-// 解耦原则：
-// 1. 模块目录独立（lib/features/<feature>/），模块间不互相 import
-// 2. 工具副本内化（epub_image_helper 等共享代码按需复制到各模块内）
-// 3. 唯一的"框架代码"放 lib/core/，本文件属于这一层
+import 'dart:async';
 
-/// EPUB 操作抽象基类
-///
-/// 每个具体功能（reformat、s2t、img_compress 等）都必须继承此抽象类。
-/// 这种"反插件"设计保证：所有功能都通过同一个入口被 UI 调用，
-/// 模块间没有直接的类型依赖（除本接口）。
-abstract class EpubOperation {
-  /// 全局唯一 ID（用于日志、注册表、用户偏好等）
-  /// 建议格式：`<category>.<action>`，如 `text.reformat`
+enum EpubOperationMode { transform, inspect, multiInput }
+
+typedef EpubOperationExecutor =
+    FutureOr<Object?> Function(Map<String, Object?> arguments);
+
+abstract interface class EpubOperation {
   String get id;
-
-  /// 用户可见的名称（中文）
   String get displayName;
-
-  /// 用户可见的描述（中文，一句话）
   String get description;
-
-  /// 输出文件扩展名（如 'epub'、'txt'、'cover.jpg'）
-  /// 多个用 '|' 分隔（如 'jpg|png|webp'）
+  String get category;
   String get outputExtension;
+  EpubOperationMode get mode;
+  bool get supportsBatch;
+  Map<String, Object?> get defaultArguments;
+  List<String> get passThroughMessages;
 
-  /// 入口：执行操作
-  ///
-  /// [epubPath] 输入 EPUB 路径（可为空，对 view_opf 等只读操作）
-  /// [outputPath] 输出路径（UI 端保证非空）
-  /// [onProgress] 进度回调（0-100）
-  /// 返回用户可见的日志字符串（含操作过程、错误提示）
-  Future<String> execute({
-    required String epubPath,
-    required String outputPath,
-    void Function(int progress)? onProgress,
+  Future<Object?> execute(Map<String, Object?> arguments);
+}
+
+class RegisteredEpubOperation implements EpubOperation {
+  @override
+  final String id;
+  @override
+  final String displayName;
+  @override
+  final String description;
+  @override
+  final String category;
+  @override
+  final String outputExtension;
+  @override
+  final EpubOperationMode mode;
+  @override
+  final bool supportsBatch;
+  @override
+  final Map<String, Object?> defaultArguments;
+  @override
+  final List<String> passThroughMessages;
+  final EpubOperationExecutor executor;
+
+  const RegisteredEpubOperation({
+    required this.id,
+    required this.displayName,
+    required this.description,
+    required this.category,
+    required this.outputExtension,
+    required this.executor,
+    this.mode = EpubOperationMode.transform,
+    this.supportsBatch = false,
+    this.defaultArguments = const {},
+    this.passThroughMessages = const [],
   });
+
+  @override
+  Future<Object?> execute(Map<String, Object?> arguments) async {
+    return executor({...defaultArguments, ...arguments});
+  }
+}
+
+class EpubOperationRegistry {
+  final Map<String, EpubOperation> _operations;
+
+  EpubOperationRegistry(Iterable<EpubOperation> operations)
+    : _operations = {
+        for (final operation in operations) operation.id: operation,
+      } {
+    if (_operations.length != operations.length) {
+      throw ArgumentError('EPUB 操作注册表存在重复 ID');
+    }
+  }
+
+  Iterable<EpubOperation> get operations => _operations.values;
+
+  EpubOperation? find(String id) => _operations[id];
+
+  EpubOperation require(String id) {
+    final operation = find(id);
+    if (operation == null) {
+      throw ArgumentError.value(id, 'id', '未知 EPUB 操作');
+    }
+    return operation;
+  }
+
+  Future<Object?> execute(String id, Map<String, Object?> arguments) {
+    return require(id).execute(arguments);
+  }
+
+  List<Map<String, Object?>> describe({bool batchOnly = false}) {
+    return operations
+        .where((operation) => !batchOnly || operation.supportsBatch)
+        .map(
+          (operation) => {
+            'id': operation.id,
+            'displayName': operation.displayName,
+            'description': operation.description,
+            'category': operation.category,
+            'outputExtension': operation.outputExtension,
+            'mode': operation.mode.name,
+            'supportsBatch': operation.supportsBatch,
+            'defaultArguments': operation.defaultArguments,
+            'passThroughMessages': operation.passThroughMessages,
+          },
+        )
+        .toList(growable: false);
+  }
 }
