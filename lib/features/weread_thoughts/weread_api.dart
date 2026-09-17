@@ -2342,7 +2342,15 @@ class WereadApi {
       debugPrint('[WereadApi] 热门划线失败(段评 range 词典受限): $e');
     }
 
-    final hotReviews = <WereadReview>[];
+    final reviewsByChapter = <String, List<WereadReview>>{};
+    var totalReviews = 0;
+    void addReviews(List<WereadReview> reviews) {
+      totalReviews += reviews.length;
+      for (final review in reviews) {
+        reviewsByChapter.putIfAbsent(review.chapterUid, () => []).add(review);
+      }
+    }
+
     final chapterReviewsByChapter = <String, List<WereadReview>>{};
 
     // 3. 逐章:按热门划线 range 拉公开段评 + 章评
@@ -2374,7 +2382,7 @@ class WereadApi {
             );
             if (batchReviews.isNotEmpty) {
               reviewsFetched = true;
-              hotReviews.addAll(batchReviews);
+              addReviews(batchReviews);
             }
           } catch (e) {
             debugPrint(
@@ -2392,7 +2400,7 @@ class WereadApi {
           final rvData = await _webChapterReviews(bookId, ch.chapterUid);
           final webReviews = _parseWebReviews(rvData, ch.chapterUid);
           if (webReviews.isNotEmpty) {
-            hotReviews.addAll(webReviews);
+            addReviews(webReviews);
           }
         } catch (e) {
           debugPrint(
@@ -2434,7 +2442,7 @@ class WereadApi {
       'underlines',
       chapterList.length,
       chapterList.length,
-      '热门划线 $totalUnderlines 条,公开想法 ${hotReviews.length} 条',
+      '热门划线 $totalUnderlines 条,公开想法 $totalReviews 条',
     );
 
     // 4. 整本书评(挂在书上):失败不影响主线
@@ -2451,11 +2459,6 @@ class WereadApi {
     }
 
     // 5. 合并到章节
-    final reviewsByChapter = <String, List<WereadReview>>{};
-    for (final r in hotReviews) {
-      reviewsByChapter.putIfAbsent(r.chapterUid, () => []).add(r);
-    }
-
     final result = _mergeChapters(
       chapterList,
       underlinesByChapter,

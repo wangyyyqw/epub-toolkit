@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 
 /// EPUB 打包工具。
 ///
@@ -77,6 +77,55 @@ class EpubPacker {
       throw StateError('EPUB 打包失败：ZipEncoder 返回 null');
     }
     await File(outputPath).writeAsBytes(bytes);
+  }
+
+  /// Consumes lazy entries one at a time, without retaining a second archive or
+  /// a complete ZIP buffer. The caller owns any shared input file streams.
+  static Future<void> packStreaming({
+    required Iterable<ArchiveFile> files,
+    required String outputPath,
+  }) async {
+    final destination = File(outputPath).absolute;
+    final temporary = await destination.parent.createTemp('.epub-pack-');
+    OutputFileStream? output;
+    try {
+      final staged = File('${temporary.path}/output.epub');
+      output = OutputFileStream(staged.path);
+      final encoder = ZipEncoder()..startEncode(output);
+      encoder.addFile(
+        ArchiveFile('mimetype', _mimetypeBytes.length, _mimetypeBytes)
+          ..compress = false,
+      );
+      final written = <String>{};
+      for (final file in files) {
+        if (file.name.isEmpty || !written.add(file.name)) continue;
+        if (file.name == 'mimetype') {
+          final content = utf8.decode(file.content as List<int>);
+          if (content.replaceAll('\uFEFF', '').trim() !=
+              'application/epub+zip') {
+            throw StateError('EPUB 打包失败：mimetype 内容无效');
+          }
+          continue;
+        }
+        if (_isHtmlFile(file.name)) {
+          final content = _normalizedContent(file);
+          encoder.addFile(
+            ArchiveFile(file.name, content.length, content)
+              ..compress = file.compress,
+          );
+        } else {
+          // Closing a ZIP slice also closes its shared InputFileStream.
+          encoder.addFile(file, autoClose: false);
+        }
+      }
+      encoder.endEncode();
+      output.closeSync();
+      output = null;
+      await staged.rename(destination.path);
+    } finally {
+      output?.closeSync();
+      await temporary.delete(recursive: true);
+    }
   }
 
   static List<int> _normalizedContent(ArchiveFile file) {

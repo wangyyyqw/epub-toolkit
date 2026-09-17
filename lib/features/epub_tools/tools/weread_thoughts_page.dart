@@ -42,6 +42,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 日志控制器
   final OutputLogController _logController = OutputLogController();
+  final Stopwatch _progressClock = Stopwatch()..start();
+  int _lastProgressTime = -500;
+  String _lastProgressPhase = '';
 
   /// 是否已登录
   bool _isLoggedIn = false;
@@ -539,15 +542,29 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
   /// 将进度回调写入日志
   void _logProgress(String phase, int current, int total, String text) {
     if (!mounted) return;
+    final now = _progressClock.elapsedMilliseconds;
+    if (phase == _lastProgressPhase &&
+        current != total &&
+        now - _lastProgressTime < 500) {
+      return;
+    }
+    _lastProgressTime = now;
+    _lastProgressPhase = phase;
+    if (_logController.text.length > 24000) {
+      final log = _logController.text;
+      final start = log.indexOf('\n', log.length - 18000);
+      _logController.setAll('较早的进度日志已省略\n${log.substring(start + 1)}');
+    }
     final progress = total > 0 ? '($current/$total)' : '';
     _logController.append('PROGRESS: [$phase] $text $progress');
+    if (_loading) setState(() => _progressText = '$text $progress');
   }
 
   /// 执行完整同步流程
   ///
   /// 通过 SKILL API / APP 直连拉取热门划线和公开想法,注入到 EPUB 中。
-  /// 完成后自动保存缓存,方便离线重注。
   Future<void> _execute() async {
+    if (_loading) return;
     if (!_isLoggedIn) {
       context.read<ToastProvider>().showWarning('请先登录');
       return;
@@ -560,6 +577,9 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       context.read<ToastProvider>().showWarning('请先选择 EPUB 文件');
       return;
     }
+    final book = _boundBook!;
+    final epubPath = _epubPath;
+    final outputPath = _outputPath;
 
     setState(() {
       _loading = true;
@@ -577,7 +597,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       _logController.append('PROGRESS: 拉取章节列表、热门划线与公开想法...');
 
       final fetchResult = await _api.fetchBookData(
-        _boundBook!.bookId,
+        book.bookId,
         onProgress: _logProgress,
       );
       if (!mounted) return;
@@ -611,10 +631,12 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
       }
 
       final result = await WereadThoughtOperation.execute(
-        epubPath: _epubPath,
-        outputPath: _outputPath,
+        epubPath: epubPath,
+        outputPath: outputPath,
         chapters: allChapters,
         notePngBytes: _notePngBytes!,
+        bookTitle: book.title,
+        bookReviews: fetchResult.bookReviews,
         onProgress: _logProgress,
       );
       if (!mounted) return;
@@ -634,7 +656,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         if (!mounted) return;
         await _copyToPublicDownload();
 
-        // 输出完成后清除书目绑定和搜索结果(缓存保留)
+        // 输出完成后清除书目绑定和搜索结果
         if (mounted) {
           await _unbindBook();
           setState(() {

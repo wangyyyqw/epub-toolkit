@@ -243,8 +243,9 @@ class ChapterMapper {
   static (List<MappedChapter>, List<UnmatchedChapter>) build(
     List<String> spine,
     String Function(String href) readText,
-    List<ChapterInput> chapters,
-  ) {
+    List<ChapterInput> chapters, {
+    void Function(int current, int total)? onProgress,
+  }) {
     // 预计算每章引文与规范化标题;全部标题用于识别目录页
     final quotesList = <List<String>>[];
     final titles = <String?>[];
@@ -268,9 +269,26 @@ class ChapterMapper {
 
     final scores = <int, List<({String href, int score})>>{};
     final titleHits = <int, List<String>>{};
+    final quoteOwners = <String, List<int>>{};
+    final titleOwners = <String, List<int>>{};
+    for (var ci = 0; ci < chapters.length; ci++) {
+      for (final quote in quotesList[ci]) {
+        quoteOwners.putIfAbsent(quote, () => []).add(ci);
+      }
+      final title = titles[ci];
+      if (title != null) titleOwners.putIfAbsent(title, () => []).add(ci);
+    }
+    // Index the same literal contains() patterns by a short prefix. A document
+    // is scanned once; only candidates at that position need a full comparison.
+    final prefixes = <String, List<String>>{};
+    for (final pattern in {...quoteOwners.keys, ...titleOwners.keys}) {
+      prefixes.putIfAbsent(pattern.substring(0, 6), () => []).add(pattern);
+    }
 
     // 逐 spine 文件:normalize 正文 → 统计各章引文命中 → 统计标题命中
+    var fileIndex = 0;
     for (final href in spine) {
+      onProgress?.call(++fileIndex, spine.length);
       String text;
       try {
         final html = readText(href);
@@ -282,32 +300,38 @@ class ChapterMapper {
 
       final fileTitleCis = <int>[];
       final distinctTitles = <String>{};
-
-      for (var ci = 0; ci < chapters.length; ci++) {
-        // 引文投票
-        final quotes = quotesList[ci];
-        if (quotes.isNotEmpty) {
-          var score = 0;
-          for (final quote in quotes) {
-            if (text.contains(quote)) score++;
-          }
-          if (score > 0) {
-            scores.putIfAbsent(ci, () => []).add((href: href, score: score));
+      final matchedPatterns = <String>{};
+      final fileScores = <int, int>{};
+      for (var offset = 0; offset <= text.length - 6; offset++) {
+        final candidates = prefixes[text.substring(offset, offset + 6)];
+        if (candidates == null) continue;
+        for (final pattern in candidates) {
+          if (!matchedPatterns.contains(pattern) &&
+              text.startsWith(pattern, offset)) {
+            matchedPatterns.add(pattern);
+            for (final ci in quoteOwners[pattern] ?? const <int>[]) {
+              fileScores.update(ci, (score) => score + 1, ifAbsent: () => 1);
+            }
+            final owners = titleOwners[pattern];
+            if (owners != null) {
+              fileTitleCis.addAll(owners);
+              distinctTitles.add(pattern);
+            }
           }
         }
-
-        // 标题命中
-        final title = titles[ci];
-        if (title != null && text.contains(title)) {
-          fileTitleCis.add(ci);
-          distinctTitles.add(title);
-        }
+      }
+      for (final entry in fileScores.entries) {
+        if (entry.value < min(2, quotesList[entry.key].length)) continue;
+        final hits = scores.putIfAbsent(entry.key, () => []);
+        if (hits.length < 4) hits.add((href: href, score: entry.value));
       }
 
       // 目录页检测:超过阈值的标题命中整批作废
       if (distinctTitles.length < tocThreshold) {
         for (final ci in fileTitleCis) {
-          titleHits.putIfAbsent(ci, () => []).add(href);
+          final hits = titleHits.putIfAbsent(ci, () => []);
+          // Four hits already disqualify title fallback.
+          if (hits.length < 4) hits.add(href);
         }
       }
     }
@@ -321,11 +345,9 @@ class ChapterMapper {
       final ch = chapters[ci];
 
       if (ch.underlines.isEmpty) {
-        unmatched.add(UnmatchedChapter(
-          uid: ch.uid,
-          title: ch.title,
-          reason: 'no_data',
-        ));
+        unmatched.add(
+          UnmatchedChapter(uid: ch.uid, title: ch.title, reason: 'no_data'),
+        );
         continue;
       }
 
@@ -361,22 +383,22 @@ class ChapterMapper {
         // 其余场景一律 quote_only,防止错位与跨文件重复。
         final quoteOnly = !voteSingle;
         for (final href in targets) {
-          mapped.add(MappedChapter(
-            chapterUid: ch.uid,
-            title: ch.title,
-            href: href,
-            underlines: ch.underlines,
-            reviewMap: ch.reviewMap,
-            quoteOnly: quoteOnly,
-            chapterReviews: ch.chapterReviews,
-          ));
+          mapped.add(
+            MappedChapter(
+              chapterUid: ch.uid,
+              title: ch.title,
+              href: href,
+              underlines: ch.underlines,
+              reviewMap: ch.reviewMap,
+              quoteOnly: quoteOnly,
+              chapterReviews: ch.chapterReviews,
+            ),
+          );
         }
       } else {
-        unmatched.add(UnmatchedChapter(
-          uid: ch.uid,
-          title: ch.title,
-          reason: 'no_hit',
-        ));
+        unmatched.add(
+          UnmatchedChapter(uid: ch.uid, title: ch.title, reason: 'no_hit'),
+        );
       }
     }
 

@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 
 import '../../core/epub_packer.dart';
 import 'chapter_mapper.dart';
@@ -183,15 +184,17 @@ $cssMarker
     final insertStr = items.join('\n');
 
     // 插入到 </manifest> 前
-    final manifestEnd = RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>')
-        .firstMatch(opfContent);
+    final manifestEnd = RegExp(
+      r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>',
+    ).firstMatch(opfContent);
     if (manifestEnd != null) {
       return '${opfContent.substring(0, manifestEnd.start)}$insertStr\n${opfContent.substring(manifestEnd.start)}';
     }
 
     // 兜底:无 </manifest> 标签,尝试 </package> 前
-    final packageEnd =
-        RegExp(r'</[Pp][Aa][Cc][Kk][Aa][Gg][Ee]\s*>').firstMatch(opfContent);
+    final packageEnd = RegExp(
+      r'</[Pp][Aa][Cc][Kk][Aa][Gg][Ee]\s*>',
+    ).firstMatch(opfContent);
     if (packageEnd != null) {
       return '${opfContent.substring(0, packageEnd.start)}$insertStr\n${opfContent.substring(packageEnd.start)}';
     }
@@ -209,21 +212,26 @@ $cssMarker
   }) {
     if (opfContent.contains('weread-book-reviews')) return opfContent;
 
-    final manifestItem = '  <item id="$_bookReviewsManifestId" '
+    final manifestItem =
+        '  <item id="$_bookReviewsManifestId" '
         'href="$xhtmlHref" media-type="application/xhtml+xml" />';
 
     // 插入到 </manifest> 前
-    final manifestEnd = RegExp(r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>')
-        .firstMatch(opfContent);
+    final manifestEnd = RegExp(
+      r'</[Mm][Aa][Nn][Ii][Ff][Ee][Ss][Tt]\s*>',
+    ).firstMatch(opfContent);
     if (manifestEnd != null) {
-      opfContent = '${opfContent.substring(0, manifestEnd.start)}$manifestItem\n${opfContent.substring(manifestEnd.start)}';
+      opfContent =
+          '${opfContent.substring(0, manifestEnd.start)}$manifestItem\n${opfContent.substring(manifestEnd.start)}';
     }
 
     // 插入到 </spine> 前(书评页在书末尾)
-    final spineEnd = RegExp(r'</[Ss][Pp][Ii][Nn][Ee]\s*>')
-        .firstMatch(opfContent);
+    final spineEnd = RegExp(
+      r'</[Ss][Pp][Ii][Nn][Ee]\s*>',
+    ).firstMatch(opfContent);
     if (spineEnd != null) {
-      opfContent = '${opfContent.substring(0, spineEnd.start)}  <itemref idref="$_bookReviewsManifestId" />\n${opfContent.substring(spineEnd.start)}';
+      opfContent =
+          '${opfContent.substring(0, spineEnd.start)}  <itemref idref="$_bookReviewsManifestId" />\n${opfContent.substring(spineEnd.start)}';
     }
 
     return opfContent;
@@ -314,17 +322,101 @@ $cssMarker
     bool enableChapterReviews = true,
     bool enableBookReviews = true,
     void Function(String phase, int current, int total, String text)?
-        onProgress,
+    onProgress,
   }) async {
-    onProgress ??= (_, _, _, _) {};
+    final progress = ReceivePort();
+    final subscription = progress.listen((message) {
+      final (phase, current, total, text) =
+          message as (String, int, int, String);
+      onProgress?.call(phase, current, total, text);
+    });
+    try {
+      return await _runThoughtWorker(
+        _ThoughtRequest(
+          epubPath: epubPath,
+          outputPath: outputPath,
+          chapters: chapters,
+          notePngBytes: notePngBytes,
+          bookTitle: bookTitle,
+          bookReviews: bookReviews,
+          enableChapterReviews: enableChapterReviews,
+          enableBookReviews: enableBookReviews,
+          progress: progress.sendPort,
+        ),
+      );
+    } finally {
+      await subscription.cancel();
+      progress.close();
+    }
+  }
+
+  static Future<String> _execute({
+    required String epubPath,
+    required String outputPath,
+    required List<ChapterData> chapters,
+    required Uint8List notePngBytes,
+    required String bookTitle,
+    required List<WereadReview> bookReviews,
+    required bool enableChapterReviews,
+    required bool enableBookReviews,
+    required void Function(String, int, int, String) onProgress,
+  }) async {
+    if (File(epubPath).absolute.path == File(outputPath).absolute.path ||
+        (File(outputPath).existsSync() &&
+            FileSystemEntity.identicalSync(epubPath, outputPath))) {
+      throw ArgumentError('输出文件不能覆盖输入 EPUB');
+    }
+    final input = InputFileStream(epubPath);
+    try {
+      return await _processArchive(
+        archive: ZipDecoder().decodeBuffer(input),
+        outputPath: outputPath,
+        chapters: chapters,
+        notePngBytes: notePngBytes,
+        bookTitle: bookTitle,
+        bookReviews: bookReviews,
+        enableChapterReviews: enableChapterReviews,
+        enableBookReviews: enableBookReviews,
+        onProgress: onProgress,
+      );
+    } finally {
+      input.closeSync();
+    }
+  }
+
+  // Decode a fresh slice so the source archive never caches every chapter's
+  // inflated bytes. Never close this slice: it shares the book's file handle.
+  static ArchiveFile _freshEntry(ArchiveFile file) =>
+      ArchiveFile(
+          file.name,
+          file.size,
+          file.rawContent!.subset(0),
+          file.compressionType!,
+        )
+        ..size = file.size
+        ..compress = file.compress
+        ..crc32 = file.crc32
+        ..isFile = file.isFile
+        ..mode = file.mode
+        ..lastModTime = file.lastModTime;
+
+  static String _readText(ArchiveFile file) =>
+      utf8.decode(_freshEntry(file).content as List<int>, allowMalformed: true);
+
+  static Future<String> _processArchive({
+    required Archive archive,
+    required String outputPath,
+    required List<ChapterData> chapters,
+    required Uint8List notePngBytes,
+    required String bookTitle,
+    required List<WereadReview> bookReviews,
+    required bool enableChapterReviews,
+    required bool enableBookReviews,
+    required void Function(String, int, int, String) onProgress,
+  }) async {
     final log = StringBuffer('开始注入读书想法...\n');
 
-    // 1. 读取 EPUB
     onProgress('read', 0, 1, '读取 EPUB');
-    var inputBytes = await File(epubPath).readAsBytes();
-    final archive = ZipDecoder().decodeBytes(inputBytes);
-    // 解压完成后原始字节已无用,提前释放降低移动端内存峰值(大书易 OOM)
-    inputBytes = Uint8List(0);
 
     // 2. 解析 OPF 获取 spine 顺序和文件路径
     onProgress('parse', 0, 1, '解析 EPUB 结构');
@@ -335,34 +427,24 @@ $cssMarker
     }
     onProgress('parse', 1, 1, '共 ${epubInfo.spine.length} 个文件');
 
-    // 3. 读取所有 spine HTML 内容
-    final htmlMap = <String, String>{};
-    for (final href in epubInfo.spine) {
-      final file = archive.findFile(href);
-      if (file != null) {
-        htmlMap[href] =
-            utf8.decode(file.content as List<int>, allowMalformed: true);
-      }
-    }
-
     // 4. 转换 API 数据为映射器输入
     final chapterInputs = <ChapterInput>[];
     for (final ch in chapters) {
       if (!ch.hasData) continue;
-      chapterInputs.add(ChapterInput(
-        uid: ch.chapterUid,
-        title: ch.title,
-        underlines: ch.underlines
-            .map((u) => UnderlineInput(range: u.range, markText: u.markText))
-            .toList(),
-        reviewMap: ch.reviewMap.map((range, reviews) => MapEntry(
-              range,
-              reviews
-                  .map(_toReviewInput)
-                  .toList(),
-            )),
-        chapterReviews: ch.chapterReviews.map(_toReviewInput).toList(),
-      ));
+      chapterInputs.add(
+        ChapterInput(
+          uid: ch.chapterUid,
+          title: ch.title,
+          underlines: ch.underlines
+              .map((u) => UnderlineInput(range: u.range, markText: u.markText))
+              .toList(),
+          reviewMap: ch.reviewMap.map(
+            (range, reviews) =>
+                MapEntry(range, reviews.map(_toReviewInput).toList()),
+          ),
+          chapterReviews: ch.chapterReviews.map(_toReviewInput).toList(),
+        ),
+      );
     }
 
     if (chapterInputs.isEmpty) {
@@ -374,8 +456,9 @@ $cssMarker
     onProgress('map', 0, chapterInputs.length, '匹配章节');
     final (mapped, unmatched) = ChapterMapper.build(
       epubInfo.spine,
-      (href) => htmlMap[href] ?? '',
+      (href) => _readText(archive.findFile(href)!),
       chapterInputs,
+      onProgress: (current, total) => onProgress('map', current, total, '匹配章节'),
     );
 
     log.writeln('章节映射: ${mapped.length} 个映射, ${unmatched.length} 个未匹配');
@@ -388,8 +471,10 @@ $cssMarker
         final noHitTitles = unmatched
             .where((u) => u.reason == 'no_hit')
             .map((u) => u.title)
+            .take(30)
             .join('、');
         log.writeln('  引文不中的章节: $noHitTitles');
+        if (noHit > 30) log.writeln('  其余 ${noHit - 30} 章未列出');
       }
       log.writeln('  说明: 封面/版权页/附录等无正文的章节无法匹配,属正常现象');
     }
@@ -411,43 +496,6 @@ $cssMarker
     var totalChapterReviews = 0;
     var fileIndex = 0;
 
-    for (final entry in groupsByHref.entries) {
-      fileIndex++;
-      final href = entry.key;
-      final chaptersForFile = entry.value;
-      onProgress('inject', fileIndex, groupsByHref.length, href);
-
-      final originalHtml = htmlMap[href];
-      if (originalHtml == null) continue;
-
-      // 合并同文件多章数据,单次分词+注入
-      final (injectedHtml, count, reviewCount) = _injectFile(
-        originalHtml,
-        chaptersForFile,
-        htmlPath: href,
-        opfDir: epubInfo.opfDir,
-        enableChapterReviews: enableChapterReviews,
-      );
-      if (count > 0 || reviewCount > 0) {
-        htmlMap[href] = injectedHtml;
-        totalInjected += count;
-        totalChapterReviews += reviewCount;
-        log.writeln('  $href: 注入 $count 个想法锚点'
-            '${reviewCount > 0 ? ', $reviewCount 条章评' : ''}');
-      }
-    }
-
-    onProgress('inject', groupsByHref.length, groupsByHref.length, '完成');
-    log.writeln('共注入 $totalInjected 个想法锚点'
-        '${totalChapterReviews > 0 ? ', $totalChapterReviews 条章评' : ''}');
-
-    if (totalInjected == 0 && totalChapterReviews == 0) {
-      log.writeln('警告: 没有成功注入任何想法(引文可能在本地书中被精校修改)');
-    }
-
-    // 8. 构建输出 EPUB(外部 CSS 文件 + note.png 图片)
-    onProgress('pack', 0, 1, '打包 EPUB');
-    final outputArchive = Archive();
     final writtenFiles = <String>{};
 
     // note.png 和 CSS 在 EPUB 内的完整路径(放在 OPF 目录下)
@@ -456,84 +504,98 @@ $cssMarker
     final bookReviewsFullPath = '${epubInfo.opfDir}$_bookReviewsXhtmlName';
     final wantBookReviews = enableBookReviews && bookReviews.isNotEmpty;
 
-    for (final file in archive.files) {
-      if (file.name.isEmpty || writtenFiles.contains(file.name)) continue;
+    Iterable<ArchiveFile> outputFiles() sync* {
+      for (final file in archive.files) {
+        if (file.name.isEmpty || writtenFiles.contains(file.name)) continue;
 
-      if (file.name == 'mimetype') {
-        final mf = ArchiveFile('mimetype', file.content.length, file.content)
-          ..compress = false;
-        outputArchive.addFile(mf);
-      } else if (file.name == epubInfo.opfPath) {
-        // 修改 OPF:添加 manifest 条目
-        var opfContent =
-            utf8.decode(file.content as List<int>, allowMalformed: true);
-        opfContent = _addManifestItems(
-          opfContent,
-          notePngFullPath: _notePngPath,
-          cssFullPath: _cssPath,
-        );
-        if (wantBookReviews) {
-          opfContent = _addBookReviewsEntries(
+        if (file.name == 'mimetype') {
+          yield _freshEntry(file);
+        } else if (file.name == epubInfo.opfPath) {
+          // 修改 OPF:添加 manifest 条目
+          var opfContent = _readText(file);
+          opfContent = _addManifestItems(
             opfContent,
-            xhtmlHref: _bookReviewsXhtmlName,
+            notePngFullPath: _notePngPath,
+            cssFullPath: _cssPath,
           );
+          if (wantBookReviews) {
+            opfContent = _addBookReviewsEntries(
+              opfContent,
+              xhtmlHref: _bookReviewsXhtmlName,
+            );
+          }
+          final newBytes = Uint8List.fromList(utf8.encode(opfContent));
+          yield ArchiveFile(file.name, newBytes.length, newBytes);
+        } else if (groupsByHref.containsKey(file.name)) {
+          fileIndex++;
+          onProgress('inject', fileIndex, groupsByHref.length, file.name);
+          final (html, count, reviewCount) = _injectFile(
+            _readText(file),
+            groupsByHref[file.name]!,
+            htmlPath: file.name,
+            opfDir: epubInfo.opfDir,
+            enableChapterReviews: enableChapterReviews,
+          );
+          totalInjected += count;
+          totalChapterReviews += reviewCount;
+          if (fileIndex <= 30) {
+            log.writeln(
+              '  ${file.name}: 注入 $count 个想法锚点'
+              '${reviewCount > 0 ? ', $reviewCount 条章评' : ''}',
+            );
+          }
+          final bytes = utf8.encode(html);
+          yield ArchiveFile(file.name, bytes.length, bytes);
+        } else {
+          yield _freshEntry(file);
         }
-        final newBytes = Uint8List.fromList(utf8.encode(opfContent));
-        outputArchive.addFile(
-          ArchiveFile(file.name, newBytes.length, newBytes),
-        );
-      } else if (htmlMap.containsKey(file.name)) {
-        // 注入后的 HTML 文件
-        final newBytes = Uint8List.fromList(utf8.encode(htmlMap[file.name]!));
-        outputArchive.addFile(
-          ArchiveFile(file.name, newBytes.length, newBytes),
-        );
-      } else {
-        // 其他文件(图片/字体等)直接复用解压后的 content,
-        // 不再 Uint8List.fromList 全量复制一份,避免移动端大书 OOM 闪退
-        outputArchive.addFile(
-          ArchiveFile(file.name, file.content.length, file.content),
-        );
+        writtenFiles.add(file.name);
       }
-      writtenFiles.add(file.name);
+
+      // 添加 note.png 图片文件(如果尚未存在)
+      if (!writtenFiles.contains(notePngFullPath)) {
+        yield ArchiveFile(notePngFullPath, notePngBytes.length, notePngBytes);
+        writtenFiles.add(notePngFullPath);
+      }
+
+      // 添加 CSS 文件
+      if (!writtenFiles.contains(cssFullPath)) {
+        final cssContent = _generateCss();
+        final cssBytes = Uint8List.fromList(utf8.encode(cssContent));
+        yield ArchiveFile(cssFullPath, cssBytes.length, cssBytes);
+        writtenFiles.add(cssFullPath);
+      }
+
+      // 添加书评页(独立 XHTML,挂在 spine 末尾)
+      if (wantBookReviews && !writtenFiles.contains(bookReviewsFullPath)) {
+        final pageContent = _generateBookReviewsHtml(
+          bookTitle,
+          bookReviews,
+          cssHref: _cssPath,
+        );
+        final pageBytes = Uint8List.fromList(utf8.encode(pageContent));
+        yield ArchiveFile(bookReviewsFullPath, pageBytes.length, pageBytes);
+        writtenFiles.add(bookReviewsFullPath);
+        log.writeln('书评页: 生成 ${bookReviews.length} 条书评(显示前 20 条)');
+      }
+      onProgress('inject', groupsByHref.length, groupsByHref.length, '完成');
+      onProgress('pack', 0, 1, '完成 EPUB 打包');
     }
 
-    // 添加 note.png 图片文件(如果尚未存在)
-    if (!writtenFiles.contains(notePngFullPath)) {
-      outputArchive.addFile(
-        ArchiveFile(notePngFullPath, notePngBytes.length, notePngBytes),
-      );
-      writtenFiles.add(notePngFullPath);
-    }
-
-    // 添加 CSS 文件
-    if (!writtenFiles.contains(cssFullPath)) {
-      final cssContent = _generateCss();
-      final cssBytes = Uint8List.fromList(utf8.encode(cssContent));
-      outputArchive.addFile(
-        ArchiveFile(cssFullPath, cssBytes.length, cssBytes),
-      );
-      writtenFiles.add(cssFullPath);
-    }
-
-    // 添加书评页(独立 XHTML,挂在 spine 末尾)
-    if (wantBookReviews && !writtenFiles.contains(bookReviewsFullPath)) {
-      final pageContent = _generateBookReviewsHtml(
-        bookTitle,
-        bookReviews,
-        cssHref: _cssPath,
-      );
-      final pageBytes = Uint8List.fromList(utf8.encode(pageContent));
-      outputArchive.addFile(
-        ArchiveFile(bookReviewsFullPath, pageBytes.length, pageBytes),
-      );
-      writtenFiles.add(bookReviewsFullPath);
-      log.writeln('书评页: 生成 ${bookReviews.length} 条书评(显示前 20 条)');
-    }
-
-    await EpubPacker.pack(archive: outputArchive, outputPath: outputPath);
+    await EpubPacker.packStreaming(
+      files: outputFiles(),
+      outputPath: outputPath,
+    );
     onProgress('pack', 1, 1, '完成');
 
+    if (fileIndex > 30) log.writeln('  其余 ${fileIndex - 30} 个文件明细省略');
+    log.writeln(
+      '共注入 $totalInjected 个想法锚点'
+      '${totalChapterReviews > 0 ? ', $totalChapterReviews 条章评' : ''}',
+    );
+    if (totalInjected == 0 && totalChapterReviews == 0) {
+      log.writeln('警告: 没有成功注入任何想法(引文可能在本地书中被精校修改)');
+    }
     log.writeln('想法注入完成');
     log.writeln('输出: $outputPath');
     return log.toString();
@@ -577,8 +639,8 @@ $cssMarker
     }
 
     // 多章合并时禁用数字兜底
-    final noNumericFallback = chaptersForFile.length > 1 ||
-        chaptersForFile.any((ch) => ch.quoteOnly);
+    final noNumericFallback =
+        chaptersForFile.length > 1 || chaptersForFile.any((ch) => ch.quoteOnly);
 
     final data = _InjectionData(
       underlines: allUnderlines,
@@ -597,10 +659,7 @@ $cssMarker
       final blocks = <String>[];
       for (final ch in chaptersForFile) {
         if (ch.chapterReviews.isEmpty) continue;
-        final block = _renderChapterReviewsBlock(
-          ch.title,
-          ch.chapterReviews,
-        );
+        final block = _renderChapterReviewsBlock(ch.title, ch.chapterReviews);
         if (block.isNotEmpty) {
           blocks.add(block);
           reviewCount += ch.chapterReviews.length;
@@ -649,7 +708,8 @@ $cssMarker
     int maxReviews = 20,
   }) {
     // 排序:点赞降序,点赞相同则按时间新→旧
-    final sorted = [...reviews]..sort((a, b) {
+    final sorted = [...reviews]
+      ..sort((a, b) {
         if (b.likes != a.likes) return b.likes.compareTo(a.likes);
         return b.createTime.compareTo(a.createTime);
       });
@@ -672,10 +732,12 @@ $cssMarker
       if (r.likes > 0) {
         meta.add('赞 ${r.likes}');
       }
-      items.add('<div class="wr-review">'
-          '<div class="wr-review-meta">${meta.join(' · ')}</div>'
-          '<div class="wr-review-content">${_escapeHtml(content)}</div>'
-          '</div>');
+      items.add(
+        '<div class="wr-review">'
+        '<div class="wr-review-meta">${meta.join(' · ')}</div>'
+        '<div class="wr-review-content">${_escapeHtml(content)}</div>'
+        '</div>',
+      );
     }
     return items.join('\n');
   }
@@ -735,12 +797,9 @@ $cssMarker
           final raw = html.substring(i);
           final units = _splitUnits(raw);
           final skipped = skipDepth > 0 || noteSkipDepth > 0;
-          tokens.add(_Token.text(
-            raw: raw,
-            units: units,
-            start: visible,
-            skip: skipped,
-          ));
+          tokens.add(
+            _Token.text(raw: raw, units: units, start: visible, skip: skipped),
+          );
           if (!skipped) visible += units.length;
           break;
         }
@@ -760,8 +819,9 @@ $cssMarker
 
         if (!closing &&
             name == 'span' &&
-            RegExp("class\\s*=\\s*[\"'][^\"']*reader-note-content")
-                .hasMatch(raw)) {
+            RegExp(
+              "class\\s*=\\s*[\"'][^\"']*reader-note-content",
+            ).hasMatch(raw)) {
           noteSkipDepth = 1;
           tokens.add(_Token.tag(raw));
           i = j + 1;
@@ -784,12 +844,9 @@ $cssMarker
         final raw = html.substring(i, end);
         final units = _splitUnits(raw);
         final skipped = skipDepth > 0 || noteSkipDepth > 0;
-        tokens.add(_Token.text(
-          raw: raw,
-          units: units,
-          start: visible,
-          skip: skipped,
-        ));
+        tokens.add(
+          _Token.text(raw: raw, units: units, start: visible, skip: skipped),
+        );
         if (!skipped) visible += units.length;
         i = end;
       }
@@ -865,9 +922,7 @@ $cssMarker
 
   /// 检查码点是否有效(非代理区、非超出范围)
   static bool _isValidCodepoint(int code) {
-    return code >= 0 &&
-        code <= 0x10FFFF &&
-        (code < 0xD800 || code > 0xDFFF);
+    return code >= 0 && code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF);
   }
 
   /// 判断文本是否可忽略(空白、零宽字符等)
@@ -876,12 +931,22 @@ $cssMarker
   static bool _isIgnorableText(String value) {
     if (value.isEmpty) return true;
     if (RegExp(r'^\s+$').hasMatch(value)) return true;
-    return value == '\u00A0' // nbsp
-        || value == '\u3000' // 全角空格
-        || value == '\u200B' // 零宽空格
-        || value == '\u200C' // 零宽非连接符
-        || value == '\u200D' // 零宽连接符
-        || value == '\uFEFF'; // BOM
+    return value ==
+            '\u00A0' // nbsp
+            ||
+        value ==
+            '\u3000' // 全角空格
+            ||
+        value ==
+            '\u200B' // 零宽空格
+            ||
+        value ==
+            '\u200C' // 零宽非连接符
+            ||
+        value ==
+            '\u200D' // 零宽连接符
+            ||
+        value == '\uFEFF'; // BOM
   }
 
   /// 从标签文本中提取信息
@@ -1064,10 +1129,9 @@ $cssMarker
 
       if (a != null && b != null && b > a) {
         final compactA = index.ordinals[first] ?? a;
-        final score =
-            (a - expected).abs() < (compactA - expected).abs()
-                ? (a - expected).abs()
-                : (compactA - expected).abs();
+        final score = (a - expected).abs() < (compactA - expected).abs()
+            ? (a - expected).abs()
+            : (compactA - expected).abs();
         if (bestScore == null || score < bestScore) {
           bestA = a;
           bestB = b;
@@ -1147,8 +1211,7 @@ $cssMarker
       }
 
       if (a != null && b != null && b > a) {
-        final hasThought =
-            (reviewMap[rangeStr] ?? []).isNotEmpty;
+        final hasThought = (reviewMap[rangeStr] ?? []).isNotEmpty;
         out.add(_Mark(a: a, b: b, key: rangeStr, thought: hasThought));
       } else {
         stats.dropped++;
@@ -1197,10 +1260,7 @@ $cssMarker
   /// 2. 构建文本索引
   /// 3. 计算注入区间
   /// 4. 渲染:在引文位置包裹 span
-  static (String, _AlignmentStats) _inject(
-    String html,
-    _InjectionData data,
-  ) {
+  static (String, _AlignmentStats) _inject(String html, _InjectionData data) {
     final tokens = _tokenize(html);
     final index = _buildTextIndex(tokens);
     final (:marks, :stats) = _computeMarks(
@@ -1329,10 +1389,7 @@ $cssMarker
   ///
   /// 移植自 thoughts.lua clean。
   static String _cleanThoughtText(String value) {
-    var text = value.replaceAll(
-      RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]'),
-      ' ',
-    );
+    var text = value.replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ');
     return text.trim();
   }
@@ -1355,8 +1412,7 @@ $cssMarker
   static String _ensureStyle(String html, String cssHref) {
     if (html.contains(cssMarker)) return html;
 
-    final linkTag =
-        '<link rel="stylesheet" type="text/css" href="$cssHref" />';
+    final linkTag = '<link rel="stylesheet" type="text/css" href="$cssHref" />';
 
     // 尝试插入到 </head> 前
     final headEnd = RegExp(r'</[Hh][Ee][Aa][Dd]\s*>').firstMatch(html);
@@ -1403,9 +1459,10 @@ $cssMarker
     if (containerFile == null) {
       return _EpubInfo(spine: []);
     }
-    final containerXml =
-        utf8.decode(containerFile.content as List<int>, allowMalformed: true);
-    final opfPathMatch = RegExp(r'full-path="([^"]+)"').firstMatch(containerXml);
+    final containerXml = _readText(containerFile);
+    final opfPathMatch = RegExp(
+      r'full-path="([^"]+)"',
+    ).firstMatch(containerXml);
     if (opfPathMatch == null) {
       return _EpubInfo(spine: []);
     }
@@ -1419,8 +1476,7 @@ $cssMarker
     if (opfFile == null) {
       return _EpubInfo(spine: []);
     }
-    final opfContent =
-        utf8.decode(opfFile.content as List<int>, allowMalformed: true);
+    final opfContent = _readText(opfFile);
 
     // 解析 manifest:收集 HTML 文件的 id → href
     final manifestItems = <String, String>{};
@@ -1479,6 +1535,59 @@ $cssMarker
 
 // === 数据类 ===
 
+class _ThoughtRequest {
+  final String epubPath;
+  final String outputPath;
+  final List<ChapterData> chapters;
+  final Uint8List notePngBytes;
+  final String bookTitle;
+  final List<WereadReview> bookReviews;
+  final bool enableChapterReviews;
+  final bool enableBookReviews;
+  final SendPort progress;
+
+  _ThoughtRequest({
+    required this.epubPath,
+    required this.outputPath,
+    required this.chapters,
+    required this.notePngBytes,
+    required this.bookTitle,
+    required this.bookReviews,
+    required this.enableChapterReviews,
+    required this.enableBookReviews,
+    required this.progress,
+  });
+
+  Future<String> run() {
+    final clock = Stopwatch()..start();
+    var lastUpdate = -200;
+    var lastPhase = '';
+    return WereadThoughtOperation._execute(
+      epubPath: epubPath,
+      outputPath: outputPath,
+      chapters: chapters,
+      notePngBytes: notePngBytes,
+      bookTitle: bookTitle,
+      bookReviews: bookReviews,
+      enableChapterReviews: enableChapterReviews,
+      enableBookReviews: enableBookReviews,
+      onProgress: (phase, current, total, text) {
+        final now = clock.elapsedMilliseconds;
+        if (phase != lastPhase || current == total || now - lastUpdate >= 200) {
+          progress.send((phase, current, total, text));
+          lastPhase = phase;
+          lastUpdate = now;
+        }
+      },
+    );
+  }
+}
+
+// Keep the isolate closure outside execute's scope: progress callbacks can
+// capture Flutter State, controllers and unsendable native resources.
+Future<String> _runThoughtWorker(_ThoughtRequest request) =>
+    Isolate.run(request.run);
+
 /// HTML token(文本或标签)
 class _Token {
   final bool isTag;
@@ -1493,18 +1602,14 @@ class _Token {
   /// 是否跳过(script/style/reader-note-content 内)
   final bool skip;
 
-  _Token.tag(this.raw)
-      : isTag = true,
-        units = null,
-        start = 0,
-        skip = false;
+  _Token.tag(this.raw) : isTag = true, units = null, start = 0, skip = false;
 
   _Token.text({
     required this.raw,
     required List<String> this.units,
     required this.start,
     required this.skip,
-  })  : isTag = false;
+  }) : isTag = false;
 }
 
 /// 文本索引
@@ -1604,9 +1709,5 @@ class _EpubInfo {
   /// OPF 所在目录(如 OEBPS/,根目录则为空字符串)
   final String opfDir;
 
-  _EpubInfo({
-    required this.spine,
-    this.opfPath = '',
-    this.opfDir = '',
-  });
+  _EpubInfo({required this.spine, this.opfPath = '', this.opfDir = ''});
 }
