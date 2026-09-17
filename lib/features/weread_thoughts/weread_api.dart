@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/secure_prefs.dart';
 import 'weread_guest_signature.dart';
+import 'weread_sync_client.dart';
 
 /// 读书书目信息
 class WereadBook {
@@ -306,7 +307,10 @@ class WereadApi {
   String _guestNewDevice = '';
 
   /// HTTP 客户端(可注入,便于测试)
-  final http.Client _client;
+  final WereadSyncClient _client;
+  Duration get _requestTimeout => _client.syncing
+      ? const Duration(minutes: 3)
+      : const Duration(milliseconds: _timeoutMs);
 
   String _apiKey = '';
   String _bookId = '';
@@ -319,7 +323,8 @@ class WereadApi {
   /// 参考 pickthought cookies.lua 的 is_persistent_name。
   Map<String, String> _cookies = {};
 
-  WereadApi({http.Client? client}) : _client = client ?? http.Client();
+  WereadApi({http.Client? client})
+    : _client = WereadSyncClient(client ?? http.Client());
 
   void dispose() => _client.close();
 
@@ -539,7 +544,7 @@ class WereadApi {
 
         final response = await _client
             .post(Uri.parse(_gatewayUrl), headers: headers, body: bodyJson)
-            .timeout(Duration(milliseconds: _timeoutMs));
+            .timeout(_requestTimeout);
 
         // 临时状态码:可重试(参考 pickthought transient_status)
         if (_isTransientStatus(response.statusCode) && attempt < _maxRetries) {
@@ -749,7 +754,7 @@ class WereadApi {
   }) async {
     final response = await _client
         .get(Uri.parse(url), headers: headers ?? _appAuthedHeaders())
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
     return _parseAppResponse(response, label);
   }
 
@@ -767,7 +772,7 @@ class WereadApi {
     };
     final response = await _client
         .post(Uri.parse(url), headers: requestHeaders, body: json.encode(body))
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
     return _parseAppResponse(response, label);
   }
 
@@ -864,7 +869,7 @@ class WereadApi {
             headers: _guestLoginHeaders(),
             body: session.bodyJson,
           )
-          .timeout(Duration(milliseconds: _timeoutMs));
+          .timeout(_requestTimeout);
       if (preflight.statusCode == 200 && preflight.body.isNotEmpty) {
         final data = json.decode(preflight.body);
         if (data is Map) {
@@ -917,7 +922,7 @@ class WereadApi {
           headers: _guestLoginHeaders(ticket: ticket, randstr: randstr),
           body: session.bodyJson,
         )
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
     if (response.body.isEmpty || response.statusCode != 200) {
       throw Exception('游客登录失败,HTTP ${response.statusCode}');
     }
@@ -1041,12 +1046,13 @@ class WereadApi {
                 'Cookie': _cookieHeader(),
               },
             )
-            .timeout(Duration(milliseconds: _timeoutMs));
+            .timeout(_requestTimeout);
         data = _parseResponse(response);
         if (_underlineRows(data) is! List) {
           throw const FormatException('章节划线响应缺少列表');
         }
-      } catch (_) {
+      } catch (e) {
+        if (e is WereadSyncStopped) rethrow;
         data = await _gateway(
           '/book/underlines',
           params: {
@@ -1136,7 +1142,7 @@ class WereadApi {
             'Referer': '$_webBaseUrl/',
           },
         )
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
     _absorbCookies(pageResp);
 
     // 2. 获取登录 UID
@@ -1150,7 +1156,7 @@ class WereadApi {
             'Cookie': _cookieHeader(),
           },
         )
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
     _absorbCookies(uidResp);
 
     if (uidResp.body.isEmpty) {
@@ -1253,7 +1259,7 @@ class WereadApi {
             Uri.parse('$_webBaseUrl/api/userInfo?userVid=$vid'),
             headers: authHeaders,
           )
-          .timeout(Duration(milliseconds: _timeoutMs));
+          .timeout(_requestTimeout);
       _absorbCookies(userResp);
       if (userResp.body.isNotEmpty) {
         final userData = json.decode(userResp.body);
@@ -1274,7 +1280,7 @@ class WereadApi {
             Uri.parse('$_webBaseUrl/api/skills/apikeyGet?only_show=1'),
             headers: authHeaders,
           )
-          .timeout(Duration(milliseconds: _timeoutMs));
+          .timeout(_requestTimeout);
       _absorbCookies(skillResp);
       if (skillResp.body.isNotEmpty) {
         final skillData = json.decode(skillResp.body);
@@ -1289,7 +1295,7 @@ class WereadApi {
               Uri.parse('$_webBaseUrl/api/skills/apikeyGet'),
               headers: authHeaders,
             )
-            .timeout(Duration(milliseconds: _timeoutMs));
+            .timeout(_requestTimeout);
         _absorbCookies(skillResp2);
         if (skillResp2.body.isNotEmpty) {
           final skillData2 = json.decode(skillResp2.body);
@@ -1409,7 +1415,7 @@ class WereadApi {
 
     final response = await _client
         .get(url, headers: headers)
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
 
     if (response.body.isEmpty) {
       throw Exception('Web 搜索返回空响应');
@@ -1456,7 +1462,7 @@ class WereadApi {
             'bookIds': [bookId],
           }),
         )
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
 
     debugPrint(
       '[WereadApi] _webChapters statusCode=${response.statusCode}, '
@@ -1520,7 +1526,7 @@ class WereadApi {
 
     final response = await _client
         .get(url, headers: headers)
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
 
     debugPrint(
       '[WereadApi] _webBestbookmarks statusCode=${response.statusCode}, '
@@ -1590,7 +1596,7 @@ class WereadApi {
 
     final response = await _client
         .get(url, headers: headers)
-        .timeout(Duration(milliseconds: _timeoutMs));
+        .timeout(_requestTimeout);
 
     debugPrint(
       '[WereadApi] _webChapterReviews statusCode=${response.statusCode}, '
@@ -1990,7 +1996,7 @@ class WereadApi {
         next.add(candidate);
       }
       pending = next;
-      if (pending.isNotEmpty) await _delay(200);
+      if (pending.isNotEmpty && !_client.syncing) await _delay(200);
     }
     return result;
   }
@@ -2167,7 +2173,7 @@ class WereadApi {
       final next = _safeInt(data['maxIdx'] ?? 0);
       hasMore = (data['hasMore'] == true) && next > cursor && next > 0;
       cursor = next;
-      if (hasMore) await _delay(150);
+      if (hasMore && !_client.syncing) await _delay(150);
     }
 
     debugPrint(
@@ -2221,7 +2227,7 @@ class WereadApi {
       final next = _safeInt(data['synckey'] ?? 0);
       hasMore = (data['reviewsHasMore'] == true) && next > cursor && next > 0;
       cursor = next;
-      if (hasMore) await _delay(200);
+      if (hasMore && !_client.syncing) await _delay(200);
     }
 
     debugPrint(
@@ -2399,6 +2405,28 @@ class WereadApi {
     bool includeChapterReviews = true,
     bool includeBookReviews = true,
   }) async {
+    _client.begin(
+      onThrottle: (text) => onProgress?.call('throttle', 0, 0, text),
+    );
+    try {
+      return await _fetchBookData(
+        bookId,
+        onProgress: onProgress,
+        includeChapterReviews: includeChapterReviews,
+        includeBookReviews: includeBookReviews,
+      );
+    } finally {
+      _client.end();
+    }
+  }
+
+  Future<FetchResult> _fetchBookData(
+    String bookId, {
+    void Function(String phase, int current, int total, String text)?
+    onProgress,
+    required bool includeChapterReviews,
+    required bool includeBookReviews,
+  }) async {
     onProgress ??= (_, _, _, _) {};
     var incompleteCount = 0;
     final warnings = <String>[];
@@ -2443,12 +2471,10 @@ class WereadApi {
 
     final chapterReviewsByChapter = <String, List<WereadReview>>{};
 
-    // 3. 逐章获取段落范围，热门划线不能代表全章段落。
-    for (var i = 0; i < chapterList.length; i++) {
-      final ch = chapterList[i];
-      final progressText = '${i + 1}/${chapterList.length} ${ch.title}';
-      onProgress('underlines', i, chapterList.length, progressText);
-
+    var completed = 0;
+    var nextChapter = 0;
+    var batchSize = 30;
+    Future<void> fetchChapter(WereadChapter ch) async {
       final popular = underlinesByChapter[ch.chapterUid] ?? [];
       var chapterMarks = popular;
       try {
@@ -2477,15 +2503,40 @@ class WereadApi {
       // 3a. 按 range 批量获取公开段评，跟随服务端可用的分页游标。
       var reviewsFetched = false;
       if (ranges.isNotEmpty) {
-        final batches = reviewBatches(ranges, batchSize: 5);
+        final batches = reviewBatches(ranges, batchSize: batchSize);
         for (var bi = 0; bi < batches.length; bi++) {
+          if (_client.stoppedReason != null) break;
           try {
-            final batchReviews = await readreviews(
-              bookId,
-              ch.chapterUid,
-              batches[bi],
-              onWarning: warn,
-            );
+            Future<List<WereadReview>> fetchBatch(
+              List<Map<String, dynamic>> batch,
+            ) => readreviews(bookId, ch.chapterUid, batch, onWarning: warn);
+            List<WereadReview> batchReviews;
+            try {
+              batchReviews = await fetchBatch(batches[bi]);
+            } catch (e) {
+              final error = e.toString().toLowerCase();
+              if (batches[bi].length <= 5 ||
+                  !(error.contains('params error') ||
+                      error.contains('invalid parameter') ||
+                      error.contains('invalid range') ||
+                      error.contains('range error'))) {
+                rethrow;
+              }
+              // Some endpoint versions impose a smaller range batch limit.
+              batchSize = 5;
+              batchReviews = [];
+              for (var start = 0; start < batches[bi].length; start += 5) {
+                if (_client.stoppedReason != null) break;
+                final end = (start + 5).clamp(0, batches[bi].length);
+                try {
+                  batchReviews.addAll(
+                    await fetchBatch(batches[bi].sublist(start, end)),
+                  );
+                } catch (smallError) {
+                  warn('第 ${ch.chapterUid} 章小批次获取失败：$smallError');
+                }
+              }
+            }
             if (batchReviews.isNotEmpty) {
               reviewsFetched = true;
               addReviews(batchReviews);
@@ -2497,12 +2548,11 @@ class WereadApi {
               'chapter=${ch.chapterUid}, batch=$bi, error=$e',
             );
           }
-          if (batches.length > 1) await _delay(200);
         }
       }
 
       // 3b. 段评无结果时,用 Web 章级热门想法兜底(仅扫码登录可用)
-      if (!reviewsFetched && !isGuestMode) {
+      if (!reviewsFetched && !isGuestMode && _client.stoppedReason == null) {
         try {
           final rvData = await _webChapterReviews(bookId, ch.chapterUid);
           final webReviews = _parseWebReviews(rvData, ch.chapterUid);
@@ -2520,7 +2570,7 @@ class WereadApi {
       }
 
       // 3c. 章评(挂在整章上,范围为空):失败不影响主线
-      if (includeChapterReviews) {
+      if (includeChapterReviews && _client.stoppedReason == null) {
         try {
           final chapterReviewList = await chapterReviews(bookId, ch.chapterUid);
           if (chapterReviewList.isNotEmpty) {
@@ -2535,12 +2585,30 @@ class WereadApi {
         }
       }
 
-      // 章节间停顿(防风控)
-      if (chapterList.length > 50) {
-        await _delay(200 + (i % 3) * 80);
-      } else {
-        await _delay(100);
+      completed++;
+      onProgress!(
+        'underlines',
+        completed,
+        chapterList.length,
+        '已处理 $completed/${chapterList.length} 章，已获取 $totalReviews 条段评 · ${ch.title}',
+      );
+    }
+
+    Future<void> worker() async {
+      while (nextChapter < chapterList.length &&
+          _client.stoppedReason == null) {
+        final chapter = chapterList[nextChapter++];
+        await fetchChapter(chapter);
       }
+    }
+
+    // A fixed worker pool avoids allocating a Future for every chapter. The
+    // shared HTTP gate controls request starts across batches and pagination.
+    await Future.wait(List.generate(3, (_) => worker()));
+    if (_client.stoppedReason != null) {
+      warn(
+        '${_client.stoppedReason}；${chapterList.length - nextChapter} 章尚未开始',
+      );
     }
 
     // 统计
@@ -2550,14 +2618,14 @@ class WereadApi {
     );
     onProgress(
       'underlines',
-      chapterList.length,
+      completed,
       chapterList.length,
       '章节划线 $totalUnderlines 条,公开段评 $totalReviews 条',
     );
 
     // 4. 整本书评(挂在书上):失败不影响主线
     var bookReviewList = <WereadReview>[];
-    if (includeBookReviews) {
+    if (includeBookReviews && _client.stoppedReason == null) {
       try {
         bookReviewList = await bookReviews(bookId);
       } catch (e) {
