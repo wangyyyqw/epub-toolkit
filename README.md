@@ -151,7 +151,9 @@ GitHub Actions 在推送 `main` 后自动执行检查和四平台打包，全部
 CI 构建号使用工作流运行编号；工具链统一固定为 Flutter 3.44.0 并严格使用锁文件。
 
 检查与四平台编译并行，但发布仍要求全部成功。Gradle 启用构建缓存和受限并行，
-构建跳过重复 `pub get`，已压缩产物上传不再二次压缩。
+检查跳过重复 `pub get`，已压缩产物上传不再二次压缩。
+原生 release 构建保留 Flutter 默认准备流程，不传 `--no-pub`；
+Flutter 3.44 需要这一步重新生成不含测试插件的 release 注册文件。
 Actions 摘要提供构建耗时；`build-logs-*` 附件保留诊断日志 14 天。
 发布正文自动提取本版 CHANGELOG，附带源码提交、运行链接、各平台文件大小；
 `SHA256SUMS.txt` 与 `build-metadata.json` 提供校验和、构建环境与任务时间记录。

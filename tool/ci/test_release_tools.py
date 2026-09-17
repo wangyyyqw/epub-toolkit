@@ -11,6 +11,15 @@ from release_notes import changelog_section, generate
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_native_builds_regenerate_release_plugin_registrants(self):
+        workflow = (Path(__file__).resolve().parents[2] /
+                    ".github/workflows/release-builds.yml").read_text()
+        commands = [line for line in workflow.splitlines() if " flutter build " in line]
+        self.assertEqual(len(commands), 4)
+        for command in commands:
+            self.assertIn("--release", command)
+            self.assertNotIn("--no-pub", command)
+
     def test_changelog_has_exact_version_and_stops_at_next_release(self):
         self.assertEqual(changelog_section(
             "# Log\n## 1.6.3 - 2026-09-17\n\nNew\n\n## 1.6.2\nOld\n", "1.6.3"
