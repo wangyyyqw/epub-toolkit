@@ -370,7 +370,7 @@ class FileService {
           if (!await outDir.exists()) {
             await outDir.create(recursive: true);
           }
-          return _uniquePath(outDir.path, filename);
+          return await _uniquePath(outDir.path, filename);
         }
       } catch (_) {
         // 退化到 getApplicationDocumentsDirectory

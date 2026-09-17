@@ -865,7 +865,7 @@ class WereadApi {
               vid.isNotEmpty &&
               token != null &&
               token.isNotEmpty) {
-            return _finalizeGuestLogin(session, vid, token);
+            return await _finalizeGuestLogin(session, vid, token);
           }
         }
       }

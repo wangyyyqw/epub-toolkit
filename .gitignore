@@ -25,3 +25,7 @@ dist-packages/
 
 # Private real-book fixtures and generated audit output.
 /测试文件/
+/build-logs/
+/release-assets/
+/release-jobs.json
+/release-notes.md

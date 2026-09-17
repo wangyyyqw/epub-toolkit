@@ -1,0 +1,12 @@
+name: Set up pinned Flutter
+description: Use the same tested SDK and dependency lock on every platform.
+runs:
+  using: composite
+  steps:
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: stable
+        flutter-version: '3.44.0'
+        cache: true
+    - shell: bash
+      run: flutter pub get --enforce-lockfile

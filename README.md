@@ -144,10 +144,17 @@ flutter build windows --release
 & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" windows\installer.iss
 ```
 
-GitHub Actions 在推送与 `pubspec.yaml` 版本一致的 tag（如 `v1.6.3`）时发布，
-也可在该 tag 上手动运行。`main` push 和 PR 仅运行静态分析与测试；
-发布构建同样必须通过这两项检查。CI 构建号继续使用工作流运行编号。
-每次发布应更新版本与构建号，并为对应提交创建新 tag，不要移动已有发布 tag。
+GitHub Actions 在推送 `main` 后自动执行检查和四平台打包，全部通过后，
+为尚未发布的 `pubspec.yaml` 版本创建 tag（如 `v1.6.3`）并发布。
+也支持推送匹配版本的 tag，或在 `main`/该 tag 上手动运行。PR 只运行检查。
+已有版本/tag 不移动、不覆盖发布附件；再次发布须提升版本。
+CI 构建号使用工作流运行编号；工具链统一固定为 Flutter 3.44.0 并严格使用锁文件。
+
+检查与四平台编译并行，但发布仍要求全部成功。Gradle 启用构建缓存和受限并行，
+构建跳过重复 `pub get`，已压缩产物上传不再二次压缩。
+Actions 摘要提供构建耗时；`build-logs-*` 附件保留诊断日志 14 天。
+发布正文自动提取本版 CHANGELOG，附带源码提交、运行链接、各平台文件大小；
+`SHA256SUMS.txt` 与 `build-metadata.json` 提供校验和、构建环境与任务时间记录。
 
 工作流会自动生成 `epub-toolkit-windows-*-setup.exe` 安装程序，并作为
 GitHub Release 附件发布。Flutter 的原始程序目录包含 DLL 和资源文件，不能只复制

@@ -1,8 +1,6 @@
 name: Checks
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_call:
@@ -13,12 +11,14 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: ./.github/actions/setup-flutter
+      - run: python -m unittest discover -s tool/ci -p 'test_*.py' -v
+      - run: python tool/ci/run_logged.py analyze flutter analyze --no-pub lib
+      - run: python tool/ci/run_logged.py tests flutter test --no-pub --reporter expanded
+      - uses: ./.github/actions/upload-build-logs
+        if: always()
         with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: flutter analyze lib
-      - run: flutter test --reporter expanded
+          platform: checks
