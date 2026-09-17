@@ -56,19 +56,23 @@ Future<String> _buildMinimalEpub(String dir, String filename) async {
   final mf = ArchiveFile('mimetype', mimetype.length, utf8.encode(mimetype))
     ..compress = false;
   archive.addFile(mf);
-  archive.addFile(ArchiveFile(
-    'META-INF/container.xml',
-    containerXml.length,
-    utf8.encode(containerXml),
-  ));
+  archive.addFile(
+    ArchiveFile(
+      'META-INF/container.xml',
+      containerXml.length,
+      utf8.encode(containerXml),
+    ),
+  );
   archive.addFile(
     ArchiveFile('OEBPS/content.opf', opfXml.length, utf8.encode(opfXml)),
   );
-  archive.addFile(ArchiveFile(
-    'OEBPS/chapter1.xhtml',
-    chapterXml.length,
-    utf8.encode(chapterXml),
-  ));
+  archive.addFile(
+    ArchiveFile(
+      'OEBPS/chapter1.xhtml',
+      chapterXml.length,
+      utf8.encode(chapterXml),
+    ),
+  );
   archive.addFile(
     ArchiveFile('OEBPS/nav.xhtml', navXml.length, utf8.encode(navXml)),
   );
@@ -122,20 +126,15 @@ List<ChapterData> _buildChapters({bool withChapterReviews = true}) {
 }
 
 List<WereadReview> _buildBookReviews() => [
-      WereadReview(
-        content: '年度最佳推理小说,值得反复阅读',
-        author: '读者丙',
-        likes: 99,
-        createTime: 1700000002,
-        type: 'book',
-      ),
-      WereadReview(
-        content: '结尾反转精彩',
-        author: '读者丁',
-        likes: 3,
-        type: 'book',
-      ),
-    ];
+  WereadReview(
+    content: '年度最佳推理小说,值得反复阅读',
+    author: '读者丙',
+    likes: 99,
+    createTime: 1700000002,
+    type: 'book',
+  ),
+  WereadReview(content: '结尾反转精彩', author: '读者丁', likes: 3, type: 'book'),
+];
 
 /// 读取输出 EPUB 中的文件内容
 Future<Map<String, String>> _readOutput(String outputPath) async {
@@ -144,7 +143,10 @@ Future<Map<String, String>> _readOutput(String outputPath) async {
   final result = <String, String>{};
   for (final f in archive.files) {
     if (f.name.isNotEmpty) {
-      result[f.name] = utf8.decode(f.content as List<int>, allowMalformed: true);
+      result[f.name] = utf8.decode(
+        f.content as List<int>,
+        allowMalformed: true,
+      );
     }
   }
   return result;
@@ -158,6 +160,49 @@ void main() {
       await tempDir.delete(recursive: true);
     }
   });
+
+  test(
+    'anchor count excludes empty thoughts and merges overlapping ranges',
+    () async {
+      final input = await _buildMinimalEpub(tempDir.path, 'counts.epub');
+      final source = _buildChapters(withChapterReviews: false).single;
+      final result = await WereadThoughtOperation.execute(
+        epubPath: input,
+        outputPath: '${tempDir.path}/counts-output.epub',
+        chapters: [
+          ChapterData(
+            chapterUid: source.chapterUid,
+            title: source.title,
+            underlines: [
+              ...source.underlines,
+              WereadUnderline(
+                range: '2-26',
+                markText: source.underlines.single.markText,
+              ),
+              WereadUnderline(
+                range: '60-90',
+                markText: '这是第二段正文,继续补充一些文字,让引文可以匹配到唯一的段落位置',
+              ),
+            ],
+            reviewMap: {
+              ...source.reviewMap,
+              '2-26': [WereadReview(content: '重叠段落的另一条想法')],
+            },
+          ),
+        ],
+        notePngBytes: Uint8List(0),
+      );
+      expect(result, contains('共注入 1 个想法锚点'));
+      expect(result, contains('锚点内显示 2 条去重段评'));
+      final files = await _readOutput('${tempDir.path}/counts-output.epub');
+      expect(
+        'class="reader js_readerFooterNote"'
+            .allMatches(files['OEBPS/chapter1.xhtml']!)
+            .length,
+        1,
+      );
+    },
+  );
 
   test('章评区块注入到章节末尾 + 书评生成独立页面', () async {
     final inputPath = await _buildMinimalEpub(tempDir.path, 'input.epub');
@@ -180,35 +225,42 @@ void main() {
 
     // 1. 章节 HTML:含想法锚点 + 章评区块 + CSS 链接
     final chapter1 = files['OEBPS/chapter1.xhtml']!;
-    expect(chapter1, contains('js_readerFooterNote'),
-        reason: '段评锚点应注入');
-    expect(chapter1, contains('wr-reviews-block'),
-        reason: '章评区块应注入');
-    expect(chapter1, contains('本章好评,剧情紧凑'),
-        reason: '章评内容应出现');
-    expect(chapter1, contains('读者乙'),
-        reason: '章评作者应出现');
+    expect(chapter1, contains('js_readerFooterNote'), reason: '段评锚点应注入');
+    expect(chapter1, contains('wr-reviews-block'), reason: '章评区块应注入');
+    expect(chapter1, contains('本章好评,剧情紧凑'), reason: '章评内容应出现');
+    expect(chapter1, contains('读者乙'), reason: '章评作者应出现');
     expect(chapter1, contains('赞 8'), reason: '章评点赞数应出现');
-    expect(chapter1, contains('weread-thoughts.css'),
-        reason: '章节应引用注入的 CSS');
+    expect(chapter1, contains('weread-thoughts.css'), reason: '章节应引用注入的 CSS');
 
     // 2. 书评独立页面
-    expect(files.containsKey('OEBPS/weread-book-reviews.xhtml'), true,
-        reason: '书评页文件应生成');
+    expect(
+      files.containsKey('OEBPS/weread-book-reviews.xhtml'),
+      true,
+      reason: '书评页文件应生成',
+    );
     final bookReviewsPage = files['OEBPS/weread-book-reviews.xhtml']!;
     expect(bookReviewsPage, contains('书评 · 测试书'));
     expect(bookReviewsPage, contains('年度最佳推理小说,值得反复阅读'));
     expect(bookReviewsPage, contains('结尾反转精彩'));
     expect(bookReviewsPage, contains('赞 99'));
-    expect(RegExp(r'20\d\d-\d\d-\d\d').hasMatch(bookReviewsPage), true,
-        reason: '时间戳应格式化为 YYYY-MM-DD 日期');
+    expect(
+      RegExp(r'20\d\d-\d\d-\d\d').hasMatch(bookReviewsPage),
+      true,
+      reason: '时间戳应格式化为 YYYY-MM-DD 日期',
+    );
 
     // 3. OPF 注册书评页
     final opf = files['OEBPS/content.opf']!;
-    expect(opf, contains('weread-book-reviews.xhtml'),
-        reason: 'OPF manifest 应注册书评页');
-    expect(opf, contains('<itemref idref="weread-book-reviews"'),
-        reason: 'OPF spine 应追加书评页 itemref');
+    expect(
+      opf,
+      contains('weread-book-reviews.xhtml'),
+      reason: 'OPF manifest 应注册书评页',
+    );
+    expect(
+      opf,
+      contains('<itemref idref="weread-book-reviews"'),
+      reason: 'OPF spine 应追加书评页 itemref',
+    );
   });
 
   test('关闭章评/书评开关后不注入', () async {
@@ -231,13 +283,21 @@ void main() {
     // 段评锚点仍然注入(默认行为不变)
     expect(files['OEBPS/chapter1.xhtml']!, contains('js_readerFooterNote'));
     // 章评区块不注入
-    expect(files['OEBPS/chapter1.xhtml']!, isNot(contains('wr-reviews-block')),
-        reason: '关闭开关后不应注入章评区块');
+    expect(
+      files['OEBPS/chapter1.xhtml']!,
+      isNot(contains('wr-reviews-block')),
+      reason: '关闭开关后不应注入章评区块',
+    );
     // 书评页不生成
-    expect(files.containsKey('OEBPS/weread-book-reviews.xhtml'), false,
-        reason: '关闭开关后不应生成书评页');
-    expect(files['OEBPS/content.opf']!,
-        isNot(contains('weread-book-reviews.xhtml')));
+    expect(
+      files.containsKey('OEBPS/weread-book-reviews.xhtml'),
+      false,
+      reason: '关闭开关后不应生成书评页',
+    );
+    expect(
+      files['OEBPS/content.opf']!,
+      isNot(contains('weread-book-reviews.xhtml')),
+    );
     // 日志不含章评统计
     expect(result, isNot(contains('条章评')));
   });
@@ -282,10 +342,12 @@ void main() {
 
     final files = await _readOutput(outputPath);
     final chapter1 = files['OEBPS/chapter1.xhtml']!;
-    expect(chapter1, isNot(contains('js_readerFooterNote')),
-        reason: '引文不匹配时无段评锚点');
-    expect(chapter1, contains('wr-reviews-block'),
-        reason: '章评区块不依赖引文匹配,应仍然注入');
+    expect(
+      chapter1,
+      isNot(contains('js_readerFooterNote')),
+      reason: '引文不匹配时无段评锚点',
+    );
+    expect(chapter1, contains('wr-reviews-block'), reason: '章评区块不依赖引文匹配,应仍然注入');
     expect(chapter1, contains('即使锚点失败章评也应该出现'));
     expect(result, contains('1 条章评'));
   });

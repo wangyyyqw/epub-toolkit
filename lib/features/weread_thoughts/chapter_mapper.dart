@@ -90,7 +90,7 @@ class ChapterMapper {
   ChapterMapper._();
 
   /// 匹配算法版本:任何影响匹配结果的改动都必须 +1。
-  static const algoVersion = 7;
+  static const algoVersion = 8;
 
   /// HTML 命名实体映射
   static const _entities = {
@@ -344,7 +344,7 @@ class ChapterMapper {
     for (var ci = 0; ci < chapters.length; ci++) {
       final ch = chapters[ci];
 
-      if (ch.underlines.isEmpty) {
+      if (ch.underlines.isEmpty && ch.chapterReviews.isEmpty) {
         unmatched.add(
           UnmatchedChapter(uid: ch.uid, title: ch.title, reason: 'no_data'),
         );

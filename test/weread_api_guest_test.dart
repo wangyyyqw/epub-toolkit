@@ -87,6 +87,13 @@ MockClient _mockServer({bool challengeGuestLogin = false}) {
           ],
         });
 
+      case '/book/underlines':
+        return okJson({
+          'underlines': [
+            {'range': '1-25'},
+          ],
+        });
+
       case '/book/readreviews':
         return okJson({
           'reviews': [
@@ -147,6 +154,306 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
   });
+
+  Future<WereadApi> apiWithRoutes(
+    Map<String, dynamic>? Function(http.Request request) route,
+  ) async {
+    final fallback = _mockServer();
+    final api = WereadApi(
+      client: MockClient((request) async {
+        final body = route(request);
+        if (body != null) {
+          return http.Response(
+            json.encode(body),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        final copy = http.Request(request.method, request.url)
+          ..headers.addAll(request.headers)
+          ..bodyBytes = request.bodyBytes;
+        return http.Response.fromStream(await fallback.send(copy));
+      }),
+    );
+    addTearDown(api.dispose);
+    addTearDown(fallback.close);
+    await api.load();
+    await api.startGuestLogin();
+    return api;
+  }
+
+  test(
+    'non-popular chapter ranges are fetched and abstracts fill missing quotes',
+    () async {
+      final requestedRanges = <String>{};
+      final api = await apiWithRoutes((request) {
+        if (request.url.path == '/book/underlines') {
+          return {
+            'data': {
+              'updated': [
+                {'range': '1-25'},
+                {'bookmarkRange': '30-60', 'mark_text': ''},
+                {'markRange': '70-100', 'markText': '第三段完整引文'},
+              ],
+            },
+          };
+        }
+        if (request.url.path == '/book/readreviews') {
+          final body = json.decode(request.body) as Map;
+          final ranges = (body['reviews'] as List).cast<Map>();
+          requestedRanges.addAll(ranges.map((r) => r['range'] as String));
+          return {
+            'reviews': [
+              for (final range in ranges)
+                {
+                  'range': range['range'],
+                  'totalCount': 1,
+                  'pageReviews': [
+                    {
+                      'review': {
+                        'reviewId': 'id-${range['range']}',
+                        'content': '想法-${range['range']}',
+                        'abstract': '该段的完整引文[插图]',
+                      },
+                    },
+                  ],
+                },
+            ],
+          };
+        }
+        return null;
+      });
+      final result = await api.fetchBookData('b1');
+      expect(requestedRanges, {'1-25', '30-60', '70-100'});
+      expect(result.chapters.single.reviewMap.length, 3);
+      expect(
+        result.chapters.single.underlines
+            .singleWhere((u) => u.range == '30-60')
+            .markText,
+        '该段的完整引文',
+      );
+      expect(result.incompleteCount, 0);
+    },
+  );
+
+  test(
+    'range pagination fetches more than 30 and deduplicates overlapping IDs',
+    () async {
+      final requests = <List<Map>>[];
+      final api = await apiWithRoutes((request) {
+        if (request.url.path != '/book/readreviews') return null;
+        final ranges = (json.decode(request.body)['reviews'] as List)
+            .cast<Map>();
+        requests.add(ranges);
+        return {
+          'data': {
+            'reviews': [
+              for (final range in ranges)
+                {
+                  'range': range['range'],
+                  'totalCount': range['range'] == '1-25' ? 45 : 1,
+                  'hasMore': range['range'] == '1-25' && range['maxIdx'] == 0,
+                  'maxIdx': range['maxIdx'] == 0 ? 30 : 45,
+                  'pageReviews': [
+                    for (
+                      var i = range['maxIdx'] == 0 ? 0 : 29;
+                      i <
+                          (range['range'] == '1-25'
+                              ? (range['maxIdx'] == 0 ? 30 : 45)
+                              : 1);
+                      i++
+                    )
+                      {
+                        'review': {
+                          'reviewId': '${range['range']}-$i',
+                          'content': '段评$i',
+                          'createTime': i,
+                          'author': {'name': '读者$i'},
+                        },
+                      },
+                  ],
+                },
+            ],
+          },
+        };
+      });
+      final warnings = <String>[];
+      final result = await api.readreviews(
+        'b1',
+        '1',
+        WereadApi.reviewBatches(['1-25', '30-60']).single,
+        onWarning: warnings.add,
+      );
+      expect(result.length, 46);
+      expect(requests.length, 2);
+      expect(requests.last.map((r) => r['range']), ['1-25']);
+      expect(requests.last.single['maxIdx'], 30);
+      expect(result.last.author, '读者44');
+      expect(warnings, isEmpty);
+    },
+  );
+
+  test(
+    'stalled pagination retains reviews and reports incomplete fetch',
+    () async {
+      var calls = 0;
+      final api = await apiWithRoutes((request) {
+        if (request.url.path != '/book/readreviews') return null;
+        calls++;
+        return {
+          'reviews': [
+            {
+              'range': '1-25',
+              'totalCount': 100,
+              'hasMore': 1,
+              'maxIdx': calls,
+              'pageReviews': [
+                {
+                  'review': {'reviewId': 'same', 'content': '不重复插入'},
+                },
+              ],
+            },
+          ],
+        };
+      });
+      final result = await api.fetchBookData('b1');
+      expect(calls, 2);
+      expect(result.chapters.single.reviewMap['1-25']!.length, 1);
+      expect(result.incompleteCount, 1);
+      expect(result.warnings.single, contains('游标缺失或停滞'));
+    },
+  );
+
+  test(
+    'chapter range failure is visible while preserving popular fallback',
+    () async {
+      final api = await apiWithRoutes((request) {
+        if (request.url.path == '/book/underlines') {
+          return {'errcode': -1, 'errmsg': 'underlines unavailable'};
+        }
+        return null;
+      });
+      final result = await api.fetchBookData('b1');
+      expect(result.chapters.single.reviewMap['1-25'], isNotEmpty);
+      expect(result.incompleteCount, 1);
+      expect(result.warnings.single, contains('仅使用热门划线降级'));
+    },
+  );
+
+  test('later page failure keeps already fetched reviews', () async {
+    var calls = 0;
+    final api = await apiWithRoutes((request) {
+      if (request.url.path != '/book/readreviews') return null;
+      if (++calls > 1) return {'errcode': -1, 'errmsg': 'page unavailable'};
+      return {
+        'reviews': [
+          {
+            'range': '1-25',
+            'hasMore': true,
+            'maxIdx': 10,
+            'pageReviews': [
+              {
+                'review': {'content': '保留首批'},
+              },
+            ],
+          },
+        ],
+      };
+    });
+    final warnings = <String>[];
+    final result = await api.readreviews(
+      'b1',
+      '1',
+      WereadApi.reviewBatches(['1-25']).single,
+      onWarning: warnings.add,
+    );
+    expect(result.single.content, '保留首批');
+    expect(warnings.single, contains('后续分页失败'));
+  });
+
+  test('full first page without a cursor is explicitly incomplete', () async {
+    var calls = 0;
+    final api = await apiWithRoutes((request) {
+      if (request.url.path != '/book/readreviews') return null;
+      calls++;
+      return {
+        'reviews': [
+          {
+            'review': {'range': '1-25'},
+            'pageReviews': [
+              for (var i = 0; i < 30; i++)
+                {
+                  'review': {'reviewId': '$i', 'content': '第$i条'},
+                },
+            ],
+          },
+        ],
+      };
+    });
+    final warnings = <String>[];
+    final result = await api.readreviews(
+      'b1',
+      '1',
+      WereadApi.reviewBatches(['1-25']).single,
+      onWarning: warnings.add,
+    );
+    expect(result.length, 30);
+    expect(calls, 1, reason: 'Do not invent unsupported pagination offsets');
+    expect(warnings.single, contains('不能确认完整'));
+  });
+
+  for (final fallback in [false, true]) {
+    test(
+      'QR chapter underlines use Web with gateway fallback=$fallback',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'weread_api_key': 'test-key',
+          'weread_cookies': '{"wr_skey":"test-session","wr_vid":"123"}',
+        });
+        var gatewayCalls = 0;
+        final api = WereadApi(
+          client: MockClient((request) async {
+            Map<String, dynamic> data;
+            if (request.url.path == '/web/book/underlines') {
+              expect(request.url.queryParameters['chapterUid'], '42');
+              expect(
+                request.headers['cookie'],
+                contains('wr_skey=test-session'),
+              );
+              if (fallback) return http.Response('unavailable', 403);
+              data = {
+                'underlines': [
+                  {'range': '2-20', 'markText': 'Web引文'},
+                ],
+              };
+            } else {
+              expect(request.url.path, '/api/agent/gateway');
+              final body = json.decode(request.body);
+              expect(body['api_name'], '/book/underlines');
+              expect(body['chapterUid'], 42);
+              gatewayCalls++;
+              data = {
+                'updated': [
+                  {'bookmarkRange': '2-20', 'mark_text': '网关引文'},
+                ],
+              };
+            }
+            return http.Response(
+              json.encode(data),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }),
+        );
+        addTearDown(api.dispose);
+        await api.load();
+        final marks = await api.chapterUnderlines('b1', '42');
+        expect(marks.single.range, '2-20');
+        expect(marks.single.chapterUid, '42');
+        expect(gatewayCalls, fallback ? 1 : 0);
+      },
+    );
+  }
 
   group('游客登录', () {
     test('预登录直连成功(无需验证码)', () async {

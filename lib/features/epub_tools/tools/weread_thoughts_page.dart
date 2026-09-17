@@ -22,7 +22,7 @@ import '../../weread_thoughts/weread_thought_operation.dart';
 
 /// 读书想法注入页面
 ///
-/// 从读书平台拉取热门划线、公开想法(段评/章评/书评),注入到本地 EPUB 文件中。
+/// 从读书平台逐章拉取划线、公开想法(段评/章评/书评),注入到本地 EPUB 文件中。
 /// 支持两种登录:扫码登录(Web Cookie + API Key)或游客登录(APP 直连,
 /// 无需微信账号;可能触发腾讯验证码,由系统浏览器完成)。
 /// 流程:登录 → 选择 EPUB → 根据书名自动搜索 → 绑定书目 → 注入想法。
@@ -562,7 +562,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
 
   /// 执行完整同步流程
   ///
-  /// 通过 SKILL API / APP 直连拉取热门划线和公开想法,注入到 EPUB 中。
+  /// 通过 Web / SKILL API / APP 获取逐章划线和公开想法,注入到 EPUB 中。
   Future<void> _execute() async {
     if (_loading) return;
     if (!_isLoggedIn) {
@@ -594,7 +594,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
     try {
       // 1. 拉取数据
       setState(() => _progressText = '正在拉取数据...');
-      _logController.append('PROGRESS: 拉取章节列表、热门划线与公开想法...');
+      _logController.append('PROGRESS: 拉取章节列表、逐章划线与公开想法...');
 
       final fetchResult = await _api.fetchBookData(
         book.bookId,
@@ -619,6 +619,13 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         'PROGRESS: 拉取完成 - ${allChapters.length}/${fetchResult.totalChapters} 章有数据, '
         '$totalUnderlines 条划线, $totalThoughts 条想法',
       );
+      if (fetchResult.incompleteCount > 0) {
+        _logController.append(
+          'WARNING: 获取结果不完整，共 ${fetchResult.incompleteCount} 项问题；'
+          '将保留已获取内容，不代表全书全部想法。',
+        );
+        _logController.appendLines(fetchResult.warnings);
+      }
       if (!mounted) return;
 
       // 注入想法到 EPUB
@@ -651,7 +658,15 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         }
       } else {
         if (mounted) {
-          context.read<ToastProvider>().showSuccess('想法注入完成，已保存到 $_outputPath');
+          if (fetchResult.incompleteCount > 0) {
+            context.read<ToastProvider>().showWarning(
+              '已保存部分想法，${fetchResult.incompleteCount} 项获取问题，请查看日志',
+            );
+          } else {
+            context.read<ToastProvider>().showSuccess(
+              '想法注入完成，已保存到 $_outputPath',
+            );
+          }
         }
         if (!mounted) return;
         await _copyToPublicDownload();
@@ -700,7 +715,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         ToolHelpSection(
           title: '功能简介',
           content:
-              '从读书平台拉取一本书的热门划线和公开想法，'
+              '从读书平台逐章拉取划线和公开想法，'
               '通过引文匹配将想法注入到本地 EPUB 的对应位置。'
               '注入后阅读 EPUB 时，划线位置会显示一个图标，点击/悬停即可查看想法。',
         ),
@@ -717,7 +732,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
         ToolHelpSection(
           title: '匹配原理',
           content:
-              '程序使用引文投票算法：取每章的热门划线前缀，在本地 EPUB 的各 HTML 文件中搜索。'
+              '程序使用引文投票算法：取每章的划线引文前缀，在本地 EPUB 的各 HTML 文件中搜索。'
               '命中最多的文件即为该章对应的本地文件。'
               '如果引文因精校修改无法匹配，会降级使用章节标题兜底。',
         ),
@@ -744,7 +759,7 @@ class _WereadThoughtsPageState extends State<WereadThoughtsPage> {
             context,
             icon: Icons.psychology_outlined,
             title: '读书想法',
-            subtitle: '拉取热门划线想法注入到本地 EPUB',
+            subtitle: '逐章获取公开想法并注入本地 EPUB',
           ),
 
           // 内容区

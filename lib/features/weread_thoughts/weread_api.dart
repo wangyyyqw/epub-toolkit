@@ -76,6 +76,7 @@ class WereadUnderline {
 /// [type] 区分数据来源: paragraph(段评)/chapter(章评)/book(书评)。
 /// 章评/书评没有 range,范围为空字符串。
 class WereadReview {
+  final String reviewId;
   final String range;
   final String content;
   final String abstract;
@@ -86,6 +87,7 @@ class WereadReview {
   final String type;
 
   WereadReview({
+    this.reviewId = '',
     this.range = '',
     required this.content,
     this.abstract = '',
@@ -98,6 +100,7 @@ class WereadReview {
 
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
+    'reviewId': reviewId,
     'range': range,
     'content': content,
     'abstract': abstract,
@@ -111,6 +114,7 @@ class WereadReview {
   /// 从 JSON 反序列化
   factory WereadReview.fromJson(Map<String, dynamic> json) {
     return WereadReview(
+      reviewId: json['reviewId']?.toString() ?? '',
       range: json['range']?.toString() ?? '',
       content: json['content']?.toString() ?? '',
       abstract: json['abstract']?.toString() ?? '',
@@ -225,17 +229,21 @@ class FetchResult {
 
   /// 整本书评(挂在书上,没有 range)
   final List<WereadReview> bookReviews;
+  final int incompleteCount;
+  final List<String> warnings;
 
   FetchResult({
     required this.chapters,
     required this.totalChapters,
     this.bookReviews = const [],
+    this.incompleteCount = 0,
+    this.warnings = const [],
   });
 }
 
 /// 读书想法 API 客户端。
 ///
-/// 支持两种登录方式,数据源一致(全部为公开数据):
+/// 支持两种登录方式，获取各接口允许访问的公开数据：
 /// - 扫码登录:API Key 通过统一网关 + Web Cookie 双路径
 ///   - 网关入口: POST https://i.weread.qq.com/api/agent/gateway
 ///   - 鉴权方式: Authorization: Bearer {API Key} + Cookie
@@ -248,6 +256,7 @@ class FetchResult {
 /// - /book/info: 图书详情
 /// - /book/chapterinfo: 章节信息
 /// - /book/bestbookmarks: 热门划线(公开)
+/// - /book/underlines: 逐章划线范围
 /// - /book/readreviews: 公开段评
 /// - /book/chapterreviewlist: 章评
 /// - /book/podcasts: 书评
@@ -1003,6 +1012,54 @@ class WereadApi {
       queryParameters: {'bookId': bookId, 'count': '2000', 'synckey': '0'},
     );
     return _appGetJson(url.toString(), label: 'APP 热门划线');
+  }
+
+  /// Per-chapter ranges include non-popular paragraphs omitted by bestbookmarks.
+  Future<List<WereadUnderline>> chapterUnderlines(
+    String bookId,
+    String chapterUid,
+  ) async {
+    Map<String, dynamic> data;
+    final params = {'bookId': bookId, 'chapterUid': chapterUid};
+    if (isGuestMode) {
+      final url = Uri.parse(
+        'https://i.weread.qq.com/book/underlines',
+      ).replace(queryParameters: params);
+      data = await _appGetJson(url.toString(), label: 'APP 章节划线');
+    } else {
+      try {
+        final url = Uri.parse(
+          '$_webBaseUrl/web/book/underlines',
+        ).replace(queryParameters: params);
+        final response = await _client
+            .get(
+              url,
+              headers: {
+                'User-Agent': _webUserAgent,
+                'Accept': 'application/json',
+                'Referer': _readerUrl(bookId),
+                'Cookie': _cookieHeader(),
+              },
+            )
+            .timeout(Duration(milliseconds: _timeoutMs));
+        data = _parseResponse(response);
+        if (_underlineRows(data) is! List) {
+          throw const FormatException('章节划线响应缺少列表');
+        }
+      } catch (_) {
+        data = await _gateway(
+          '/book/underlines',
+          params: {
+            'bookId': bookId,
+            'chapterUid': int.tryParse(chapterUid) ?? chapterUid,
+          },
+        );
+      }
+    }
+    if (_underlineRows(data) is! List) {
+      throw const FormatException('章节划线响应缺少列表');
+    }
+    return _parseBestbookmarks(data, chapterUid);
   }
 
   /// 游客模式 APP 段评(书源 wrParagraphSummaries 使用,已验证游客可用)
@@ -1822,14 +1879,13 @@ class WereadApi {
     return chapters;
   }
 
-  /// 获取指定 range 的全部公开想法
+  /// 获取指定 range 的公开想法，并跟随服务端提供的分页游标。
   ///
   /// [bookId] 读书书 ID
   /// [chapterUid] 章节 UID
   /// [batch] range 批次,格式为 [{range, maxIdx, count, synckey}, ...]
   ///
-  /// 此接口按 range 返回该段的**全部公开想法**(每 range 最多 count 条),
-  /// 远比 /review/list/mine(仅个人想法)和 /review/list(章级热门前几条)完整。
+  /// 服务端不提供可继续的游标时保留已获取数据并通过 onWarning 报告截断。
   ///
   /// 注意:chapterUid 必须传整数,网关对类型敏感(参考 pickthought 的 unique_candidates)。
   Future<List<WereadReview>> readreviews(
@@ -1837,7 +1893,113 @@ class WereadApi {
     String chapterUid,
     List<Map<String, dynamic>> batch, {
     void Function(String)? onDebug,
+    void Function(String)? onWarning,
   }) async {
+    final result = <WereadReview>[];
+    final seenReviews = <String>{};
+    final received = <String, int>{};
+    final seenCursors = <String, Set<String>>{};
+    var pending = batch.map((row) => Map<String, dynamic>.from(row)).toList();
+    var page = 0;
+    void warn(String message) {
+      debugPrint('[WereadApi] $message');
+      onWarning?.call(message);
+    }
+
+    while (pending.isNotEmpty) {
+      Map<String, dynamic> data;
+      try {
+        data = await _readreviewsPage(bookId, chapterUid, pending);
+      } catch (e) {
+        if (page == 0) rethrow;
+        warn('第 $chapterUid 章段评后续分页失败，已保留此前数据：$e');
+        break;
+      }
+      page++;
+      if (onDebug != null && page == 1) {
+        final raw = json.encode(data);
+        onDebug(raw.length > 800 ? '${raw.substring(0, 800)}...' : raw);
+      }
+      final rows = _reviewRows(data);
+      if (rows == null) {
+        warn('第 $chapterUid 章段评响应缺少列表，结果可能不完整');
+        break;
+      }
+      final added = <String, int>{};
+      for (final review in _parseWebReviews(data, chapterUid)) {
+        final key = json.encode([
+          review.range,
+          review.reviewId.isNotEmpty
+              ? review.reviewId
+              : [
+                  review.content,
+                  review.abstract,
+                  review.author,
+                  review.createTime,
+                ],
+        ]);
+        if (seenReviews.add(key)) {
+          result.add(review);
+          added.update(review.range, (n) => n + 1, ifAbsent: () => 1);
+          received.update(review.range, (n) => n + 1, ifAbsent: () => 1);
+        }
+      }
+      final next = <Map<String, dynamic>>[];
+      for (final request in pending) {
+        final range = request['range'].toString();
+        final matching = rows
+            .whereType<Map>()
+            .where((row) => _reviewRange(row) == range)
+            .toList();
+        if (matching.isEmpty) {
+          warn('第 $chapterUid 章段落 $range 未返回结果，未视为无想法');
+          continue;
+        }
+        // Grouped responses contain pagination per range. A flat response may
+        // not expose a cursor; never invent an offset from the requested count.
+        final group = matching.first;
+        final entries = group['pageReviews'];
+        final returned = entries is List ? entries.length : matching.length;
+        final total = _safeInt(group['totalCount']);
+        final more = group['hasMore'] ?? group['reviewsHasMore'];
+        final hasMore = more == true || more == 1 || more == '1';
+        final complete = more == false || more == 0 || more == '0';
+        final needsMore =
+            hasMore ||
+            total > (received[range] ?? 0) ||
+            (!complete && total == 0 && returned >= _safeInt(request['count']));
+        if (!needsMore) continue;
+        final maxIdx = group['maxIdx'];
+        final synckey = group['synckey'];
+        final candidate = {...request};
+        if (maxIdx != null) candidate['maxIdx'] = maxIdx;
+        if (synckey != null) candidate['synckey'] = synckey;
+        final oldCursor = json.encode([request['maxIdx'], request['synckey']]);
+        final cursor = json.encode([candidate['maxIdx'], candidate['synckey']]);
+        final visited = seenCursors.putIfAbsent(range, () => {oldCursor});
+        if ((added[range] ?? 0) == 0 ||
+            cursor == oldCursor ||
+            !visited.add(cursor) ||
+            page >= 1000) {
+          warn(
+            '第 $chapterUid 章段落 $range 已获取 ${received[range] ?? 0} 条，'
+            '后续游标缺失或停滞，不能确认完整',
+          );
+          continue;
+        }
+        next.add(candidate);
+      }
+      pending = next;
+      if (pending.isNotEmpty) await _delay(200);
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _readreviewsPage(
+    String bookId,
+    String chapterUid,
+    List<Map<String, dynamic>> batch,
+  ) async {
     final chapterUidInt = int.tryParse(chapterUid);
     final Map<String, dynamic> data;
     if (isGuestMode) {
@@ -1853,105 +2015,23 @@ class WereadApi {
       );
     }
 
-    // 调试:输出原始响应(仅第一次调用)
-    if (onDebug != null) {
-      final rawJson = json.encode(data);
-      onDebug(
-        rawJson.length > 800 ? '${rawJson.substring(0, 800)}...' : rawJson,
-      );
-    }
-
-    final result = <WereadReview>[];
-
-    // 响应结构: {reviews: [{review: {...}, pageReviews: [{review: {...}}], ...}]}
-    // 兼容扁平结构: {reviews: [{range, content, ...}]}
-    dynamic reviewList = data['reviews'];
-    if (reviewList == null) {
-      final d = data['data'];
-      if (d is Map) {
-        reviewList = d['reviews'];
-      } else if (d is List) {
-        reviewList = d;
-      }
-    }
-
-    debugPrint(
-      '[WereadApi] readreviews: chapter=$chapterUid, '
-      'batch=${batch.length} ranges, '
-      'response reviews=${reviewList is List ? reviewList.length : 0}',
-    );
-
-    if (reviewList is List) {
-      for (final item in reviewList) {
-        if (item is! Map<String, dynamic>) continue;
-
-        // 提取 range
-        final range =
-            item['range']?.toString() ??
-            (item['review'] is Map
-                ? item['review']['range']?.toString() ?? ''
-                : '');
-
-        // pageReviews 结构:一个 range 对应多条想法
-        final pageReviews = item['pageReviews'];
-        if (pageReviews is List) {
-          for (final pr in pageReviews) {
-            if (pr is! Map<String, dynamic>) continue;
-            final thought = pr['review'] is Map
-                ? pr['review'] as Map<String, dynamic>
-                : pr;
-            final content = thought['content']?.toString() ?? '';
-            if (content.isNotEmpty && range.isNotEmpty) {
-              final author = thought['author'];
-              result.add(
-                WereadReview(
-                  range: range,
-                  content: content,
-                  abstract: _cleanQuote(
-                    thought['abstract']?.toString() ??
-                        thought['contextAbstract']?.toString() ??
-                        '',
-                  ),
-                  author: author is Map
-                      ? (author['name']?.toString() ??
-                            author['nick']?.toString() ??
-                            '')
-                      : '',
-                  // likesCount 可能是 int 或 double,安全转换
-                  likes: _safeInt(
-                    pr['likesCount'] ?? thought['likesCount'] ?? 0,
-                  ),
-                  chapterUid: chapterUid,
-                ),
-              );
-            }
-          }
-        } else {
-          // 扁平结构:直接在 item 上
-          final review = item['review'] is Map
-              ? item['review'] as Map<String, dynamic>
-              : item;
-          final content = review['content']?.toString() ?? '';
-          if (content.isNotEmpty && range.isNotEmpty) {
-            result.add(
-              WereadReview(
-                range: range,
-                content: content,
-                abstract: _cleanQuote(
-                  review['abstract']?.toString() ??
-                      review['contextAbstract']?.toString() ??
-                      '',
-                ),
-                chapterUid: chapterUid,
-              ),
-            );
-          }
-        }
-      }
-    }
-
-    return result;
+    return data;
   }
+
+  static List? _reviewRows(Map<String, dynamic> data) {
+    final nested = data['data'];
+    final rows =
+        data['reviews'] ??
+        data['updated'] ??
+        (nested is Map ? nested['reviews'] ?? nested['updated'] : nested);
+    return rows is List ? rows : null;
+  }
+
+  static String _reviewRange(Map row) =>
+      (row['range'] ??
+              (row['review'] is Map ? row['review']['range'] : null) ??
+              '')
+          .toString();
 
   /// 安全转换为 int(兼容 int / double / String)
   static int _safeInt(dynamic value) {
@@ -2158,31 +2238,35 @@ class WereadApi {
   /// - {items: [...]}
   /// - {data: [...]}
   /// - {bookmarks: [...]}
+  static dynamic _underlineRows(Map<String, dynamic> data) {
+    final nested = data['data'];
+    if (nested is List) return nested;
+    final source = nested is Map ? nested : data;
+    return data['items'] ??
+        source['items'] ??
+        source['underlines'] ??
+        source['bookmarks'] ??
+        source['updated'];
+  }
+
   List<WereadUnderline> _parseBestbookmarks(
     Map<String, dynamic> data,
     String defaultChapterUid,
   ) {
-    dynamic items = data['items'];
-    if (items == null) {
-      final d = data['data'];
-      if (d is Map) {
-        items = d['items'] ?? d['bookmarks'] ?? d['underlines'] ?? d['updated'];
-      } else if (d is List) {
-        items = d;
-      }
-    }
-    items ??= data['bookmarks'] ?? data['underlines'] ?? data['updated'];
+    final items = _underlineRows(data);
 
     final result = <WereadUnderline>[];
     if (items is List) {
       for (final item in items) {
         if (item is! Map<String, dynamic>) continue;
         final range =
-            item['range']?.toString() ?? item['markRange']?.toString() ?? '';
+            (item['range'] ?? item['markRange'] ?? item['bookmarkRange'] ?? '')
+                .toString();
         if (range.isEmpty) continue;
         final chapterUid = item['chapterUid']?.toString() ?? defaultChapterUid;
         final markText =
             item['markText']?.toString() ??
+            item['mark_text']?.toString() ??
             item['bookmarkText']?.toString() ??
             '';
         result.add(
@@ -2208,15 +2292,7 @@ class WereadApi {
     Map<String, dynamic> data,
     String chapterUid,
   ) {
-    dynamic reviewList = data['reviews'];
-    if (reviewList == null) {
-      final d = data['data'];
-      if (d is Map) {
-        reviewList = d['reviews'];
-      } else if (d is List) {
-        reviewList = d;
-      }
-    }
+    final reviewList = _reviewRows(data);
 
     final result = <WereadReview>[];
     if (reviewList is List) {
@@ -2243,6 +2319,8 @@ class WereadApi {
               final author = thought['author'];
               result.add(
                 WereadReview(
+                  reviewId: (thought['reviewId'] ?? pr['reviewId'] ?? '')
+                      .toString(),
                   range: range,
                   content: content,
                   abstract: _cleanQuote(
@@ -2259,6 +2337,7 @@ class WereadApi {
                     pr['likesCount'] ?? thought['likesCount'] ?? 0,
                   ),
                   chapterUid: chapterUid,
+                  createTime: _safeInt(thought['createTime']),
                 ),
               );
             }
@@ -2273,6 +2352,8 @@ class WereadApi {
             final author = review['author'];
             result.add(
               WereadReview(
+                reviewId: (review['reviewId'] ?? item['reviewId'] ?? '')
+                    .toString(),
                 range: range,
                 content: content,
                 abstract: _cleanQuote(
@@ -2286,6 +2367,8 @@ class WereadApi {
                           '')
                     : '',
                 chapterUid: chapterUid,
+                createTime: _safeInt(review['createTime']),
+                likes: _safeInt(item['likesCount'] ?? review['likesCount']),
               ),
             );
           }
@@ -2299,10 +2382,10 @@ class WereadApi {
 
   /// 拉取整本书的公开想法与热门划线数据
   ///
-  /// 数据源(全部为公开数据,游客登录与扫码登录结果一致):
+  /// 数据源为接口允许访问的公开数据，登录模式可能影响可见范围：
   /// a. 章节列表(按登录模式路由:Web/网关/APP)
-  /// b. 热门划线 bestbookmarks(整本一次拉取,提供 range 词典 + markText 引文)
-  /// c. 段评 readreviews(按热门划线 range 批量拉取该段全部公开想法)
+  /// b. 逐章 underlines 提供 range，bestbookmarks 仅用于补充引文和失败降级
+  /// c. 段评 readreviews 按 range 获取并跟随服务端分页游标
   /// d. 章评 chapterreviewlist(逐章) + 书评 podcasts(整本一次,失败不影响主线)
   /// e. 合并到章节:想法 abstract 填充划线引文,无对应划线的 range 自动补划线
   ///
@@ -2317,6 +2400,13 @@ class WereadApi {
     bool includeBookReviews = true,
   }) async {
     onProgress ??= (_, _, _, _) {};
+    var incompleteCount = 0;
+    final warnings = <String>[];
+    void warn(String message) {
+      incompleteCount++;
+      if (warnings.length < 30) warnings.add(message);
+      debugPrint('[WereadApi] incomplete: $message');
+    }
 
     // 1. 获取章节列表
     onProgress('chapters', 0, 1, '获取章节列表');
@@ -2339,7 +2429,7 @@ class WereadApi {
       }
       debugPrint('[WereadApi] 热门划线成功: ${bmUnderlines.length} 条');
     } catch (e) {
-      debugPrint('[WereadApi] 热门划线失败(段评 range 词典受限): $e');
+      debugPrint('[WereadApi] 热门划线补充失败，继续逐章获取: $e');
     }
 
     final reviewsByChapter = <String, List<WereadReview>>{};
@@ -2353,23 +2443,38 @@ class WereadApi {
 
     final chapterReviewsByChapter = <String, List<WereadReview>>{};
 
-    // 3. 逐章:按热门划线 range 拉公开段评 + 章评
+    // 3. 逐章获取段落范围，热门划线不能代表全章段落。
     for (var i = 0; i < chapterList.length; i++) {
       final ch = chapterList[i];
       final progressText = '${i + 1}/${chapterList.length} ${ch.title}';
       onProgress('underlines', i, chapterList.length, progressText);
 
-      final chapterUnderlines = underlinesByChapter[ch.chapterUid] ?? [];
+      final popular = underlinesByChapter[ch.chapterUid] ?? [];
+      var chapterMarks = popular;
+      try {
+        final all = await chapterUnderlines(bookId, ch.chapterUid);
+        final byRange = {for (final u in popular) u.range: u};
+        for (final underline in all) {
+          if (underline.markText.isNotEmpty ||
+              !byRange.containsKey(underline.range)) {
+            byRange[underline.range] = underline;
+          }
+        }
+        chapterMarks = byRange.values.toList();
+        underlinesByChapter[ch.chapterUid] = chapterMarks;
+      } catch (e) {
+        warn('第 ${ch.chapterUid} 章划线获取失败，仅使用热门划线降级：$e');
+      }
       final ranges = <String>[];
       final seenRanges = <String>{};
-      for (final u in chapterUnderlines) {
+      for (final u in chapterMarks) {
         if (!seenRanges.contains(u.range)) {
           seenRanges.add(u.range);
           ranges.add(u.range);
         }
       }
 
-      // 3a. 主路径:readreviews 按 range 批量拉该段全部公开想法
+      // 3a. 按 range 批量获取公开段评，跟随服务端可用的分页游标。
       var reviewsFetched = false;
       if (ranges.isNotEmpty) {
         final batches = reviewBatches(ranges, batchSize: 5);
@@ -2379,12 +2484,14 @@ class WereadApi {
               bookId,
               ch.chapterUid,
               batches[bi],
+              onWarning: warn,
             );
             if (batchReviews.isNotEmpty) {
               reviewsFetched = true;
               addReviews(batchReviews);
             }
           } catch (e) {
+            warn('第 ${ch.chapterUid} 章段评批次 ${bi + 1} 获取失败：$e');
             debugPrint(
               '[WereadApi] 段评拉取失败: '
               'chapter=${ch.chapterUid}, batch=$bi, error=$e',
@@ -2401,8 +2508,10 @@ class WereadApi {
           final webReviews = _parseWebReviews(rvData, ch.chapterUid);
           if (webReviews.isNotEmpty) {
             addReviews(webReviews);
+            warn('第 ${ch.chapterUid} 章使用章级热门想法降级，不能保证完整');
           }
         } catch (e) {
+          warn('第 ${ch.chapterUid} 章想法降级获取失败：$e');
           debugPrint(
             '[WereadApi] Web 章级想法兜底失败: '
             'chapter=${ch.chapterUid}, error=$e',
@@ -2418,6 +2527,7 @@ class WereadApi {
             chapterReviewsByChapter[ch.chapterUid] = chapterReviewList;
           }
         } catch (e) {
+          warn('第 ${ch.chapterUid} 章章评获取失败：$e');
           debugPrint(
             '[WereadApi] 章评拉取失败(可选数据源,不影响主线): '
             'chapter=${ch.chapterUid}, error=$e',
@@ -2442,7 +2552,7 @@ class WereadApi {
       'underlines',
       chapterList.length,
       chapterList.length,
-      '热门划线 $totalUnderlines 条,公开想法 $totalReviews 条',
+      '章节划线 $totalUnderlines 条,公开段评 $totalReviews 条',
     );
 
     // 4. 整本书评(挂在书上):失败不影响主线
@@ -2451,6 +2561,7 @@ class WereadApi {
       try {
         bookReviewList = await bookReviews(bookId);
       } catch (e) {
+        warn('书评获取失败：$e');
         debugPrint('[WereadApi] 书评拉取失败(可选数据源,不影响主线): $e');
       }
     }
@@ -2470,6 +2581,8 @@ class WereadApi {
       chapters: result,
       totalChapters: chapterList.length,
       bookReviews: bookReviewList,
+      incompleteCount: incompleteCount,
+      warnings: warnings,
     );
   }
 

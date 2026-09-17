@@ -46,6 +46,25 @@ List<(String, String, bool)> _reference(
 }
 
 void main() {
+  test('chapter reviews without paragraph underlines use title fallback', () {
+    final (mapped, unmatched) = ChapterMapper.build(
+      ['chapter.xhtml'],
+      (_) => '<h1>第一章 只有章评的测试标题</h1><p>正文</p>',
+      [
+        ChapterInput(
+          uid: '1',
+          title: '第一章 只有章评的测试标题',
+          underlines: [],
+          reviewMap: {},
+          chapterReviews: [ReviewInput(content: '章评仍需保留')],
+        ),
+      ],
+    );
+    expect(unmatched, isEmpty);
+    expect(mapped.single.chapterReviews.single.content, '章评仍需保留');
+    expect(mapped.single.quoteOnly, isTrue);
+  });
+
   test(
     'indexed mapping preserves votes, ambiguity, TOC and title fallback',
     () {

@@ -493,6 +493,8 @@ $cssMarker
     // 7. 逐文件注入想法
     onProgress('inject', 0, groupsByHref.length, '注入想法');
     var totalInjected = 0;
+    var totalThoughts = 0;
+    var totalUnlocated = 0;
     var totalChapterReviews = 0;
     var fileIndex = 0;
 
@@ -529,7 +531,7 @@ $cssMarker
         } else if (groupsByHref.containsKey(file.name)) {
           fileIndex++;
           onProgress('inject', fileIndex, groupsByHref.length, file.name);
-          final (html, count, reviewCount) = _injectFile(
+          final (html, count, reviewCount, thoughts, unlocated) = _injectFile(
             _readText(file),
             groupsByHref[file.name]!,
             htmlPath: file.name,
@@ -537,6 +539,8 @@ $cssMarker
             enableChapterReviews: enableChapterReviews,
           );
           totalInjected += count;
+          totalThoughts += thoughts;
+          totalUnlocated += unlocated;
           totalChapterReviews += reviewCount;
           if (fileIndex <= 30) {
             log.writeln(
@@ -593,6 +597,10 @@ $cssMarker
       '共注入 $totalInjected 个想法锚点'
       '${totalChapterReviews > 0 ? ', $totalChapterReviews 条章评' : ''}',
     );
+    log.writeln('锚点内显示 $totalThoughts 条去重段评；锚点数不等于想法条数');
+    if (totalUnlocated > 0) {
+      log.writeln('警告: 已匹配章节中有 $totalUnlocated 个含想法段落无法定位，未注入');
+    }
     if (totalInjected == 0 && totalChapterReviews == 0) {
       log.writeln('警告: 没有成功注入任何想法(引文可能在本地书中被精校修改)');
     }
@@ -610,8 +618,8 @@ $cssMarker
   /// 注入完成后,在文件末尾追加章评区块(如启用)。
   /// [htmlPath] HTML 文件在 EPUB 内的路径(用于计算 CSS 相对路径)
   /// [opfDir] OPF 所在目录(用于计算 CSS 相对路径)
-  /// 返回 (注入后的 HTML, 想法锚点数, 章评条数)
-  static (String, int, int) _injectFile(
+  /// 返回 (HTML, 锚点数, 章评条数, 显示的段评条数, 未定位段落数)
+  static (String, int, int, int, int) _injectFile(
     String html,
     List<MappedChapter> chaptersForFile, {
     String htmlPath = '',
@@ -649,7 +657,7 @@ $cssMarker
     );
 
     final (rendered, stats) = _inject(html, data);
-    final count = stats.quoteAligned + stats.numeric;
+    final count = stats.renderedAnchors;
 
     // 章评区块(章评没有引文,直接挂在文件末尾;
     // 即使想法锚点一个都没对齐也保留章评)
@@ -670,7 +678,9 @@ $cssMarker
       }
     }
 
-    if (count == 0 && reviewBlocks.isEmpty) return (html, 0, 0);
+    if (count == 0 && reviewBlocks.isEmpty) {
+      return (html, 0, 0, 0, stats.unlocatedThoughts);
+    }
 
     // 注入外部 CSS 引用(通过 <link> 标签)
     var resultHtml = count > 0 ? rendered : html;
@@ -680,7 +690,13 @@ $cssMarker
       resultHtml = _appendBeforeBodyEnd(resultHtml, reviewBlocks);
     }
 
-    return (resultHtml, count, reviewCount);
+    return (
+      resultHtml,
+      count,
+      reviewCount,
+      stats.renderedThoughts,
+      stats.unlocatedThoughts,
+    );
   }
 
   /// 渲染章评区块(静态 HTML,挂在章节末尾)
@@ -1182,6 +1198,7 @@ $cssMarker
       if (parsed == null) {
         stats.dropped++;
         stats.unlocated++;
+        if ((reviewMap[rangeStr] ?? []).isNotEmpty) stats.unlocatedThoughts++;
         continue;
       }
 
@@ -1216,6 +1233,7 @@ $cssMarker
       } else {
         stats.dropped++;
         stats.unlocated++;
+        if ((reviewMap[rangeStr] ?? []).isNotEmpty) stats.unlocatedThoughts++;
       }
     }
 
@@ -1286,6 +1304,11 @@ $cssMarker
       final text = _formatThoughts(allReviews);
       if (text.isNotEmpty) {
         thoughtTexts[mark.key] = text;
+        stats.renderedThoughts += allReviews
+            .map((review) => _cleanThoughtText(review.content))
+            .where((content) => content.isNotEmpty)
+            .toSet()
+            .length;
       } else {
         // 想法内容全空,降级为普通划线
         mark.thought = false;
@@ -1297,6 +1320,7 @@ $cssMarker
         .where((m) => m.thought && thoughtTexts.containsKey(m.key))
         .toList();
     if (thoughtMarks.isEmpty) return (html, stats);
+    stats.renderedAnchors = thoughtMarks.length;
 
     // 渲染
     final out = <String>[];
@@ -1677,6 +1701,9 @@ class _Mark {
 
 /// 对齐统计信息
 class _AlignmentStats {
+  int renderedAnchors = 0;
+  int renderedThoughts = 0;
+  int unlocatedThoughts = 0;
   int quoteAligned = 0;
   int numeric = 0;
   int dropped = 0;
